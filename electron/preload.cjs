@@ -21,6 +21,11 @@ contextBridge.exposeInMainWorld("nudgeAPI", {
     setSimulation: (enabled) => ipcRenderer.invoke("capture:set-simulation", enabled),
     getSimulation: () => ipcRenderer.invoke("capture:get-simulation")
   },
+  health: {
+    getLatest: () => ipcRenderer.invoke("health:get-latest"),
+    getConfig: () => ipcRenderer.invoke("health:get-config"),
+    setConfig: (payload) => ipcRenderer.invoke("health:set-config", payload)
+  },
   ocr: {
     initialize: () => ipcRenderer.invoke("ocr:initialize"),
     recognize: (payload) => ipcRenderer.invoke("ocr:recognize", payload)

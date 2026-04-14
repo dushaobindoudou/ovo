@@ -47,6 +47,26 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     }
   );
 
+  const healthConfig = {
+    enabled: true,
+    intervalSeconds: 60
+  };
+  let latestHealth = {
+    ok: true,
+    timestamp: Date.now(),
+    mode: autoCaptureService.getSimulationMode() ? "simulation" : "real",
+    sinceLastCaptureMs: -1
+  };
+
+  let healthTimer: NodeJS.Timeout | null = setInterval(() => {
+    void (async () => {
+      if (!healthConfig.enabled) return;
+      const report = await autoCaptureService.runHealthCheck();
+      latestHealth = report;
+      options.getConsoleWindow()?.webContents.send("health:update", report);
+    })();
+  }, healthConfig.intervalSeconds * 1000);
+
   let agentTimer: NodeJS.Timeout | null = setInterval(() => {
     void (async () => {
       try {
@@ -145,6 +165,10 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     if (!agentTimer) return;
     clearInterval(agentTimer);
     agentTimer = null;
+    if (healthTimer) {
+      clearInterval(healthTimer);
+      healthTimer = null;
+    }
     autoCaptureService.stop();
   });
 
@@ -180,6 +204,24 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
   ipcMain.handle("capture:get-simulation", () => ({
     simulationMode: autoCaptureService.getSimulationMode()
   }));
+  ipcMain.handle("health:get-latest", () => latestHealth);
+  ipcMain.handle("health:get-config", () => healthConfig);
+  ipcMain.handle("health:set-config", (_event, payload: { enabled?: boolean; intervalSeconds?: number }) => {
+    if (typeof payload.enabled === "boolean") healthConfig.enabled = payload.enabled;
+    if (typeof payload.intervalSeconds === "number") {
+      healthConfig.intervalSeconds = Math.max(10, Math.floor(payload.intervalSeconds));
+      if (healthTimer) clearInterval(healthTimer);
+      healthTimer = setInterval(() => {
+        void (async () => {
+          if (!healthConfig.enabled) return;
+          const report = await autoCaptureService.runHealthCheck();
+          latestHealth = report;
+          options.getConsoleWindow()?.webContents.send("health:update", report);
+        })();
+      }, healthConfig.intervalSeconds * 1000);
+    }
+    return { ok: true, config: healthConfig };
+  });
 
   ipcMain.handle("ocr:initialize", async () => {
     await ocrEngine.initialize();

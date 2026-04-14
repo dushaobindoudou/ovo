@@ -16,7 +16,11 @@ export function SettingsPanel() {
     ttsEnabled,
     setTtsEnabled,
     simulationMode,
-    setSimulationMode
+    setSimulationMode,
+    healthCheckEnabled,
+    setHealthCheckEnabled,
+    healthCheckInterval,
+    setHealthCheckInterval
   } = useSettingsStore();
   const { setBackend } = useAgentBridge();
   const [apiBaseUrl, setApiBaseUrl] = useState("https://api.anthropic.com");
@@ -27,7 +31,12 @@ export function SettingsPanel() {
     void window.nudgeAPI.capture.getSimulation().then((result) => {
       setSimulationMode(Boolean(result?.simulationMode));
     });
-  }, [setSimulationMode]);
+    void window.nudgeAPI.health.getConfig().then((cfg) => {
+      if (!cfg) return;
+      setHealthCheckEnabled(Boolean(cfg.enabled));
+      setHealthCheckInterval(Number(cfg.intervalSeconds || 60));
+    });
+  }, [setSimulationMode, setHealthCheckEnabled, setHealthCheckInterval]);
 
   return (
     <div className="space-y-4">
@@ -56,6 +65,36 @@ export function SettingsPanel() {
                 void window.nudgeAPI.capture.setSimulation(enabled);
               }}
             />
+          </div>
+          <div className="flex items-center justify-between rounded border border-white/10 px-3 py-2">
+            <div>
+              <p className="text-sm">定期截屏自检</p>
+              <p className="text-xs text-[var(--text-secondary)]">周期性验证捕获/OCR链路，异常会在状态面板告警</p>
+            </div>
+            <Toggle
+              checked={healthCheckEnabled}
+              onChange={(enabled) => {
+                setHealthCheckEnabled(enabled);
+                void window.nudgeAPI.health.setConfig({ enabled });
+              }}
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-[var(--text-secondary)]">自检间隔</span>
+            <Select
+              value={healthCheckInterval}
+              onChange={(e) => {
+                const intervalSeconds = Number(e.target.value);
+                setHealthCheckInterval(intervalSeconds);
+                void window.nudgeAPI.health.setConfig({ intervalSeconds });
+              }}
+            >
+              {[30, 60, 120, 300].map((seconds) => (
+                <option key={seconds} value={seconds}>
+                  {seconds} 秒
+                </option>
+              ))}
+            </Select>
           </div>
         </div>
       </Card>

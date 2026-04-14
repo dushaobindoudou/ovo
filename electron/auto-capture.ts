@@ -18,6 +18,18 @@ export interface CaptureSnapshot {
   confidence: number;
 }
 
+export interface CaptureHealthCheck {
+  ok: boolean;
+  timestamp: number;
+  mode: "simulation" | "real";
+  appName?: string;
+  windowTitle?: string;
+  confidence?: number;
+  textLength?: number;
+  sinceLastCaptureMs: number;
+  error?: string;
+}
+
 export class AutoCaptureService {
   private timer: NodeJS.Timeout | null = null;
   private config: CaptureConfig = {
@@ -26,6 +38,7 @@ export class AutoCaptureService {
     simulationMode: process.env.OVO_SIMULATE_CAPTURE === "1"
   };
   private history: CaptureSnapshot[] = [];
+  private lastCaptureAt = 0;
 
   constructor(
     private readonly windowManager: WindowManager,
@@ -65,6 +78,10 @@ export class AutoCaptureService {
 
   getHistory() {
     return this.history;
+  }
+
+  getLastCaptureAt() {
+    return this.lastCaptureAt;
   }
 
   start() {
@@ -117,7 +134,59 @@ export class AutoCaptureService {
     });
     this.history.unshift(snapshot);
     this.history = this.history.slice(0, 100);
+    this.lastCaptureAt = snapshot.timestamp;
     this.onCapture(snapshot);
     return snapshot;
+  }
+
+  async runHealthCheck(): Promise<CaptureHealthCheck> {
+    const timestamp = Date.now();
+    const sinceLastCaptureMs = this.lastCaptureAt > 0 ? timestamp - this.lastCaptureAt : -1;
+    try {
+      const active = await this.windowManager.getActiveWindow();
+      if (!active) {
+        return {
+          ok: false,
+          timestamp,
+          mode: this.config.simulationMode ? "simulation" : "real",
+          sinceLastCaptureMs,
+          error: "未获取到活动窗口"
+        };
+      }
+
+      if (this.config.simulationMode) {
+        return {
+          ok: true,
+          timestamp,
+          mode: "simulation",
+          appName: active.appName,
+          windowTitle: active.windowTitle,
+          confidence: 99,
+          textLength: 16,
+          sinceLastCaptureMs
+        };
+      }
+
+      const image = await this.screenshotManager.captureScreen();
+      const ocr = await this.ocrEngine.recognize(image);
+      return {
+        ok: true,
+        timestamp,
+        mode: "real",
+        appName: active.appName,
+        windowTitle: active.windowTitle,
+        confidence: ocr.confidence,
+        textLength: ocr.text.length,
+        sinceLastCaptureMs
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        timestamp,
+        mode: this.config.simulationMode ? "simulation" : "real",
+        sinceLastCaptureMs,
+        error: error instanceof Error ? error.message : "自检失败"
+      };
+    }
   }
 }

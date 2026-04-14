@@ -15,6 +15,11 @@ export interface NudgeAPI {
     setSimulation: (enabled: boolean) => Promise<{ ok: boolean; simulationMode: boolean }>;
     getSimulation: () => Promise<{ simulationMode: boolean }>;
   };
+  health: {
+    getLatest: () => Promise<any>;
+    getConfig: () => Promise<{ enabled: boolean; intervalSeconds: number }>;
+    setConfig: (payload: { enabled?: boolean; intervalSeconds?: number }) => Promise<any>;
+  };
   ocr: {
     initialize: () => Promise<any>;
     recognize: (payload?: { base64?: string }) => Promise<any>;
