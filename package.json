@@ -16,6 +16,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "test:agents": "tsx scripts/smoke-agents.ts",
+    "test:ci": "pnpm typecheck && pnpm lint && pnpm build && pnpm test:agents",
     "start": "electron dist-electron/main.js"
   },
   "dependencies": {
