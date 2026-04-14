@@ -1,0 +1,12 @@
+appId: com.ovo.desktop
+productName: ovo
+directories:
+  output: out
+files:
+  - dist/**
+  - dist-electron/**
+  - electron/preload.cjs
+  - package.json
+mac:
+  target:
+    - dmg

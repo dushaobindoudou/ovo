@@ -1,0 +1,13 @@
+node_modules
+dist
+dist-electron
+.DS_Store
+*.log
+pnpm-lock.yaml
+out
+coverage
+*.db
+*.sqlite
+*.sqlite3
+*.tmp
+*.temp
