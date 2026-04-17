@@ -11,3 +11,4 @@ coverage
 *.sqlite3
 *.tmp
 *.temp
+.gstack/
