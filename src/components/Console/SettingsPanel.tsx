@@ -4,43 +4,61 @@ import { Select } from "../shared/Select";
 import { Toggle } from "../shared/Toggle";
 import { Input } from "../shared/Input";
 import { GlowButton } from "../shared/GlowButton";
-import { useSettingsStore } from "../../stores/settingsStore";
+import { useSettingsStore, type ThemeMode } from "../../stores/settingsStore";
 import { useAgentBridge } from "../../hooks/useAgentBridge";
+import { useCapture } from "../../hooks/useCapture";
+import { useHealth } from "../../hooks/useHealth";
 
 export function SettingsPanel() {
   const {
+    theme,
+    setTheme,
     captureInterval,
     setCaptureInterval,
     selectedBackend,
     setSelectedBackend,
     ttsEnabled,
     setTtsEnabled,
-    simulationMode,
-    setSimulationMode,
     healthCheckEnabled,
     setHealthCheckEnabled,
     healthCheckInterval,
     setHealthCheckInterval
   } = useSettingsStore();
-  const { setBackend } = useAgentBridge();
+  const { setBackend, setApiConfig } = useAgentBridge();
+  const { takeScreenshot } = useCapture();
+  const { getConfig, setConfig } = useHealth();
   const [apiBaseUrl, setApiBaseUrl] = useState("https://api.anthropic.com");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("claude-sonnet-4-20250514");
 
   useEffect(() => {
-    void window.nudgeAPI.capture.getSimulation().then((result) => {
-      setSimulationMode(Boolean(result?.simulationMode));
-    });
-    void window.nudgeAPI.health.getConfig().then((cfg) => {
+    void getConfig().then((cfg) => {
       if (!cfg) return;
       setHealthCheckEnabled(Boolean(cfg.enabled));
       setHealthCheckInterval(Number(cfg.intervalSeconds || 60));
     });
-  }, [setSimulationMode, setHealthCheckEnabled, setHealthCheckInterval]);
+  }, [getConfig, setHealthCheckEnabled, setHealthCheckInterval]);
 
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-semibold">设置</h2>
+
+      <Card title="外观">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm">主题模式</p>
+              <p className="text-xs text-[var(--text-muted)]">选择应用外观主题</p>
+            </div>
+            <Select value={theme} onChange={(e) => setTheme(e.target.value as ThemeMode)}>
+              <option value="light">浅色</option>
+              <option value="dark">暗黑</option>
+              <option value="system">跟随系统</option>
+            </Select>
+          </div>
+        </div>
+      </Card>
+
       <Card title="屏幕捕获">
         <div className="space-y-3">
           <div className="flex items-center gap-3">
@@ -53,20 +71,16 @@ export function SettingsPanel() {
               ))}
             </Select>
           </div>
-          <div className="flex items-center justify-between rounded border border-white/10 px-3 py-2">
-            <div>
-              <p className="text-sm">权限模拟模式</p>
-              <p className="text-xs text-[var(--text-secondary)]">无屏幕录制权限时可走完整链路测试</p>
-            </div>
-            <Toggle
-              checked={simulationMode}
-              onChange={(enabled) => {
-                setSimulationMode(enabled);
-                void window.nudgeAPI.capture.setSimulation(enabled);
-              }}
-            />
+          <div className="rounded border border-[var(--border)] px-3 py-2">
+            <p className="text-sm">真实数据采集模式</p>
+            <p className="text-xs text-[var(--text-muted)]">
+              模拟数据已禁用。若截图失败，请在系统隐私设置中授予「屏幕录制」权限。
+            </p>
+            <GlowButton className="mt-2" onClick={() => void takeScreenshot()}>
+              验证真实截图权限
+            </GlowButton>
           </div>
-          <div className="flex items-center justify-between rounded border border-white/10 px-3 py-2">
+          <div className="flex items-center justify-between rounded border border-[var(--border)] px-3 py-2">
             <div>
               <p className="text-sm">定期截屏自检</p>
               <p className="text-xs text-[var(--text-secondary)]">周期性验证捕获/OCR链路，异常会在状态面板告警</p>
@@ -75,7 +89,7 @@ export function SettingsPanel() {
               checked={healthCheckEnabled}
               onChange={(enabled) => {
                 setHealthCheckEnabled(enabled);
-                void window.nudgeAPI.health.setConfig({ enabled });
+                void setConfig({ enabled });
               }}
             />
           </div>
@@ -86,7 +100,7 @@ export function SettingsPanel() {
               onChange={(e) => {
                 const intervalSeconds = Number(e.target.value);
                 setHealthCheckInterval(intervalSeconds);
-                void window.nudgeAPI.health.setConfig({ intervalSeconds });
+                void setConfig({ intervalSeconds });
               }}
             >
               {[30, 60, 120, 300].map((seconds) => (
@@ -121,7 +135,7 @@ export function SettingsPanel() {
           </div>
           <GlowButton
             onClick={() =>
-              window.nudgeAPI.invoke("agent:set-api-config", {
+              setApiConfig({
                 baseUrl: apiBaseUrl,
                 key: apiKey,
                 model

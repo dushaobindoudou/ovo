@@ -2,11 +2,11 @@ import { OCREngine } from "./ocr-engine.js";
 import { ScreenshotManager } from "./screenshot.js";
 import { WindowManager } from "./window-manager.js";
 import { EventProcessor } from "./event-processor.js";
+import type { WindowInfo } from "./types.js";
 
 export interface CaptureConfig {
   intervalSeconds: number;
   monitoredWindowKeys: string[];
-  simulationMode: boolean;
 }
 
 export interface CaptureSnapshot {
@@ -16,12 +16,14 @@ export interface CaptureSnapshot {
   windowTitle: string;
   text: string;
   confidence: number;
+  /** 活动窗口主通道或用户勾选的后台监听通道 */
+  captureSource?: "active" | "monitored";
 }
 
 export interface CaptureHealthCheck {
   ok: boolean;
   timestamp: number;
-  mode: "simulation" | "real";
+  mode: "real";
   appName?: string;
   windowTitle?: string;
   confidence?: number;
@@ -30,15 +32,28 @@ export interface CaptureHealthCheck {
   error?: string;
 }
 
+export interface WindowCaptureStatRow {
+  windowId: string;
+  appName: string;
+  windowTitle: string;
+  lastSuccessAt: number;
+  attempts: number;
+  failures: number;
+  failureRate: number;
+}
+
 export class AutoCaptureService {
   private timer: NodeJS.Timeout | null = null;
   private config: CaptureConfig = {
     intervalSeconds: 5,
-    monitoredWindowKeys: [],
-    simulationMode: process.env.OVO_SIMULATE_CAPTURE === "1"
+    monitoredWindowKeys: []
   };
   private history: CaptureSnapshot[] = [];
   private lastCaptureAt = 0;
+  private windowCaptureStats = new Map<
+    string,
+    { lastSuccessAt: number; attempts: number; failures: number }
+  >();
 
   constructor(
     private readonly windowManager: WindowManager,
@@ -46,9 +61,7 @@ export class AutoCaptureService {
     private readonly ocrEngine: OCREngine,
     private readonly eventProcessor: EventProcessor,
     private readonly onCapture: (data: CaptureSnapshot) => void
-  ) {
-    this.setSimulationMode(this.config.simulationMode);
-  }
+  ) {}
 
   setInterval(seconds: number) {
     this.config.intervalSeconds = Math.max(1, seconds);
@@ -66,22 +79,65 @@ export class AutoCaptureService {
     return this.config.monitoredWindowKeys;
   }
 
-  setSimulationMode(enabled: boolean) {
-    this.config.simulationMode = enabled;
-    this.windowManager.setSimulation(enabled);
-    this.screenshotManager.setSimulation(enabled);
-  }
-
-  getSimulationMode() {
-    return this.config.simulationMode;
-  }
-
   getHistory() {
     return this.history;
   }
 
   getLastCaptureAt() {
     return this.lastCaptureAt;
+  }
+
+  private recordStat(windowId: string, ok: boolean) {
+    const cur = this.windowCaptureStats.get(windowId) ?? {
+      lastSuccessAt: 0,
+      attempts: 0,
+      failures: 0
+    };
+    cur.attempts += 1;
+    if (ok) {
+      cur.lastSuccessAt = Date.now();
+    } else {
+      cur.failures += 1;
+    }
+    this.windowCaptureStats.set(windowId, cur);
+
+    // Cleanup old entries (not seen in more than 1 hour)
+    const oneHourAgo = Date.now() - 3600000;
+    for (const [key, stats] of this.windowCaptureStats) {
+      if (stats.lastSuccessAt > 0 && stats.lastSuccessAt < oneHourAgo && key !== windowId) {
+        this.windowCaptureStats.delete(key);
+      }
+    }
+  }
+
+  async getWindowCaptureStats(): Promise<WindowCaptureStatRow[]> {
+    const byId = new Map<string, WindowCaptureStatRow>();
+    for (const [windowId, s] of this.windowCaptureStats) {
+      const snap = this.history.find((h) => h.windowId === windowId);
+      byId.set(windowId, {
+        windowId,
+        appName: snap?.appName ?? "",
+        windowTitle: snap?.windowTitle ?? "",
+        lastSuccessAt: s.lastSuccessAt,
+        attempts: s.attempts,
+        failures: s.failures,
+        failureRate: s.attempts === 0 ? 0 : s.failures / s.attempts
+      });
+    }
+    for (const key of new Set(this.config.monitoredWindowKeys)) {
+      const win = await this.windowManager.resolveMonitoredKey(key);
+      if (!win || byId.has(win.windowId)) continue;
+      byId.set(win.windowId, {
+        windowId: win.windowId,
+        appName: win.appName,
+        windowTitle: win.windowTitle,
+        lastSuccessAt: 0,
+        attempts: 0,
+        failures: 0,
+        failureRate: 0
+      });
+    }
+    return [...byId.values()];
   }
 
   start() {
@@ -97,37 +153,71 @@ export class AutoCaptureService {
     this.timer = null;
   }
 
+  /**
+   * 活动窗口 + 监听窗口并行采集：真实模式下整屏 OCR 只跑一次，结果按窗口打标写入各自 buffer。
+   */
   async captureOnce() {
     const active = await this.windowManager.getActiveWindow();
-    if (!active) return null;
+    type Target = { win: WindowInfo; source: "active" | "monitored" };
+    const targets: Target[] = [];
+    if (active) targets.push({ win: active, source: "active" });
+    const seen = new Set(targets.map((t) => t.win.windowId));
+    for (const key of new Set(this.config.monitoredWindowKeys)) {
+      const win = await this.windowManager.resolveMonitoredKey(key);
+      if (!win || seen.has(win.windowId)) continue;
+      seen.add(win.windowId);
+      targets.push({ win, source: "monitored" });
+    }
+    if (targets.length === 0) return null;
+
+    let sharedOcr: { text: string; confidence: number };
+    try {
+      const image = await this.screenshotManager.captureScreen();
+      sharedOcr = await this.ocrEngine.recognize(image);
+    } catch {
+      for (const { win } of targets) {
+        this.recordStat(win.windowId, false);
+      }
+      return null;
+    }
+
+    const snapshots = await Promise.all(
+      targets.map(({ win, source }) => this.captureTarget(win, source, sharedOcr))
+    );
+    const primary = snapshots.find((s) => s?.captureSource === "active") ?? snapshots[0];
+    return primary ?? null;
+  }
+
+  private async captureTarget(
+    win: WindowInfo,
+    source: "active" | "monitored",
+    sharedOcr: { text: string; confidence: number }
+  ): Promise<CaptureSnapshot | null> {
     const timestamp = Date.now();
     let text = "";
     let confidence = 0;
-    if (this.config.simulationMode) {
-      text = `【模拟】${active.appName} ${active.windowTitle} @ ${new Date(timestamp).toLocaleTimeString()} - 用户正在处理任务。`;
-      confidence = 99;
-    } else {
-      try {
-        const image = await this.screenshotManager.captureScreen();
-        const ocr = await this.ocrEngine.recognize(image);
-        text = ocr.text;
-        confidence = ocr.confidence;
-      } catch {
-        // 没有屏幕录制权限时自动降级到模拟，避免主流程中断。
-        this.setSimulationMode(true);
-        text = `【自动降级模拟】${active.appName} ${active.windowTitle} - 捕获权限不可用。`;
-        confidence = 98;
-      }
+    try {
+      const prefix =
+        source === "active"
+          ? ""
+          : `[后台监听窗口: ${win.appName} | ${win.windowTitle}]\n`;
+      text = `${prefix}${sharedOcr.text}`;
+      confidence = sharedOcr.confidence;
+    } catch {
+      this.recordStat(win.windowId, false);
+      return null;
     }
+
     const snapshot: CaptureSnapshot = {
       timestamp,
-      appName: active.appName,
-      windowId: active.windowId,
-      windowTitle: active.windowTitle,
+      appName: win.appName,
+      windowId: win.windowId,
+      windowTitle: win.windowTitle,
       text,
-      confidence
+      confidence,
+      captureSource: source
     };
-    this.eventProcessor.append(active.windowId, active.appName, active.windowTitle, {
+    this.eventProcessor.append(win.windowId, win.appName, win.windowTitle, {
       timestamp: snapshot.timestamp,
       text: snapshot.text,
       confidence: snapshot.confidence
@@ -136,6 +226,7 @@ export class AutoCaptureService {
     this.history = this.history.slice(0, 100);
     this.lastCaptureAt = snapshot.timestamp;
     this.onCapture(snapshot);
+    this.recordStat(win.windowId, true);
     return snapshot;
   }
 
@@ -148,22 +239,9 @@ export class AutoCaptureService {
         return {
           ok: false,
           timestamp,
-          mode: this.config.simulationMode ? "simulation" : "real",
+          mode: "real",
           sinceLastCaptureMs,
           error: "未获取到活动窗口"
-        };
-      }
-
-      if (this.config.simulationMode) {
-        return {
-          ok: true,
-          timestamp,
-          mode: "simulation",
-          appName: active.appName,
-          windowTitle: active.windowTitle,
-          confidence: 99,
-          textLength: 16,
-          sinceLastCaptureMs
         };
       }
 
@@ -183,7 +261,7 @@ export class AutoCaptureService {
       return {
         ok: false,
         timestamp,
-        mode: this.config.simulationMode ? "simulation" : "real",
+        mode: "real",
         sinceLastCaptureMs,
         error: error instanceof Error ? error.message : "自检失败"
       };

@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "backend": "claude-code",
+  "duration": 10137,
+  "schemaMeta": {
+    "repaired": false,
+    "degraded": false,
+    "notes": []
+  },
+  "parsed": {
+    "intent": "weather",
+    "prediction": "用户想看天气",
+    "actions": [],
+    "suggestions": [],
+    "content": [],
+    "entities": [],
+    "relationships": []
+  }
+}

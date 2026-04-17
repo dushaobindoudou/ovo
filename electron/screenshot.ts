@@ -1,26 +1,16 @@
 import screenshot from "screenshot-desktop";
 
 export class ScreenshotManager {
-  private simulate = process.env.OVO_SIMULATE_CAPTURE === "1";
-
-  setSimulation(enabled: boolean) {
-    this.simulate = enabled;
-  }
-
-  isSimulationEnabled() {
-    return this.simulate;
-  }
-
   async captureScreen(): Promise<Buffer> {
-    if (this.simulate) {
-      return Buffer.from("ovo-simulated-screenshot");
-    }
     try {
       const image = await screenshot({ format: "png" });
       return Buffer.isBuffer(image) ? image : Buffer.from(image);
-    } catch {
-      this.simulate = true;
-      return this.captureScreen();
+    } catch (error) {
+      throw new Error(
+        `屏幕截图失败，请检查“系统设置 -> 隐私与安全性 -> 屏幕录制”权限: ${
+          error instanceof Error ? error.message : "unknown"
+        }`
+      );
     }
   }
 

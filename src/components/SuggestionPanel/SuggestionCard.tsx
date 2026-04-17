@@ -14,10 +14,10 @@ interface SuggestionCardProps {
 export function SuggestionCard({ item }: SuggestionCardProps) {
   const { submitSuggestionFeedback } = useFeedback();
   return (
-    <Card className="bg-black/20">
+    <Card className="transition-shadow hover:shadow-[var(--shadow-md)]">
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-sm font-semibold">{item.title || item.type}</p>
-        <span className="text-xs text-[var(--text-secondary)]">{item.type}</span>
+        <p className="text-sm font-medium text-[var(--text-primary)]">{item.title || item.type}</p>
+        <span className="text-xs text-[var(--text-muted)]">{item.type}</span>
       </div>
       <p className="text-sm text-[var(--text-secondary)]">{item.content}</p>
       <div className="mt-3 flex gap-2">
@@ -30,7 +30,7 @@ export function SuggestionCard({ item }: SuggestionCardProps) {
             })
           }
         >
-          👍
+          采纳
         </ActionButton>
         <ActionButton
           onClick={() =>
@@ -41,7 +41,7 @@ export function SuggestionCard({ item }: SuggestionCardProps) {
             })
           }
         >
-          👎
+          忽略
         </ActionButton>
         <ActionButton onClick={() => navigator.clipboard.writeText(item.content)}>复制</ActionButton>
       </div>

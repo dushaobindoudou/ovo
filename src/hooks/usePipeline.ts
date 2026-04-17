@@ -2,7 +2,10 @@ import { useCallback, useEffect } from "react";
 import { usePipelineStore } from "../stores/pipelineStore";
 
 export function usePipeline() {
-  const { items, setItems, upsertItem } = usePipelineStore();
+  const items = usePipelineStore((state) => state.items);
+  const setItems = usePipelineStore((state) => state.setItems);
+  // Use a stable reference by selecting just the upsertItem function
+  const upsertItem = usePipelineStore((state) => state.upsertItem);
 
   const refresh = useCallback(async () => {
     const latest = await window.nudgeAPI.pipeline.getRecent(50);

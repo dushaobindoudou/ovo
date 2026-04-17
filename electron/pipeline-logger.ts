@@ -1,5 +1,6 @@
 import type { PipelineLog, StageLog } from "./types.js";
 import { KnowledgeGraphEngine } from "./knowledge-graph.js";
+import type { ActionResult } from "./action-executor.js";
 
 export class PipelineLogger {
   private pipelines = new Map<string, PipelineLog>();
@@ -48,6 +49,25 @@ export class PipelineLogger {
     pipeline.status = status;
     pipeline.duration = Date.now() - pipeline.timestamp;
     this.kg.savePipelineLog(pipeline.id, pipeline.duration, pipeline.status, pipeline.stages, pipeline.overallRating);
+  }
+
+  mergeActionsStage(pipelineId: string, mutator: (actions: ActionResult[]) => ActionResult[]) {
+    const pipeline = this.pipelines.get(pipelineId);
+    const stage = pipeline?.stages.actions;
+    if (!pipeline || !stage?.data || typeof stage.data !== "object") return false;
+    const data = stage.data as { actions?: ActionResult[] };
+    const prev = [...(data.actions ?? [])];
+    const next = mutator(prev);
+    stage.data = { ...data, actions: next };
+    pipeline.duration = Date.now() - pipeline.timestamp;
+    this.kg.updatePipelineStages(
+      pipeline.id,
+      pipeline.duration,
+      pipeline.status,
+      pipeline.stages,
+      pipeline.overallRating ?? null
+    );
+    return true;
   }
 
   getRecent(limit = 20) {

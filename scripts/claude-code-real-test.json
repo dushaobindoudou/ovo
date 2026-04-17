@@ -1,0 +1,91 @@
+{
+  "ts": 1776269078820,
+  "available": [
+    "claude-code",
+    "hermes"
+  ],
+  "preferred": "claude-code",
+  "results": [
+    {
+      "id": "strict-json",
+      "ok": true,
+      "backend": "claude-code",
+      "duration": 29682,
+      "error": null,
+      "schemaMeta": {
+        "repaired": false,
+        "degraded": true,
+        "notes": [
+          "缺少 intent 且无可展示字段，已填充原始片段到 content"
+        ]
+      },
+      "parsed": {
+        "intent": "unknown",
+        "prediction": "",
+        "actions": [],
+        "suggestions": [],
+        "content": [
+          "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"duration_ms\":5132,\"duration_api_ms\":5111,\"num_turns\":1,\"result\":\"{\\\"intent\\\":\\\"weather\\\",\\\"prediction\\\":\\\"用户想看天气\\\",\\\"actions\\\":[],\\\"suggestions\\\":[\\\"查看今天降雨概率\\\"],\\\"content\\\":[],\\\"entities\\\":[],\\\"relationships\\\":[]}\",\"stop_reason\":\"end_turn\",\"session_id\":\"fbb6f278-2f6c-4388-b364-da780126986d\",\"total_cost_usd\":0.103701,\"usage\":{\"input_tokens\":34237,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":66,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\"},\"modelUsage\":{\"MiniMax-M2.5\":{\"inputTokens\":34237,\"outputTokens\":66,\"cacheReadInputTokens\":0,\"cacheCreationInputTokens\":0,\"webSearchRequests\":0,\"costUSD\":0.103701,\"contextWindow\":200000,\"maxOutputTokens\":32000}},\"permission_denials\":[],\"terminal_reason\":\"completed\",\"fast_mode_state\":\"off\",\"uuid\":\"96c296cd-700f-40d6-b1fb-08c5e921cb2a\"}"
+        ],
+        "entities": [],
+        "relationships": []
+      },
+      "rawPreview": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"duration_ms\":5132,\"duration_api_ms\":5111,\"num_turns\":1,\"result\":\"{\\\"intent\\\":\\\"weather\\\",\\\"prediction\\\":\\\"用户想看天气\\\",\\\"actions\\\":[],\\\"suggestions\\\":[\\\"查看今天降雨概率\\\"],\\\"content\\\":[],\\\"entities\\\":[],\\\"relationships\\\":[]}\",\"stop_reason\":\"end_turn\",\"session_id\":\"fbb6f278-2f6c-4388-b364-da780126986d\",\"total_cost_usd\":0.103701,\"usage\":{\"input_tokens\":34237,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":66,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\"},\"modelUsage\":{\"MiniMax-M2.5\":{\"inputTokens\":34237,\"outputTokens\":66,\"cacheReadInputTokens\":",
+      "rawLength": 1045
+    },
+    {
+      "id": "debug-analysis",
+      "ok": true,
+      "backend": "claude-code",
+      "duration": 71171,
+      "error": null,
+      "schemaMeta": {
+        "repaired": false,
+        "degraded": true,
+        "notes": [
+          "缺少 intent 且无可展示字段，已填充原始片段到 content"
+        ]
+      },
+      "parsed": {
+        "intent": "unknown",
+        "prediction": "",
+        "actions": [],
+        "suggestions": [],
+        "content": [
+          "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"duration_ms\":41649,\"duration_api_ms\":41512,\"num_turns\":10,\"result\":\"根据分析，根因是：**前端组件在 IPC handlers 注册完成前就尝试调用 `kg:get-stats`**。\\n\\n以下是完整的诊断和修复建议：\\n\\n```json\\n{\\n  \\\"rootCause\\\": \\\"前端 StatusPanel 组件在 useEffect 中同步调用 getStats()，但此时 IPC handlers 可能还未完成注册。主进程在 main.ts:132 调用 registerIpcHandlers()，而渲染进程可能在窗口 ready 之前就触发了调用。\\\",\\n  \\\"fix\\\": {\\n    \\\"description\\\": \\\"在 StatusPanel 中添加错误处理和重试机制\\\",\\n    \\\"code\\\": \\\"在 src/components/Console/StatusPanel.tsx 中修改 useEffect，添加 try-catch 和重试逻辑：\\\",\\n    \\\"before\\\": \\\"useEffect(() => {\\\\n  void (async () => {\\\\n    setStats(await getStats());\\\\n    setBackends(await detectBackends());\\\\n  })();\\\\n  // ...\\\\n}, [detectBackends, getStats]);\\\",\\n    \\\"after\\\": \\\"useEffect(() => {\\\\n  let mounted = true;\\\\n  void (async () => {\\\\n    // 重试机制：等待 handler 注册\\\\n    for (let i = 0; i < 5; i++) {\\\\n      try {\\\\n        if (!mounted) return;\\\\n        const result = await getStats();\\\\n        if (mounted) setStats(result);\\\\n        break;\\\\n      } catch (e) {\\\\n        if (i === 4) console.error('getStats failed:', e);\\\\n        await new Promise(r => setTimeout(r, 100 * (i + 1)));\\\\n      }\\\\n    }\\\\n    if (mounted) setBackends(await detectBackends());\\\\n  })();\\\\n  return () => { mounted = false; };\\\\n}, [detectBackends, getStats]);\\\"\\n  },\\n  \\\"alternative\\\": \\\"如果问题持续，可在 ipc-handlers.ts 中确保 kg handler 在所有其他 handler 之前注册，或在 preload.cjs 中添加延迟初始化。\\\"\\n}\\n```\\n\\n**关键修复点**：\\n1. 添加 `try-catch` 捕获 \\\"No handler registered\\\" 错误\\n2. 使用指数退避重试机制等待 handler 注册完成\\n3. 使用 `mounted` flag 防止组件卸载后更新状态\",\"stop_reason\":\"end_turn\",\"session_id\":\"fe6d01bd-01ad-4d74-9689-55fd614120e0\",\"total_cost_usd\":0.23859960000000005,\"usage\":{\"input_tokens\":39557,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":327662,\"output_tokens\":1442,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\"},\"modelUsage\":{\"MiniMax-M2.5\":{\"inputTokens\":39557,\"outputTokens\":1442,\"cacheReadInputTokens\":327662,\"cacheCreationInputTokens\":0,\"webSearchRequests\":0,\"costUSD\":0.23859960000000005,\"contextWindow\":200000,\"maxOutputTokens\":32000}},\"permission_denials\":[],\"terminal_reason\":\"completed\",\"fast_mode_state\":\"off\",\"uuid\":\"2ce42c5b-7c3b-459c-9738-adf8eaab1326\"}"
+        ],
+        "entities": [],
+        "relationships": []
+      },
+      "rawPreview": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"duration_ms\":41649,\"duration_api_ms\":41512,\"num_turns\":10,\"result\":\"根据分析，根因是：**前端组件在 IPC handlers 注册完成前就尝试调用 `kg:get-stats`**。\\n\\n以下是完整的诊断和修复建议：\\n\\n```json\\n{\\n  \\\"rootCause\\\": \\\"前端 StatusPanel 组件在 useEffect 中同步调用 getStats()，但此时 IPC handlers 可能还未完成注册。主进程在 main.ts:132 调用 registerIpcHandlers()，而渲染进程可能在窗口 ready 之前就触发了调用。\\\",\\n  \\\"fix\\\": {\\n    \\\"description\\\": \\\"在 StatusPanel 中添加错误处理和重试机制\\\",\\n    \\\"code\\\": \\\"在 src/components/Console/StatusPanel.tsx 中修改 useEffect，添加 try-catch 和重试逻辑：\\\",\\n    \\\"before\\\": \\\"useEffect(() => {\\\\n  void (async () => {\\\\n    setStats(await getStats());\\\\n    setBackends(await detectBackends());\\\\n  })();\\\\n  // ...\\\\n}, [detectBackends, getStats]);\\\",\\n    \\\"after\\\": \\\"useEffect(() => {\\\\n  let mounted = true;\\\\n ",
+      "rawLength": 2402
+    },
+    {
+      "id": "daily-scene",
+      "ok": true,
+      "backend": "claude-code",
+      "duration": 31335,
+      "error": null,
+      "schemaMeta": {
+        "repaired": false,
+        "degraded": true,
+        "notes": [
+          "缺少 intent 且无可展示字段，已填充原始片段到 content"
+        ]
+      },
+      "parsed": {
+        "intent": "unknown",
+        "prediction": "",
+        "actions": [],
+        "suggestions": [],
+        "content": [
+          "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"duration_ms\":11687,\"duration_api_ms\":11663,\"num_turns\":1,\"result\":\"```json\\n{\\n  \\\"intent\\\": \\\"weather_check_for_umbrella\\\",\\n  \\\"type\\\": \\\"information_query\\\",\\n  \\\"purpose\\\": \\\"determine_if_umbrella_needed\\\",\\n  \\\"context\\\": {\\n    \\\"time_of_day\\\": \\\"morning\\\",\\n    \\\"activity\\\": \\\"checking_weather\\\"\\n  },\\n  \\\"required_information\\\": [\\n    \\\"current_weather_condition\\\",\\n    \\\"precipitation_probability\\\",\\n    \\\"rain_forecast\\\"\\n  ],\\n  \\\"decision_criteria\\\": {\\n    \\\"umbrella_needed\\\": \\\"when_rain_expected_or_high_probability\\\"\\n  }\\n}\\n```\\n\\n**意图推测：**\\n- 用户想在早上出门前了解天气状况\\n- 核心目的是判断今天是否需要带伞\\n- 属于日常实用信息查询类意图\",\"stop_reason\":\"end_turn\",\"session_id\":\"85dd2677-a0e4-4872-959d-e4a4b488168f\",\"total_cost_usd\":0.10966800000000002,\"usage\":{\"input_tokens\":34216,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":468,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\"},\"modelUsage\":{\"MiniMax-M2.5\":{\"inputTokens\":34216,\"outputTokens\":468,\"cacheReadInputTokens\":0,\"cacheCreationInputTokens\":0,\"webSearchRequests\":0,\"costUSD\":0.10966800000000002,\"contextWindow\":200000,\"maxOutputTokens\":32000}},\"permission_denials\":[],\"terminal_reason\":\"completed\",\"fast_mode_state\":\"off\",\"uuid\":\"db8589b1-c3b4-4e5b-89f3-17f5f7d77885\"}"
+        ],
+        "entities": [],
+        "relationships": []
+      },
+      "rawPreview": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"duration_ms\":11687,\"duration_api_ms\":11663,\"num_turns\":1,\"result\":\"```json\\n{\\n  \\\"intent\\\": \\\"weather_check_for_umbrella\\\",\\n  \\\"type\\\": \\\"information_query\\\",\\n  \\\"purpose\\\": \\\"determine_if_umbrella_needed\\\",\\n  \\\"context\\\": {\\n    \\\"time_of_day\\\": \\\"morning\\\",\\n    \\\"activity\\\": \\\"checking_weather\\\"\\n  },\\n  \\\"required_information\\\": [\\n    \\\"current_weather_condition\\\",\\n    \\\"precipitation_probability\\\",\\n    \\\"rain_forecast\\\"\\n  ],\\n  \\\"decision_criteria\\\": {\\n    \\\"umbrella_needed\\\": \\\"when_rain_expected_or_high_probability\\\"\\n  }\\n}\\n```\\n\\n**意图推测：**\\n- 用户想在早上出门前了解天气状况\\n- 核心目的是判断今天是否需要带伞\\n- 属于日常实用信息查询类意图\",\"stop_reason\":\"end_turn\",\"session_id\":\"85dd2677-a0e4-4872-959d-e4a4b488168f\",\"total_cost_usd\":0.10966800000000002,\"usage\":{\"",
+      "rawLength": 1475
+    }
+  ]
+}

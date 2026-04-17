@@ -33,24 +33,7 @@ function toId(appName: string, title: string) {
 }
 
 export class WindowManager {
-  private simulate = process.env.OVO_SIMULATE_CAPTURE === "1";
-
-  setSimulation(enabled: boolean) {
-    this.simulate = enabled;
-  }
-
-  isSimulationEnabled() {
-    return this.simulate;
-  }
-
   async getAllWindows(): Promise<WindowInfo[]> {
-    if (this.simulate) {
-      return [
-        { windowId: "sim_vscode", appName: "VS Code", windowTitle: "ovo - main.ts", isActive: true },
-        { windowId: "sim_chrome", appName: "Chrome", windowTitle: "Gmail - 收件箱" },
-        { windowId: "sim_wechat", appName: "微信", windowTitle: "聊天 - 张三" }
-      ];
-    }
     if (process.platform !== "darwin") return [];
     try {
       const { stdout } = await execa("osascript", ["-e", listScript]);
@@ -63,22 +46,24 @@ export class WindowManager {
           windowTitle
         };
       });
-    } catch {
-      // 权限不足时回退到模拟窗口，保证可测试。
-      this.simulate = true;
-      return this.getAllWindows();
+    } catch (error) {
+      throw new Error(
+        `获取窗口列表失败，请检查“系统设置 -> 隐私与安全性 -> 自动化/辅助功能/屏幕录制”权限: ${
+          error instanceof Error ? error.message : "unknown"
+        }`
+      );
     }
   }
 
+  /** 将监控 key（windowId 或历史格式 windowId::appName）解析为窗口信息 */
+  async resolveMonitoredKey(monitoredKey: string): Promise<WindowInfo | null> {
+    const all = await this.getAllWindows();
+    const byId = all.find((w) => w.windowId === monitoredKey);
+    if (byId) return byId;
+    return all.find((w) => `${w.windowId}::${w.appName}` === monitoredKey) ?? null;
+  }
+
   async getActiveWindow(): Promise<WindowInfo | null> {
-    if (this.simulate) {
-      return {
-        windowId: "sim_vscode",
-        appName: "VS Code",
-        windowTitle: "ovo - main.ts",
-        isActive: true
-      };
-    }
     if (process.platform !== "darwin") return null;
     try {
       const { stdout } = await execa("osascript", ["-e", activeScript]);
@@ -90,9 +75,12 @@ export class WindowManager {
         windowTitle,
         isActive: true
       };
-    } catch {
-      this.simulate = true;
-      return this.getActiveWindow();
+    } catch (error) {
+      throw new Error(
+        `获取活动窗口失败，请检查“系统设置 -> 隐私与安全性 -> 自动化/辅助功能”权限: ${
+          error instanceof Error ? error.message : "unknown"
+        }`
+      );
     }
   }
 }

@@ -15,7 +15,7 @@ export function FloatingIcon() {
       onClick={() => {
         window.location.hash = "#panel";
       }}
-      className="m-2 flex h-12 w-12 items-center justify-center rounded-full border border-[var(--border-active)] bg-[var(--accent-dim)] shadow-[0_0_20px_var(--accent-glow)]"
+      className="m-2 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)] shadow-[var(--shadow-md)] transition-transform hover:scale-110 active:scale-95"
       title="展开建议面板"
     >
       <StatusAnimations status={status} />

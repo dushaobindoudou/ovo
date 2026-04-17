@@ -1,26 +1,72 @@
 @import "tailwindcss";
 
+/* WeChat Mac 风格设计系统 - 支持双主题 */
 :root {
-  --bg-base: #0a0a14;
-  --bg-sidebar: #0f0f1e;
-  --bg-content: #141428;
-  --bg-card: #1a1a35;
-  --bg-card-hover: #222245;
-  --bg-input: #12122a;
-  --text-primary: #e8e8f4;
-  --text-secondary: #9090b0;
-  --text-muted: #505070;
-  --text-accent: #00d4aa;
-  --accent: #00d4aa;
-  --accent-dim: rgba(0, 212, 170, 0.15);
-  --accent-glow: rgba(0, 212, 170, 0.3);
-  --secondary: #6366f1;
-  --border: rgba(255, 255, 255, 0.06);
-  --border-active: rgba(0, 212, 170, 0.3);
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --info: #3b82f6;
+  /* 主背景 - 浅灰/白色 */
+  --bg-base: #f5f5f5;
+  --bg-sidebar: #f0f0f0;
+  --bg-content: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #fafafa;
+  --bg-input: #f5f5f5;
+  --bg-header: rgba(255, 255, 255, 0.85);
+
+  /* 文字颜色 */
+  --text-primary: #333333;
+  --text-secondary: #666666;
+  --text-muted: #999999;
+
+  /* 主题色 - 微信绿 */
+  --text-accent: #07c160;
+  --accent: #07c160;
+  --accent-dim: rgba(7, 193, 96, 0.1);
+  --accent-glow: rgba(7, 193, 96, 0.2);
+  --accent-hover: #06ad56;
+
+  /* 辅助色 */
+  --secondary: #4a90d9;
+
+  /* 边框 */
+  --border: #e5e5e5;
+  --border-light: #f0f0f0;
+  --border-active: rgba(7, 193, 96, 0.4);
+
+  /* 状态色 */
+  --success: #07c160;
+  --warning: #faad14;
+  --danger: #ff4d4f;
+  --info: #1890ff;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* 暗黑主题 */
+[data-theme="dark"] {
+  --bg-base: #1a1a1a;
+  --bg-sidebar: #242424;
+  --bg-content: #1a1a1a;
+  --bg-card: #242424;
+  --bg-card-hover: #2d2d2d;
+  --bg-input: #2d2d2d;
+  --bg-header: rgba(36, 36, 36, 0.85);
+
+  /* 文字颜色 */
+  --text-primary: #e5e5e5;
+  --text-secondary: #999999;
+  --text-muted: #666666;
+
+  /* 边框 */
+  --border: #3d3d3d;
+  --border-light: #2d2d2d;
+  --border-active: rgba(7, 193, 96, 0.4);
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
 html,
@@ -32,7 +78,7 @@ body,
   height: 100%;
   background: var(--bg-base);
   color: var(--text-primary);
-  font-family: "SF Pro Display", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "PingFang SC", "SF Pro Display", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 * {

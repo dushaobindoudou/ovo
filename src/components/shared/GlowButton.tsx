@@ -8,7 +8,7 @@ export function GlowButton({ children, className, ...props }: GlowButtonProps) {
     <button
       {...props}
       className={clsx(
-        "rounded-lg border border-[var(--border-active)] bg-[var(--accent-dim)] px-3 py-2 text-sm text-[var(--text-primary)] transition hover:shadow-[0_0_15px_var(--accent-glow)]",
+        "rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-sm)] transition-all hover:bg-[var(--accent-hover)] hover:shadow-[var(--shadow-md)] active:scale-[0.98]",
         className
       )}
     >

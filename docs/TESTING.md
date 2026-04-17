@@ -58,15 +58,14 @@ export OVO_API_KEY="your-api-key"
 export OVO_API_MODEL="your-model-id"
 ```
 
-## 五、模拟模式测试（无屏幕权限也可验证）
+## 五、macOS 权限前置（真实数据采集）
 
-运行时使用：
+ovo 的窗口枚举与截图/OCR **不再提供模拟数据回退**。首次运行请确认：
 
-```bash
-OVO_SIMULATE_CAPTURE=1 pnpm dev
-```
+- **屏幕录制**：系统设置 -> 隐私与安全性 -> 屏幕录制 -> 勾选 Electron/ovo
+- **自动化/辅助功能**：系统设置 -> 隐私与安全性 -> 辅助功能/自动化（不同 macOS 版本入口略有差异）
 
-或在控制台设置中打开“权限模拟模式”。
+修改权限后建议 **完全退出并重启** Electron 应用。
 
 ## 六、定期截屏自检
 
@@ -78,7 +77,7 @@ OVO_SIMULATE_CAPTURE=1 pnpm dev
 状态总览会显示：
 
 - 健康状态
-- 自检模式（real/simulation）
+- 自检模式（real）
 - OCR 置信度
 - 文本长度
 - 距离最近捕获时间

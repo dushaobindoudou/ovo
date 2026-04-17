@@ -1,0 +1,61 @@
+{
+  "prompt": "你是 ovo 主动式桌面助手。\n\n## 当前屏幕活动\n### 窗口: Cursor - \n[2026-04-15T16:12:53.496Z] 早上查看天气并确认是否带伞\n模拟轮次: 1\n\n## 图谱上下文\n### 相关实体\n- 无\n### 相关关系\n- 无\n\n## 用户人格摘要\n用户偏好高效、简洁。\n\n请返回 JSON：intent、prediction、actions、suggestions、content、entities、relationships。",
+  "ok": true,
+  "backend": "claude-code",
+  "duration": 15112,
+  "schemaMeta": {
+    "repaired": false,
+    "degraded": false,
+    "notes": []
+  },
+  "parsed": {
+    "intent": "获取天气信息以决策是否携带雨具",
+    "prediction": "用户即将外出，需要根据天气情况决定是否带伞",
+    "actions": [
+      {
+        "id": "查询天气",
+        "description": "查询天气",
+        "params": {},
+        "requireConfirm": false,
+        "priority": 90
+      },
+      {
+        "id": "提取关键信息",
+        "description": "提取关键信息",
+        "params": {},
+        "requireConfirm": false,
+        "priority": 90
+      }
+    ],
+    "suggestions": [
+      {
+        "id": "信息展示_根据查询结果提供天气摘要和是否建议带伞",
+        "type": "信息展示",
+        "title": "根据查询结果提供天气摘要和是否建议带伞",
+        "content": "根据查询结果提供天气摘要和是否建议带伞",
+        "priority": 90
+      }
+    ],
+    "content": [
+      "用户想要在早上了解天气情况，以便决定今天外出是否需要携带雨伞。这是一种典型的日常决策场景。"
+    ],
+    "entities": [
+      {
+        "name": "天气",
+        "type": "concept",
+        "attributes": {
+          "查询需求": "降水概率、天气状况、温度"
+        }
+      },
+      {
+        "name": "雨伞",
+        "type": "concept",
+        "attributes": {
+          "用途": "防雨"
+        }
+      }
+    ],
+    "relationships": []
+  },
+  "raw": "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"duration_ms\":11269,\"duration_api_ms\":11244,\"num_turns\":1,\"result\":\"```json\\n{\\n  \\\"intent\\\": \\\"获取天气信息以决策是否携带雨具\\\",\\n  \\\"prediction\\\": \\\"用户即将外出，需要根据天气情况决定是否带伞\\\",\\n  \\\"actions\\\": [\\n    {\\n      \\\"type\\\": \\\"查询天气\\\",\\n      \\\"target\\\": \\\"当前所在地区天气预报\\\",\\n      \\\"priority\\\": \\\"high\\\"\\n    },\\n    {\\n      \\\"type\\\": \\\"提取关键信息\\\",\\n      \\\"target\\\": \\\"降水概率、天气状况\\\",\\n      \\\"priority\\\": \\\"high\\\"\\n    }\\n  ],\\n  \\\"suggestions\\\": [\\n    {\\n      \\\"type\\\": \\\"信息展示\\\",\\n      \\\"content\\\": \\\"根据查询结果提供天气摘要和是否建议带伞\\\",\\n      \\\"priority\\\": \\\"high\\\"\\n    }\\n  ],\\n  \\\"content\\\": \\\"用户想要在早上了解天气情况，以便决定今天外出是否需要携带雨伞。这是一种典型的日常决策场景。\\\",\\n  \\\"entities\\\": [\\n    {\\n      \\\"name\\\": \\\"天气\\\",\\n      \\\"type\\\": \\\"环境信息\\\",\\n      \\\"attributes\\\": {\\n        \\\"查询需求\\\": \\\"降水概率、天气状况、温度\\\"\\n      }\\n    },\\n    {\\n      \\\"name\\\": \\\"雨伞\\\",\\n      \\\"type\\\": \\\"物品\\\",\\n      \\\"attributes\\\": {\\n        \\\"用途\\\": \\\"防雨\\\"\\n      }\\n    }\\n  ],\\n  \\\"relationships\\\": [\\n    {\\n      \\\"source\\\": \\\"用户\\\",\\n      \\\"type\\\": \\\"查询\\\",\\n      \\\"target\\\": \\\"天气信息\\\"\\n    },\\n    {\\n      \\\"source\\\": \\\"天气\\\",\\n      \\\"type\\\": \\\"决定\\\",\\n      \\\"target\\\": \\\"是否带伞\\\"\\n    }\\n  ]\\n}\\n```\",\"stop_reason\":\"end_turn\",\"session_id\":\"436bb3ec-6d27-4146-9bc3-7bd943f62573\",\"total_cost_usd\":0.09722399999999999,\"usage\":{\"input_tokens\":29480,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":5630,\"output_tokens\":473,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\"},\"modelUsage\":{\"MiniMax-M2.5\":{\"inputTokens\":29480,\"outputTokens\":473,\"cacheReadInputTokens\":5630,\"cacheCreationInputTokens\":0,\"webSearchRequests\":0,\"costUSD\":0.09722399999999999,\"contextWindow\":200000,\"maxOutputTokens\":32000}},\"permission_denials\":[],\"terminal_reason\":\"completed\",\"fast_mode_state\":\"off\",\"uuid\":\"72171725-4856-4772-b55b-31e9181527a1\"}"
+}

@@ -14,11 +14,21 @@ import { PersonalityAnalyzer } from "./personality-analyzer.js";
 import { TTSEngine } from "./tts-engine.js";
 import { ClaudeCodeTester } from "./claude-code-tester.js";
 import { buildIntentPrompt } from "./prompt-engine.js";
+import { Logger, type BusinessLogEntry } from "./logger.js";
+import type { AgentAction } from "./types.js";
+import type { ActionResult } from "./action-executor.js";
 
 interface WindowGetterOptions {
   getConsoleWindow: () => BrowserWindow | null;
   getFloatingWindow: () => BrowserWindow | null;
   getSuggestionWindow: () => BrowserWindow | null;
+  sharedKG?: KnowledgeGraphEngine;
+  logger?: Logger;
+  systemLogger?: {
+    info: (source: string, message: string, context?: Record<string, unknown>) => void;
+    warn: (source: string, message: string, context?: Record<string, unknown>) => void;
+    error: (source: string, message: string, context?: Record<string, unknown>) => void;
+  };
 }
 
 export function registerIpcHandlers(options: WindowGetterOptions) {
@@ -26,7 +36,8 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
   const screenshotManager = new ScreenshotManager();
   const ocrEngine = new OCREngine();
   const eventProcessor = new EventProcessor();
-  const kg = new KnowledgeGraphEngine();
+  const kg = options.sharedKG ?? new KnowledgeGraphEngine();
+  const systemLogger = options.systemLogger;
   const pipelineLogger = new PipelineLogger(kg);
   const agentBridge = new AgentBridge();
   const suggestionEngine = new SuggestionEngine();
@@ -43,9 +54,63 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     eventProcessor,
     (snapshot) => {
       options.getConsoleWindow()?.webContents.send("capture:result", snapshot);
-      options.getSuggestionWindow()?.webContents.send("capture:result", snapshot);
+      kg.addBusinessLog({
+        node: "capture.snapshot",
+        status: "success",
+        input: {
+          source: snapshot.captureSource ?? "active",
+          appName: snapshot.appName,
+          windowId: snapshot.windowId
+        },
+        output: {
+          confidence: snapshot.confidence,
+          textLength: snapshot.text.length
+        },
+        meta: { timestamp: snapshot.timestamp }
+      });
     }
   );
+
+  const logSystem = (
+    level: "info" | "warning" | "error",
+    source: string,
+    message: string,
+    context?: Record<string, unknown>
+  ) => {
+    if (level === "error") systemLogger?.error(source, message, context);
+    else if (level === "warning") systemLogger?.warn(source, message, context);
+    else systemLogger?.info(source, message, context);
+  };
+
+  const startBizNode = (
+    pipelineId: string | null | undefined,
+    node: string,
+    input?: unknown,
+    meta?: Record<string, unknown>
+  ) => {
+    return kg.addBusinessLog({
+      pipelineId: pipelineId ?? null,
+      node,
+      status: "running",
+      input,
+      meta,
+      startTime: Date.now()
+    });
+  };
+
+  const finishBizNode = (
+    bizLogId: string,
+    status: "success" | "failed" | "skipped" | "cancelled",
+    payload?: { output?: unknown; error?: string; meta?: Record<string, unknown> }
+  ) => {
+    return kg.updateBusinessLog(bizLogId, {
+      status,
+      output: payload?.output,
+      error: payload?.error,
+      meta: payload?.meta,
+      endTime: Date.now()
+    });
+  };
 
   const healthConfig = {
     enabled: true,
@@ -54,7 +119,7 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
   let latestHealth = {
     ok: true,
     timestamp: Date.now(),
-    mode: autoCaptureService.getSimulationMode() ? "simulation" : "real",
+    mode: "real" as const,
     sinceLastCaptureMs: -1
   };
 
@@ -73,22 +138,67 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
         const drained = eventProcessor.drainBuffers();
         if (drained.length === 0) return;
         const pipeline = pipelineLogger.startPipeline();
+        logSystem("info", "pipeline", "pipeline 启动", {
+          pipelineId: pipeline.id,
+          windows: drained.length
+        });
+        const windowSourceDistribution: Record<string, number> = {};
+        for (const buf of drained) {
+          windowSourceDistribution[buf.windowId] =
+            (windowSourceDistribution[buf.windowId] ?? 0) + buf.entries.length;
+        }
+        const aggregateBizLogId = startBizNode(pipeline.id, "aggregate", {
+          windows: drained.map((x) => ({
+            windowId: x.windowId,
+            appName: x.appName,
+            entries: x.entries.length
+          }))
+        });
         pipelineLogger.updateStage(pipeline.id, "aggregate", {
           status: "success",
           startTime: Date.now(),
           duration: 0,
-          data: { windows: drained.length, entries: drained.reduce((acc, item) => acc + item.entries.length, 0) }
+          data: {
+            windows: drained.length,
+            entries: drained.reduce((acc, item) => acc + item.entries.length, 0),
+            windowSourceDistribution
+          }
+        });
+        finishBizNode(aggregateBizLogId, "success", {
+          output: {
+            windows: drained.length,
+            entries: drained.reduce((acc, item) => acc + item.entries.length, 0),
+            windowSourceDistribution
+          }
         });
 
+        const promptBizLogId = startBizNode(pipeline.id, "intent.prompt.build", {
+          windowCount: drained.length
+        });
         const prompt = buildIntentPrompt(drained, kg.getRelevantContext(), personalityAnalyzer.analyze().summary);
+        finishBizNode(promptBizLogId, "success", {
+          output: {
+            promptLength: prompt.length
+          }
+        });
         pipelineLogger.updateStage(pipeline.id, "agent", {
           status: "success",
           startTime: Date.now(),
           duration: 0,
           data: { promptSent: prompt }
         });
+        const predictBizLogId = startBizNode(pipeline.id, "intent.predict", {
+          promptLength: prompt.length
+        });
         const response = await agentBridge.call({ prompt, outputFormat: "json", timeout: 60_000 });
         if (!response.ok || !response.parsed) {
+          finishBizNode(predictBizLogId, "failed", {
+            error: response.error ?? "解析失败",
+            output: {
+              backend: response.backend,
+              duration: response.duration
+            }
+          });
           pipelineLogger.updateStage(pipeline.id, "agent", {
             status: "failed",
             startTime: Date.now(),
@@ -96,9 +206,21 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
             data: { error: response.error ?? "解析失败" }
           });
           pipelineLogger.complete(pipeline.id, "failed");
+          logSystem("error", "pipeline", "pipeline 失败", {
+            pipelineId: pipeline.id,
+            reason: response.error ?? "解析失败"
+          });
           options.getConsoleWindow()?.webContents.send("pipeline:update", pipelineLogger.getById(pipeline.id));
           return;
         }
+        finishBizNode(predictBizLogId, "success", {
+          output: {
+            backend: response.backend,
+            duration: response.duration,
+            intent: response.parsed.intent,
+            prediction: response.parsed.prediction
+          }
+        });
 
         pipelineLogger.updateStage(pipeline.id, "agent", {
           status: "success",
@@ -113,6 +235,26 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
           }
         });
 
+        pipelineLogger.updateStage(pipeline.id, "schema", {
+          status: response.schemaMeta?.degraded ? "skipped" : "success",
+          startTime: Date.now(),
+          duration: 0,
+          data: {
+            degraded: response.schemaMeta?.degraded ?? false,
+            repaired: response.schemaMeta?.repaired ?? false,
+            notes: response.schemaMeta?.notes ?? []
+          }
+        });
+        const schemaBizLogId = startBizNode(pipeline.id, "intent.schema", {
+          rawLength: response.raw.length
+        });
+        finishBizNode(schemaBizLogId, response.schemaMeta?.degraded ? "skipped" : "success", {
+          output: response.schemaMeta ?? {}
+        });
+
+        const suggestionBizLogId = startBizNode(pipeline.id, "suggestions.generate", {
+          count: response.parsed.suggestions.length
+        });
         const suggestions = suggestionEngine.ingest(response.parsed.suggestions);
         options.getSuggestionWindow()?.webContents.send("suggestion:new", suggestions);
         pipelineLogger.updateStage(pipeline.id, "suggestions", {
@@ -121,7 +263,24 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
           duration: 0,
           data: { count: response.parsed.suggestions.length, suggestions: response.parsed.suggestions }
         });
+        finishBizNode(suggestionBizLogId, "success", {
+          output: {
+            queueSize: suggestions.length
+          }
+        });
 
+        const pendingActions = response.parsed.actions.filter((a) => a.requireConfirm);
+        if (pendingActions.length > 0) {
+          options.getSuggestionWindow()?.webContents.send("action:pending", {
+            pipelineId: pipeline.id,
+            actions: pendingActions
+          });
+        }
+
+        const actionBizLogId = startBizNode(pipeline.id, "actions.execute", {
+          total: response.parsed.actions.length,
+          pending: pendingActions.length
+        });
         const actionResults = await actionExecutor.executeBatch(response.parsed.actions);
         pipelineLogger.updateStage(pipeline.id, "actions", {
           status: "success",
@@ -129,12 +288,31 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
           duration: 0,
           data: { actions: actionResults }
         });
-        options.getSuggestionWindow()?.webContents.send("action:result", actionResults);
+        finishBizNode(actionBizLogId, "success", {
+          output: {
+            results: actionResults
+          }
+        });
+        options.getSuggestionWindow()?.webContents.send("action:result", {
+          pipelineId: pipeline.id,
+          results: actionResults
+        });
 
         const entityIds = response.parsed.entities.map((entity) => kg.upsertEntity(entity));
         response.parsed.relationships.forEach((relation) => {
           kg.upsertRelation(relation);
         });
+        // Re-verify drained is not empty after async operations
+        if (drained.length === 0) {
+          pipelineLogger.complete(pipeline.id, "completed");
+          logSystem("info", "pipeline", "pipeline 完成（无待处理数据）", {
+            pipelineId: pipeline.id,
+            duration: pipelineLogger.getById(pipeline.id)?.duration ?? 0
+          });
+          options.getConsoleWindow()?.webContents.send("pipeline:new", pipelineLogger.getById(pipeline.id));
+          options.getConsoleWindow()?.webContents.send("pipeline:update", pipelineLogger.getById(pipeline.id));
+          return;
+        }
         kg.addEvent({
           appName: drained[0].appName,
           windowTitle: drained[0].windowTitle,
@@ -144,16 +322,33 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
           sourceWindowId: drained[0].windowId,
           entityIds
         });
+        const graphBizLogId = startBizNode(pipeline.id, "graph.update", {
+          entities: response.parsed.entities.length,
+          relationships: response.parsed.relationships.length
+        });
         pipelineLogger.updateStage(pipeline.id, "graphUpdate", {
           status: "success",
           startTime: Date.now(),
           duration: 0,
           data: { entityCount: response.parsed.entities.length, relationCount: response.parsed.relationships.length }
         });
+        finishBizNode(graphBizLogId, "success", {
+          output: {
+            entityCount: response.parsed.entities.length,
+            relationCount: response.parsed.relationships.length
+          }
+        });
         pipelineLogger.complete(pipeline.id, "completed");
+        logSystem("info", "pipeline", "pipeline 完成", {
+          pipelineId: pipeline.id,
+          duration: pipelineLogger.getById(pipeline.id)?.duration ?? 0
+        });
         options.getConsoleWindow()?.webContents.send("pipeline:new", pipelineLogger.getById(pipeline.id));
         options.getConsoleWindow()?.webContents.send("pipeline:update", pipelineLogger.getById(pipeline.id));
       } catch (error) {
+        logSystem("error", "pipeline", "pipeline 执行异常", {
+          error: error instanceof Error ? error.message : "pipeline error"
+        });
         options
           .getConsoleWindow()
           ?.webContents.send("pipeline:update", { error: error instanceof Error ? error.message : "pipeline error" });
@@ -179,13 +374,16 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     return { ok: true };
   });
   ipcMain.handle("windows:get-monitored", () => autoCaptureService.getMonitoredWindowKeys());
+  ipcMain.handle("windows:get-capture-stats", () => autoCaptureService.getWindowCaptureStats());
 
   ipcMain.handle("capture:start", (_event, payload?: { intervalSeconds?: number }) => {
+    logSystem("info", "capture", "启动自动捕获", { intervalSeconds: payload?.intervalSeconds });
     if (payload?.intervalSeconds) autoCaptureService.setInterval(payload.intervalSeconds);
     autoCaptureService.start();
     return { ok: true };
   });
   ipcMain.handle("capture:stop", () => {
+    logSystem("info", "capture", "停止自动捕获");
     autoCaptureService.stop();
     return { ok: true };
   });
@@ -194,31 +392,56 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     return { ok: true };
   });
   ipcMain.handle("capture:get-buffers", () => eventProcessor.getBuffers());
-  ipcMain.handle("capture:set-simulation", (_event, enabled: boolean) => {
-    autoCaptureService.setSimulationMode(Boolean(enabled));
-    return {
-      ok: true,
-      simulationMode: autoCaptureService.getSimulationMode()
-    };
+  ipcMain.handle("capture:take-screenshot", async () => {
+    const bizLogId = startBizNode(null, "capture.manual", {
+      source: "console.screenshot-test"
+    });
+    try {
+      const image = await screenshotManager.captureScreen();
+      const result = {
+        dataUrl: `data:image/png;base64,${image.toString("base64")}`,
+        mimeType: "image/png",
+        byteLength: image.byteLength,
+        capturedAt: Date.now()
+      };
+      finishBizNode(bizLogId, "success", {
+        output: {
+          byteLength: result.byteLength,
+          mimeType: result.mimeType
+        }
+      });
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "截图失败";
+      finishBizNode(bizLogId, "failed", {
+        error: message
+      });
+      logSystem("error", "capture", "手动截图失败", { error: message });
+      throw error;
+    }
   });
-  ipcMain.handle("capture:get-simulation", () => ({
-    simulationMode: autoCaptureService.getSimulationMode()
-  }));
   ipcMain.handle("health:get-latest", () => latestHealth);
   ipcMain.handle("health:get-config", () => healthConfig);
   ipcMain.handle("health:set-config", (_event, payload: { enabled?: boolean; intervalSeconds?: number }) => {
     if (typeof payload.enabled === "boolean") healthConfig.enabled = payload.enabled;
     if (typeof payload.intervalSeconds === "number") {
       healthConfig.intervalSeconds = Math.max(10, Math.floor(payload.intervalSeconds));
-      if (healthTimer) clearInterval(healthTimer);
-      healthTimer = setInterval(() => {
-        void (async () => {
-          if (!healthConfig.enabled) return;
-          const report = await autoCaptureService.runHealthCheck();
-          latestHealth = report;
-          options.getConsoleWindow()?.webContents.send("health:update", report);
-        })();
-      }, healthConfig.intervalSeconds * 1000);
+      // Clear existing timer before creating a new one
+      if (healthTimer) {
+        clearInterval(healthTimer);
+        healthTimer = null;
+      }
+      // Only restart timer if enabled
+      if (healthConfig.enabled) {
+        healthTimer = setInterval(() => {
+          void (async () => {
+            if (!healthConfig.enabled) return;
+            const report = await autoCaptureService.runHealthCheck();
+            latestHealth = report;
+            options.getConsoleWindow()?.webContents.send("health:update", report);
+          })();
+        }, healthConfig.intervalSeconds * 1000);
+      }
     }
     return { ok: true, config: healthConfig };
   });
@@ -228,11 +451,38 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     return { ok: true };
   });
   ipcMain.handle("ocr:recognize", async (_event, payload: { base64?: string }) => {
+    const bizLogId = startBizNode(null, "ocr.recognize", {
+      source: payload?.base64 ? "payload.base64" : "screenshot.capture"
+    });
     if (payload?.base64) {
-      return ocrEngine.recognize(Buffer.from(payload.base64, "base64"));
+      const ocr = await ocrEngine.recognize(Buffer.from(payload.base64, "base64"));
+      finishBizNode(bizLogId, "success", {
+        output: {
+          confidence: ocr.confidence,
+          textLength: ocr.text.length
+        }
+      });
+      return ocr;
     }
-    const image = await screenshotManager.captureScreen();
-    return ocrEngine.recognize(image);
+    try {
+      const image = await screenshotManager.captureScreen();
+      const ocr = await ocrEngine.recognize(image);
+      finishBizNode(bizLogId, "success", {
+        output: {
+          confidence: ocr.confidence,
+          textLength: ocr.text.length
+        }
+      });
+      return ocr;
+    } catch (error) {
+      finishBizNode(bizLogId, "failed", {
+        error: error instanceof Error ? error.message : "ocr 失败"
+      });
+      logSystem("error", "ocr", "OCR 识别失败", {
+        error: error instanceof Error ? error.message : "unknown"
+      });
+      throw error;
+    }
   });
 
   ipcMain.handle("agent:detect-backends", async () => agentBridge.detectAvailableBackends());
@@ -249,7 +499,7 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     claudeTester.runScenario(payload)
   );
 
-  ipcMain.handle("kg:search-entities", (_event, _query: string) => kg.getRelevantContext().relevantEntities);
+  ipcMain.handle("kg:search-entities", (_event, query: string) => kg.searchEntities(query));
   ipcMain.handle("kg:get-entity", (_event, id: string) =>
     kg.getRelevantContext().relevantEntities.find((entity) => entity.name === id) ?? null
   );
@@ -270,13 +520,62 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     feedbackEngine.submitSuggestionFeedback(payload)
   );
 
-  ipcMain.handle("action:confirm", async (_event, payload: Parameters<ActionExecutor["execute"]>[0]) =>
-    actionExecutor.execute(payload)
+  const mergePipelineAction = (pipelineId: string, actionId: string, result: ActionResult) => {
+    pipelineLogger.mergeActionsStage(pipelineId, (actions) => {
+      const idx = actions.findIndex((a) => a.actionId === actionId);
+      if (idx >= 0) {
+        actions[idx] = result;
+        return actions;
+      }
+      actions.push(result);
+      return actions;
+    });
+    const updated = pipelineLogger.getById(pipelineId);
+    if (updated) options.getConsoleWindow()?.webContents.send("pipeline:update", updated);
+  };
+
+  ipcMain.handle(
+    "action:confirm",
+    async (_event, payload: { action: AgentAction; pipelineId?: string }) => {
+      const bizLogId = startBizNode(payload.pipelineId ?? null, "action.confirm.execute", {
+        actionId: payload.action.id,
+        description: payload.action.description
+      });
+      const result = await actionExecutor.execute(payload.action);
+      finishBizNode(bizLogId, result.status === "success" ? "success" : "failed", {
+        output: {
+          actionId: result.actionId,
+          duration: result.duration,
+          status: result.status
+        },
+        error: result.error
+      });
+      if (payload.pipelineId) mergePipelineAction(payload.pipelineId, payload.action.id, result);
+      return result;
+    }
   );
-  ipcMain.handle("action:cancel", (_event, payload: { actionId: string }) => ({
-    actionId: payload.actionId,
-    status: "cancelled"
-  }));
+  ipcMain.handle(
+    "action:cancel",
+    (_event, payload: { actionId: string; pipelineId?: string }) => {
+      const result: ActionResult = {
+        actionId: payload.actionId,
+        status: "cancelled",
+        output: "用户已取消",
+        duration: 0
+      };
+      kg.addBusinessLog({
+        pipelineId: payload.pipelineId ?? null,
+        node: "action.cancel",
+        status: "cancelled",
+        input: {
+          actionId: payload.actionId
+        },
+        output: result
+      });
+      if (payload.pipelineId) mergePipelineAction(payload.pipelineId, payload.actionId, result);
+      return result;
+    }
+  );
 
   ipcMain.handle("pipeline:get-recent", (_event, limit = 20) => pipelineLogger.getRecent(limit));
   ipcMain.handle("pipeline:get-detail", (_event, id: string) => pipelineLogger.getById(id));
@@ -292,6 +591,47 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     pipelineLogger.clear();
     return { ok: true };
   });
+
+  ipcMain.handle("system-log:list", (_event, limit = 200) => kg.getSystemLogs(limit));
+  ipcMain.handle("business-log:list", (_event, payload?: { limit?: number; pipelineId?: string }) =>
+    kg.getBusinessLogs(payload?.limit ?? 100, payload?.pipelineId)
+  );
+  ipcMain.handle(
+    "business-log:create",
+    (_event, payload: { pipelineId?: string; node: string; status: "pending" | "running" | "success" | "failed" | "skipped" | "cancelled"; input?: unknown; output?: unknown; error?: string; meta?: Record<string, unknown> }) => ({
+      id: kg.addBusinessLog({
+        pipelineId: payload.pipelineId ?? null,
+        node: payload.node,
+        status: payload.status,
+        input: payload.input,
+        output: payload.output,
+        error: payload.error,
+        meta: payload.meta,
+        startTime: Date.now()
+      })
+    })
+  );
+  ipcMain.handle(
+    "business-log:update",
+    (
+      _event,
+      payload: {
+        id: string;
+        status?: "pending" | "running" | "success" | "failed" | "skipped" | "cancelled";
+        output?: unknown;
+        error?: string;
+        meta?: Record<string, unknown>;
+      }
+    ) => ({
+      ok: kg.updateBusinessLog(payload.id, {
+        status: payload.status,
+        output: payload.output,
+        error: payload.error,
+        meta: payload.meta,
+        endTime: Date.now()
+      })
+    })
+  );
 
   ipcMain.handle("tts:speak", (_event, payload: { text: string; voice?: string }) =>
     ttsEngine.speak(payload.text, payload.voice)

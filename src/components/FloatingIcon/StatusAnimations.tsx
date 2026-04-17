@@ -3,13 +3,13 @@ interface StatusAnimationsProps {
 }
 
 const colorMap: Record<StatusAnimationsProps["status"], string> = {
-  idle: "bg-emerald-400",
-  listen: "bg-cyan-400",
-  think: "bg-indigo-400",
-  suggest: "bg-amber-400",
-  error: "bg-rose-400"
+  idle: "bg-white",
+  listen: "bg-white animate-pulse",
+  think: "bg-white animate-pulse",
+  suggest: "bg-white",
+  error: "bg-white"
 };
 
 export function StatusAnimations({ status }: StatusAnimationsProps) {
-  return <div className={`h-4 w-4 rounded-full ${colorMap[status]} animate-pulse`} />;
+  return <div className={`h-5 w-5 rounded-full ${colorMap[status]}`} />;
 }

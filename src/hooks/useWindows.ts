@@ -11,6 +11,7 @@ export function useWindows() {
   }, [setActive, setWindows]);
 
   const setMonitored = useCallback((keys: string[]) => window.nudgeAPI.windows.setMonitored(keys), []);
+  const getCaptureStats = useCallback(() => window.nudgeAPI.windows.getCaptureStats(), []);
 
-  return { refresh, setMonitored };
+  return { refresh, setMonitored, getCaptureStats };
 }

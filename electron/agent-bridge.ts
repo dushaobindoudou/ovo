@@ -1,5 +1,10 @@
 import { execa } from "execa";
 import type { AgentBackend, AgentResponse } from "./types.js";
+import {
+  buildJsonRepairPrompt,
+  normalizeAgentPayload,
+  shouldAttemptSchemaRepair
+} from "./agent-response-normalize.js";
 
 interface AgentRequest {
   prompt: string;
@@ -59,18 +64,40 @@ export class AgentBridge {
     const start = Date.now();
     try {
       const raw = await this.callByBackend(backend, request);
-      let parsed: AgentResponse["parsed"];
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        parsed = undefined;
+      let { parsed, meta } = normalizeAgentPayload(raw);
+      if (shouldAttemptSchemaRepair(parsed, meta)) {
+        try {
+          const repairPrompt = buildJsonRepairPrompt(raw, meta.notes.join("; ") || "结构不完整");
+          const raw2 = await this.callByBackend(backend, {
+            ...request,
+            prompt: repairPrompt,
+            outputFormat: "json"
+          });
+          const second = normalizeAgentPayload(raw2);
+          const secondOk =
+            !second.meta.degraded &&
+            (Boolean(second.parsed.prediction) ||
+              second.parsed.suggestions.length > 0 ||
+              second.parsed.actions.length > 0);
+          if (secondOk) {
+            parsed = second.parsed;
+            meta = {
+              repaired: true,
+              degraded: second.meta.degraded,
+              notes: [...meta.notes, "已执行二次 schema 修复重试", ...second.meta.notes]
+            };
+          }
+        } catch {
+          meta.notes.push("schema 修复重试调用失败");
+        }
       }
       return {
         ok: true,
         backend,
         duration: Date.now() - start,
         raw,
-        parsed
+        parsed,
+        schemaMeta: meta
       };
     } catch (error) {
       return {

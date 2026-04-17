@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useRuntimeStore } from "../stores/runtimeStore";
+import type { AgentApiConfig } from "../types/ovo";
 
 export function useAgentBridge() {
   const { setBackendStatus } = useRuntimeStore();
@@ -12,9 +13,10 @@ export function useAgentBridge() {
 
   const getStatus = useCallback(() => window.nudgeAPI.agent.status(), []);
   const setBackend = useCallback((backend: string) => window.nudgeAPI.agent.setBackend(backend), []);
+  const setApiConfig = useCallback((config: AgentApiConfig) => window.nudgeAPI.agent.setApiConfig(config), []);
   const testScenario = useCallback((scenarioId: string, customPrompt?: string) => {
     return window.nudgeAPI.agent.testScenario({ scenarioId, customPrompt });
   }, []);
 
-  return { detectBackends, getStatus, setBackend, testScenario };
+  return { detectBackends, getStatus, setBackend, setApiConfig, testScenario };
 }

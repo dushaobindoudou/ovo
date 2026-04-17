@@ -5,10 +5,14 @@ import { GlowButton } from "../shared/GlowButton";
 import { LogViewer } from "../shared/LogViewer";
 import { useKnowledgeGraph } from "../../hooks/useKnowledgeGraph";
 import { useAgentBridge } from "../../hooks/useAgentBridge";
+import { useCapture } from "../../hooks/useCapture";
+import { useHealth } from "../../hooks/useHealth";
 
 export function StatusPanel() {
   const { getStats } = useKnowledgeGraph();
   const { detectBackends } = useAgentBridge();
+  const { onResult } = useCapture();
+  const { getLatest, onUpdate } = useHealth();
   const [stats, setStats] = useState<{ entities: number; relationships: number; events: number; pipelines: number } | null>(null);
   const [backends, setBackends] = useState<string[]>([]);
   const [logs, setLogs] = useState<string[]>([]);
@@ -27,10 +31,10 @@ export function StatusPanel() {
       setStats(await getStats());
       setBackends(await detectBackends());
     })();
-    const offCapture = window.nudgeAPI.on("capture:result", (data) => {
+    const offCapture = onResult((data) => {
       setLogs((prev) => [`[${new Date().toLocaleTimeString()}] OCR: ${data?.appName ?? "unknown"} ${Math.round(data?.confidence ?? 0)}%`, ...prev].slice(0, 30));
     });
-    const offHealth = window.nudgeAPI.on("health:update", (data) => {
+    const offHealth = onUpdate((data) => {
       setHealth(data ?? null);
       setLogs((prev) => {
         const line = data?.ok
@@ -42,13 +46,13 @@ export function StatusPanel() {
     const offPipeline = window.nudgeAPI.on("pipeline:update", (data) => {
       setLogs((prev) => [`[${new Date().toLocaleTimeString()}] Pipeline: ${data?.id ?? ""} ${data?.status ?? ""}`, ...prev].slice(0, 30));
     });
-    void window.nudgeAPI.health.getLatest().then((data) => setHealth(data ?? null));
+    void getLatest().then((data) => setHealth(data ?? null));
     return () => {
       offCapture();
       offHealth();
       offPipeline();
     };
-  }, [detectBackends, getStats]);
+  }, [detectBackends, getLatest, getStats, onResult, onUpdate]);
 
   return (
     <div className="space-y-4">

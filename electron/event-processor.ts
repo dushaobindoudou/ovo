@@ -53,10 +53,17 @@ export class EventProcessor {
   }
 
   drainBuffers() {
-    const list = [...this.buffers.values()].map((item) => ({ ...item, entries: [...item.entries] }));
-    this.buffers.forEach((value) => {
-      value.entries = [];
-    });
-    return list.filter((item) => item.entries.length > 0);
+    const list: WindowBuffer[] = [];
+    // Use for...of to atomically drain all buffers
+    for (const value of this.buffers.values()) {
+      if (value.entries.length > 0) {
+        list.push({
+          ...value,
+          entries: [...value.entries]
+        });
+        value.entries = [];
+      }
+    }
+    return list;
   }
 }

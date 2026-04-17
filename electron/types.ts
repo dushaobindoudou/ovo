@@ -63,6 +63,12 @@ export interface AgentParsedPayload {
   relationships: ExtractedRelation[];
 }
 
+export interface AgentSchemaMeta {
+  repaired: boolean;
+  degraded: boolean;
+  notes: string[];
+}
+
 export interface AgentResponse {
   ok: boolean;
   backend: AgentBackend;
@@ -70,6 +76,7 @@ export interface AgentResponse {
   raw: string;
   parsed?: AgentParsedPayload;
   error?: string;
+  schemaMeta?: AgentSchemaMeta;
 }
 
 export interface StageLog {
