@@ -122,42 +122,42 @@ export function ConsoleListPanel({ page, onSelect, selectedId, searchQuery, onSe
 
   return (
     <div className="flex h-full w-[280px] flex-col border-r border-[var(--border)] bg-[var(--bg-content)]">
-      {/* Header */}
+      {/* Header - 微信规范：内边距 12px (px-3 py-3) */}
       {hasSearch ? (
-        <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2.5">
+        <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-3">
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="搜索..."
-            className="flex-1 rounded-md bg-[var(--bg-input)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:ring-1 focus:ring-[var(--accent)]"
+            className="flex-1 rounded-md bg-[var(--bg-input)] px-3 py-2 text-[14px] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:ring-1 focus:ring-[var(--accent)]"
           />
         </div>
       ) : (
         <div className="border-b border-[var(--border)] px-3 py-3">
-          <p className="text-sm font-medium text-[var(--text-primary)]">{page === "screenshot" ? "截图测试" : "关于"}</p>
+          <p className="text-[14px] font-medium text-[var(--text-primary)]">{page === "screenshot" ? "截图测试" : "关于"}</p>
         </div>
       )}
 
       {/* List */}
       <div className="flex-1 overflow-y-auto">
         {filtered.length === 0 && hasSearch ? (
-          <div className="px-4 py-8 text-center text-sm text-[var(--text-muted)]">暂无数据</div>
+          <div className="px-4 py-8 text-center text-[14px] text-[var(--text-muted)]">暂无数据</div>
         ) : null}
         {filtered.map((item) => (
           <button
             key={item.id}
             type="button"
             onClick={() => onSelect(item.id)}
-            className={`w-full border-b border-[var(--border-light)] px-3 py-2.5 text-left transition-colors ${
+            className={`w-full border-b border-[var(--border-light)] px-3 py-3 text-left transition-colors ${
               selectedId === item.id ? "bg-[var(--accent-dim)]" : "hover:bg-[var(--bg-card-hover)]"
             }`}
           >
             <div className="flex items-center justify-between">
-              <p className="truncate text-sm font-medium text-[var(--text-primary)]">{item.title}</p>
+              <p className="truncate text-[14px] font-medium leading-[1.5] text-[var(--text-primary)]">{item.title}</p>
               {item.badge && (
                 <span
-                  className={`ml-2 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                  className={`ml-2 shrink-0 rounded-full px-2 py-0.5 text-[12px] font-medium leading-[1.5] ${
                     item.badge.variant === "success" ? "bg-[var(--accent-dim)] text-[var(--accent)]" :
                     item.badge.variant === "warning" ? "bg-[var(--warning)]/10 text-[var(--warning)]" :
                     item.badge.variant === "danger" ? "bg-[var(--danger)]/10 text-[var(--danger)]" :
@@ -169,17 +169,17 @@ export function ConsoleListPanel({ page, onSelect, selectedId, searchQuery, onSe
               )}
             </div>
             {item.subtitle && (
-              <p className="mt-0.5 truncate text-xs text-[var(--text-secondary)]">{item.subtitle}</p>
+              <p className="mt-1 truncate text-[12px] leading-[1.5] text-[var(--text-secondary)]">{item.subtitle}</p>
             )}
             {item.timestamp && (
-              <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">{new Date(item.timestamp).toLocaleTimeString()}</p>
+              <p className="mt-1 text-[12px] leading-[1.5] text-[var(--text-muted)]">{new Date(item.timestamp).toLocaleTimeString()}</p>
             )}
           </button>
         ))}
       </div>
 
       {/* Footer */}
-      <div className="border-t border-[var(--border)] px-3 py-2 text-center text-[11px] text-[var(--text-muted)]">
+      <div className="border-t border-[var(--border)] px-3 py-2 text-center text-[12px] text-[var(--text-muted)]">
         {filtered.length} 项
       </div>
     </div>

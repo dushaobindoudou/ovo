@@ -25,13 +25,13 @@ const toolMenus: Array<{ id: ConsolePage; label: string; icon: ComponentType<{ s
 export function ConsoleSidebar({ page, onChange }: SidebarProps) {
   return (
     <aside className="flex h-full w-[64px] flex-col items-center bg-[var(--bg-sidebar)] pt-3">
-      {/* Logo */}
-      <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent)]">
-        <Activity size={18} className="text-white" />
+      {/* Logo - 微信规范：40x40 图标区域 */}
+      <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--accent)]">
+        <Activity size={20} className="text-white" />
       </div>
 
-      {/* 主导航 */}
-      <nav className="flex flex-1 flex-col items-center gap-1">
+      {/* 主导航 - 微信规范：图标间距 8px (gap-2) */}
+      <nav className="flex flex-1 flex-col items-center gap-2">
         {menus.map((menu) => {
           const Icon = menu.icon;
           const active = menu.id === page;
@@ -53,11 +53,11 @@ export function ConsoleSidebar({ page, onChange }: SidebarProps) {
         })}
       </nav>
 
-      {/* Divider */}
+      {/* Divider - 微信规范：分隔线 */}
       <div className="mx-4 my-2 h-px w-8 bg-[var(--border)]" />
 
       {/* 工具导航 */}
-      <nav className="mb-3 flex flex-col items-center gap-1">
+      <nav className="mb-3 flex flex-col items-center gap-2">
         {toolMenus.map((menu) => {
           const Icon = menu.icon;
           const active = menu.id === page;

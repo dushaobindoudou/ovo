@@ -14,7 +14,7 @@ export function Card({ title, className, children }: CardProps) {
         className
       )}
     >
-      {title ? <h3 className="mb-3 text-sm font-semibold text-[var(--text-primary)]">{title}</h3> : null}
+      {title ? <h3 className="mb-3 text-[14px] font-semibold leading-[1.5] text-[var(--text-primary)]">{title}</h3> : null}
       {children}
     </section>
   );

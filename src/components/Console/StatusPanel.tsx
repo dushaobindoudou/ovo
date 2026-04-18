@@ -21,7 +21,22 @@ function HealthDetail() {
 
   useEffect(() => { void safeGetLatest().then(setHealth); }, [safeGetLatest]);
 
-  if (!health) return <p className="text-sm text-[var(--text-secondary)]">健康数据加载中...</p>;
+  if (!health) {
+    return (
+      <Card title="截屏自检详情">
+        <div className="space-y-2 text-sm">
+          {isElectron ? (
+            <p className="text-sm text-[var(--text-secondary)]">健康数据加载中...</p>
+          ) : (
+            <div className="rounded-lg border border-[var(--border)] px-3 py-2">
+              <p className="text-sm text-[var(--text-secondary)]">开发模式：健康检查需要 Electron 环境。</p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">请在 Electron 中运行以查看实时健康数据。</p>
+            </div>
+          )}
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card title="截屏自检详情">
@@ -54,11 +69,19 @@ function AgentEngineDetail() {
   return (
     <Card title="Agent 引擎状态">
       <div className="space-y-2 text-sm">
-        <div className="flex items-center justify-between">
-          <span>后端状态</span>
-          <StatusBadge status={backends.length > 0 ? "success" : "warning"} label={backends.length > 0 ? "可用" : "不可用"} />
-        </div>
-        <p>已连接后端: {backends.join(", ") || "无"}</p>
+        {isElectron ? (
+          <>
+            <div className="flex items-center justify-between">
+              <span>后端状态</span>
+              <StatusBadge status={backends.length > 0 ? "success" : "warning"} label={backends.length > 0 ? "可用" : "不可用"} />
+            </div>
+            <p>已连接后端: {backends.join(", ") || "无"}</p>
+          </>
+        ) : (
+          <div className="rounded-lg border border-[var(--border)] px-3 py-2">
+            <p className="text-sm text-[var(--text-secondary)]">开发模式：Agent 后端检测需要 Electron 环境。</p>
+          </div>
+        )}
       </div>
     </Card>
   );
@@ -76,24 +99,30 @@ function GraphDetail() {
 
   return (
     <Card title="知识图谱统计">
-      <div className="grid grid-cols-2 gap-4 text-sm">
-        <div className="rounded-lg bg-[var(--bg-base)] p-3 text-center">
-          <p className="text-2xl font-semibold text-[var(--accent)]">{stats?.entities ?? 0}</p>
-          <p className="mt-1 text-xs text-[var(--text-secondary)]">实体</p>
+      {isElectron ? (
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="rounded-lg bg-[var(--bg-base)] p-3 text-center">
+            <p className="text-2xl font-semibold text-[var(--accent)]">{stats?.entities ?? 0}</p>
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">实体</p>
+          </div>
+          <div className="rounded-lg bg-[var(--bg-base)] p-3 text-center">
+            <p className="text-2xl font-semibold text-[var(--accent)]">{stats?.relationships ?? 0}</p>
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">关系</p>
+          </div>
+          <div className="rounded-lg bg-[var(--bg-base)] p-3 text-center">
+            <p className="text-2xl font-semibold text-[var(--secondary)]">{stats?.events ?? 0}</p>
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">事件</p>
+          </div>
+          <div className="rounded-lg bg-[var(--bg-base)] p-3 text-center">
+            <p className="text-2xl font-semibold text-[var(--secondary)]">{stats?.pipelines ?? 0}</p>
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">Pipeline</p>
+          </div>
         </div>
-        <div className="rounded-lg bg-[var(--bg-base)] p-3 text-center">
-          <p className="text-2xl font-semibold text-[var(--accent)]">{stats?.relationships ?? 0}</p>
-          <p className="mt-1 text-xs text-[var(--text-secondary)]">关系</p>
+      ) : (
+        <div className="rounded-lg border border-[var(--border)] px-3 py-2">
+          <p className="text-sm text-[var(--text-secondary)]">开发模式：知识图谱需要 Electron 环境。</p>
         </div>
-        <div className="rounded-lg bg-[var(--bg-base)] p-3 text-center">
-          <p className="text-2xl font-semibold text-[var(--secondary)]">{stats?.events ?? 0}</p>
-          <p className="mt-1 text-xs text-[var(--text-secondary)]">事件</p>
-        </div>
-        <div className="rounded-lg bg-[var(--bg-base)] p-3 text-center">
-          <p className="text-2xl font-semibold text-[var(--secondary)]">{stats?.pipelines ?? 0}</p>
-          <p className="mt-1 text-xs text-[var(--text-secondary)]">Pipeline</p>
-        </div>
-      </div>
+      )}
     </Card>
   );
 }
