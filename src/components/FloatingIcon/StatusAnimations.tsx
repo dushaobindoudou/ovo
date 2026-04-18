@@ -1,15 +1,19 @@
+import { AnimatedLogo } from "../shared/AnimatedLogo";
+import type { LogoState } from "../shared/AnimatedLogo";
+
 interface StatusAnimationsProps {
   status: "idle" | "listen" | "think" | "suggest" | "error";
 }
 
-const colorMap: Record<StatusAnimationsProps["status"], string> = {
-  idle: "bg-white",
-  listen: "bg-white animate-pulse",
-  think: "bg-white animate-pulse",
-  suggest: "bg-white",
-  error: "bg-white"
+// Map old status names to new LogoState
+const statusMap: Record<StatusAnimationsProps["status"], LogoState> = {
+  idle: "idle",
+  listen: "watching",
+  think: "thinking",
+  suggest: "executing",
+  error: "idle",
 };
 
 export function StatusAnimations({ status }: StatusAnimationsProps) {
-  return <div className={`h-5 w-5 rounded-full ${colorMap[status]}`} />;
+  return <AnimatedLogo size={24} state={statusMap[status]} />;
 }

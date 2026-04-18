@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
-import { Activity, BookOpen, Bot, Camera, Info, LayoutDashboard, Monitor, ScrollText, Settings } from "lucide-react";
+import { BookOpen, Bot, Camera, Info, LayoutDashboard, Monitor, ScrollText, Settings } from "lucide-react";
+import { OvoLogo } from "../shared/OvoLogo";
 
 export type ConsolePage = "status" | "window" | "memory" | "pipeline" | "settings" | "agent" | "screenshot" | "about";
 
@@ -27,7 +28,7 @@ export function ConsoleSidebar({ page, onChange }: SidebarProps) {
     <aside className="flex h-full w-[64px] flex-col items-center bg-[var(--bg-sidebar)] pt-3">
       {/* Logo - 微信规范：40x40 图标区域 */}
       <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--accent)]">
-        <Activity size={20} className="text-white" />
+        <OvoLogo size={20} />
       </div>
 
       {/* 主导航 - 微信规范：图标间距 8px (gap-2) */}

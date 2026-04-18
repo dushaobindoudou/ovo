@@ -1,6 +1,6 @@
 import { Card } from "../shared/Card";
 import { GlowButton } from "../shared/GlowButton";
-import { Activity } from "lucide-react";
+import { OvoLogo } from "../shared/OvoLogo";
 
 export function AboutPanel() {
   return (
@@ -10,7 +10,7 @@ export function AboutPanel() {
       <Card>
         <div className="flex items-center gap-4">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--accent)]">
-            <Activity size={32} className="text-white" />
+            <OvoLogo size={32} />
           </div>
           <div>
             <h3 className="text-xl font-semibold">ovo</h3>

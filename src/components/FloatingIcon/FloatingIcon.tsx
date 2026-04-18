@@ -1,24 +1,19 @@
 import { useMemo } from "react";
-import { StatusAnimations } from "./StatusAnimations";
+import { AnimatedLogo } from "../shared/AnimatedLogo";
 import { useRuntimeStore } from "../../stores/runtimeStore";
 
 export function FloatingIcon() {
-  const { isCapturing } = useRuntimeStore();
-  const status = useMemo(() => {
-    if (isCapturing) return "listen" as const;
-    return "idle" as const;
-  }, [isCapturing]);
+  const { isCapturing, agentState } = useRuntimeStore();
+
+  // Map internal agentState to logo animation state
+  const logoState = useMemo(() => {
+    if (isCapturing) return "watching" as const;
+    return agentState;
+  }, [isCapturing, agentState]);
 
   return (
-    <button
-      type="button"
-      onClick={() => {
-        window.location.hash = "#panel";
-      }}
-      className="m-2 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)] shadow-[var(--shadow-md)] transition-transform hover:scale-110 active:scale-95"
-      title="展开建议面板"
-    >
-      <StatusAnimations status={status} />
-    </button>
+    <div className="m-1 flex h-10 w-10 items-center justify-center">
+      <AnimatedLogo size={40} state={logoState} />
+    </div>
   );
 }
