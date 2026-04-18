@@ -11,7 +11,7 @@ interface SidebarProps {
 
 const menus: Array<{ id: ConsolePage; label: string; icon: ComponentType<{ size?: number }> }> = [
   { id: "status", label: "状态", icon: LayoutDashboard },
-  { id: "window", label: "窗口", icon: Monitor },
+  { id: "window", label: "应用窗口", icon: Monitor },
   { id: "memory", label: "记忆", icon: BookOpen },
   { id: "pipeline", label: "日志", icon: ScrollText },
   { id: "settings", label: "设置", icon: Settings },

@@ -72,6 +72,9 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     }
   );
 
+  // 返回 autoCaptureService 引用，供 main.ts 自动启动
+  return { autoCaptureService };
+
   const logSystem = (
     level: "info" | "warning" | "error",
     source: string,

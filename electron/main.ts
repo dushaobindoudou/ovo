@@ -230,7 +230,7 @@ app.whenReady().then(() => {
   });
 
   // 先注册 IPC，避免窗口初始渲染阶段 invoke 发生竞态
-  registerIpcHandlers({
+  const { autoCaptureService } = registerIpcHandlers({
     getConsoleWindow: () => consoleWindow,
     getFloatingWindow: () => floatingWindow,
     getSuggestionWindow: () => suggestionWindow,
@@ -257,6 +257,10 @@ app.whenReady().then(() => {
 
   createAllWindows();
   createTray();
+
+  // 自动开始截屏采集，确保首页和知识图谱有真实数据流入
+  logger.info("electron:main", "自动启动截屏采集服务");
+  autoCaptureService.start();
 });
 
 app.on("activate", () => {
