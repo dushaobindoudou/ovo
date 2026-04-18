@@ -18,7 +18,7 @@ export function ScreenshotTestPanel() {
     setLoading(true);
     setError(null);
     try {
-      const result = await window.nudgeAPI.capture.takeScreenshot();
+      const result = await window.nudgeAPI?.capture.takeScreenshot();
       setPreview(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "截图失败");
@@ -27,9 +27,7 @@ export function ScreenshotTestPanel() {
     }
   }, []);
 
-  useEffect(() => {
-    void capture();
-  }, [capture]);
+  useEffect(() => { void capture(); }, [capture]);
 
   return (
     <div className="space-y-4">
@@ -42,17 +40,16 @@ export function ScreenshotTestPanel() {
           </GlowButton>
           {preview ? (
             <span className="text-xs text-[var(--text-secondary)]">
-              最近截图: {new Date(preview.capturedAt).toLocaleTimeString()} · {preview.mimeType} ·{" "}
-              {(preview.byteLength / 1024).toFixed(1)} KB
+              最近: {new Date(preview.capturedAt).toLocaleTimeString()} · {preview.mimeType} · {(preview.byteLength / 1024).toFixed(1)} KB
             </span>
           ) : null}
         </div>
-        {error ? <p className="mt-3 text-xs text-red-400">{error}</p> : null}
+        {error ? <p className="mt-3 text-xs text-[var(--danger)]">{error}</p> : null}
       </Card>
 
       <Card title="截图预览">
         {preview ? (
-          <div className="overflow-hidden rounded-xl border border-white/10 bg-black/30">
+          <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-base)]">
             <img src={preview.dataUrl} alt="截图预览" className="block max-h-[70vh] w-full object-contain" />
           </div>
         ) : (

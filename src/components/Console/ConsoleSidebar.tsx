@@ -14,26 +14,24 @@ const menus: Array<{ id: ConsolePage; label: string; icon: ComponentType<{ size?
   { id: "memory", label: "记忆", icon: BookOpen },
   { id: "pipeline", label: "日志", icon: ScrollText },
   { id: "settings", label: "设置", icon: Settings },
+];
+
+const toolMenus: Array<{ id: ConsolePage; label: string; icon: ComponentType<{ size?: number }> }> = [
   { id: "agent", label: "Agent", icon: Bot },
-  { id: "screenshot", label: "截图测试", icon: Camera },
-  { id: "about", label: "关于", icon: Info }
+  { id: "screenshot", label: "截图", icon: Camera },
+  { id: "about", label: "关于", icon: Info },
 ];
 
 export function ConsoleSidebar({ page, onChange }: SidebarProps) {
   return (
-    <aside className="flex h-full w-[220px] flex-col border-r border-[var(--border)] bg-[var(--bg-sidebar)]">
-      <div className="border-b border-[var(--border)] p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--accent)] shadow-[var(--shadow-sm)]">
-            <Activity size={20} className="text-white" />
-          </div>
-          <div>
-            <p className="text-base font-semibold text-[var(--text-primary)]">ovo</p>
-            <p className="text-xs text-[var(--text-secondary)]">智能助手</p>
-          </div>
-        </div>
+    <aside className="flex h-full w-[64px] flex-col items-center bg-[var(--bg-sidebar)] pt-3">
+      {/* Logo */}
+      <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent)]">
+        <Activity size={18} className="text-white" />
       </div>
-      <nav className="flex-1 space-y-1 p-2">
+
+      {/* 主导航 */}
+      <nav className="flex flex-1 flex-col items-center gap-1">
         {menus.map((menu) => {
           const Icon = menu.icon;
           const active = menu.id === page;
@@ -41,20 +39,45 @@ export function ConsoleSidebar({ page, onChange }: SidebarProps) {
             <button
               key={menu.id}
               type="button"
+              title={menu.label}
               onClick={() => onChange(menu.id)}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-all ${
+              className={`flex h-10 w-10 items-center justify-center rounded-lg transition-all ${
                 active
-                  ? "bg-[var(--accent-dim)] text-[var(--accent)] font-medium"
-                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]"
+                  ? "bg-[var(--accent)] text-white"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
               }`}
             >
-              <Icon size={18} />
-              {menu.label}
+              <Icon size={20} />
             </button>
           );
         })}
       </nav>
-      <div className="border-t border-[var(--border)] p-3 text-center text-xs text-[var(--text-muted)]">v0.1.0</div>
+
+      {/* Divider */}
+      <div className="mx-4 my-2 h-px w-8 bg-[var(--border)]" />
+
+      {/* 工具导航 */}
+      <nav className="mb-3 flex flex-col items-center gap-1">
+        {toolMenus.map((menu) => {
+          const Icon = menu.icon;
+          const active = menu.id === page;
+          return (
+            <button
+              key={menu.id}
+              type="button"
+              title={menu.label}
+              onClick={() => onChange(menu.id)}
+              className={`flex h-10 w-10 items-center justify-center rounded-lg transition-all ${
+                active
+                  ? "bg-[var(--accent)] text-white"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              <Icon size={20} />
+            </button>
+          );
+        })}
+      </nav>
     </aside>
   );
 }

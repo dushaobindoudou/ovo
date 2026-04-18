@@ -44,6 +44,9 @@ const ALLOWED_CHANNELS = new Set([
   "tts:speak",
   "app:get-version",
   "app:open-console",
+  // 错误日志
+  "error-log:get-recent",
+  "error-log:get-count",
   // 日志系统
   "logger:info",
   "logger:warning",
@@ -154,5 +157,9 @@ contextBridge.exposeInMainWorld("nudgeAPI", {
   app: {
     getVersion: () => ipcRenderer.invoke("app:get-version"),
     openConsole: () => ipcRenderer.invoke("app:open-console")
+  },
+  errorLog: {
+    getRecent: (limit) => ipcRenderer.invoke("error-log:get-recent", limit),
+    getCount: () => ipcRenderer.invoke("error-log:get-count")
   }
 });

@@ -40,7 +40,9 @@ export type NudgeInvokeChannel =
   | "business-log:update"
   | "tts:speak"
   | "app:get-version"
-  | "app:open-console";
+  | "app:open-console"
+  | "error-log:get-recent"
+  | "error-log:get-count";
 
 export type NudgeEventChannel =
   | "capture:result"
@@ -150,6 +152,8 @@ export interface NudgeInvokePayloadMap {
   "tts:speak": { text: string; voice?: string };
   "app:get-version": undefined;
   "app:open-console": undefined;
+  "error-log:get-recent": number | undefined;
+  "error-log:get-count": undefined;
 }
 
 export type NudgeInvokeResultMap = Record<NudgeInvokeChannel, any>;
@@ -257,6 +261,10 @@ export interface NudgeAPI {
   app: {
     getVersion: () => Promise<string>;
     openConsole: () => Promise<any>;
+  };
+  errorLog: {
+    getRecent: (limit?: number) => Promise<Array<{ level: string; timestamp: string; source: string; message: string }>>;
+    getCount: () => Promise<number>;
   };
 }
 

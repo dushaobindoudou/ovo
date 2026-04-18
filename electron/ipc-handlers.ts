@@ -15,6 +15,7 @@ import { TTSEngine } from "./tts-engine.js";
 import { ClaudeCodeTester } from "./claude-code-tester.js";
 import { buildIntentPrompt } from "./prompt-engine.js";
 import { Logger, type BusinessLogEntry } from "./logger.js";
+import { errorLogger } from "./error-logger.js";
 import type { AgentAction } from "./types.js";
 import type { ActionResult } from "./action-executor.js";
 
@@ -644,4 +645,8 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     win.focus();
     return { ok: true };
   });
+
+  // 错误日志查询
+  ipcMain.handle("error-log:get-recent", (_event, limit = 50) => errorLogger.getEntries(limit));
+  ipcMain.handle("error-log:get-count", () => errorLogger.getErrorCount());
 }

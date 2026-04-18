@@ -10,11 +10,11 @@ export function Card({ title, className, children }: CardProps) {
   return (
     <section
       className={clsx(
-        "rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[var(--shadow-sm)] transition-shadow hover:shadow-[var(--shadow-md)]",
+        "rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[var(--shadow-sm)] transition-all duration-200 hover:shadow-[var(--shadow-md)]",
         className
       )}
     >
-      {title ? <h3 className="mb-3 text-sm font-medium text-[var(--text-primary)]">{title}</h3> : null}
+      {title ? <h3 className="mb-3 text-sm font-semibold text-[var(--text-primary)]">{title}</h3> : null}
       {children}
     </section>
   );

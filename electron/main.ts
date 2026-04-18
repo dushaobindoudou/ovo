@@ -5,6 +5,7 @@ import { registerIpcHandlers } from "./ipc-handlers.js";
 import { KnowledgeGraphEngine } from "./knowledge-graph.js";
 import { Logger } from "./logger.js";
 import { runVerifyRealLogs } from "./verify-real-logs.js";
+import { errorLogger } from "./error-logger.js";
 
 let consoleWindow: BrowserWindow | null = null;
 let floatingWindow: BrowserWindow | null = null;
@@ -113,7 +114,8 @@ function createAllWindows() {
 
 app.whenReady().then(() => {
   sharedKG = new KnowledgeGraphEngine();
-  logger = new Logger(sharedKG);
+  logger = new Logger({ kg: sharedKG });
+  errorLogger.init();
   logger.info("electron:main", "应用启动", { isDev });
 
   // 兼容旧的 systemLogger 接口
