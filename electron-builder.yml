@@ -6,7 +6,23 @@ files:
   - dist/**
   - dist-electron/**
   - electron/preload.cjs
+  - electron/entitlements.mac.plist
   - package.json
+asarUnpack:
+  - node_modules/better-sqlite3/**
+  - node_modules/bindings/**
+  - node_modules/file-uri-to-path/**
 mac:
   target:
     - dmg
+  icon: build/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: electron/entitlements.mac.plist
+  entitlementsInherit: electron/entitlements.mac.plist
+  category: public.app-category.productivity
+  darkModeSupport: true
+  extendInfo:
+    NSCameraUsageDescription: "ovo 需要访问摄像头以进行屏幕录制和 OCR 文字识别"
+    NSMicrophoneUsageDescription: "ovo 需要访问麦克风以进行语音交互"
+    NSScreenCaptureDescription: "ovo 需要屏幕录制权限以进行主动式 AI 助手功能"

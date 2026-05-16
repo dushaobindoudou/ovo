@@ -1,0 +1,372 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=DM+Serif+Display:ital@0;1&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --green:#07C160;
+    --green-d:#059A4A;
+    --green-dim:rgba(7,193,96,0.15);
+    --green-dimmer:rgba(7,193,96,0.08);
+    --ink:#191919;
+    --ink2:#232323;
+    --ink3:#2E2E2E;
+    --surface:#F7FAF8;
+    --surface2:#EDF7F2;
+    --muted:#8A9490;
+    --muted2:#4A5450;
+    --text-on-dark:#E8F5EE;
+  }
+  body,.root{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)}
+  .sec{font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:18px}
+  .wrap{padding:36px 40px 0}
+
+  /* HERO */
+  .hero{background:var(--ink);padding:56px 48px 48px;display:flex;flex-direction:column;align-items:center;gap:28px}
+  .hero-tag{font-size:12px;color:var(--muted2);letter-spacing:.08em;font-weight:300}
+
+  /* LOGO GRID */
+  .lgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:#D4DDD8;border:0.5px solid #D4DDD8;margin-bottom:28px}
+  .lcell{padding:32px 20px;display:flex;flex-direction:column;align-items:center;gap:14px;background:var(--surface)}
+  .lcell.dk{background:var(--ink)}
+  .lcell.gr{background:var(--green)}
+  .clabel{font-size:10px;color:var(--muted);font-weight:400}
+  .lcell.dk .clabel{color:var(--muted2)}
+  .lcell.gr .clabel{color:rgba(0,0,0,0.4)}
+
+  /* ICON */
+  .irow{display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap;margin-bottom:28px}
+  .iwrap{display:flex;flex-direction:column;align-items:center;gap:7px}
+  .isize{font-size:10px;color:var(--muted)}
+  .aicon{border-radius:22.37%;background:var(--ink);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;flex-shrink:0}
+  .aicon::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 28% 28%,rgba(7,193,96,0.18) 0%,transparent 65%)}
+
+  /* PALETTE */
+  .pal{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:28px}
+  .sw{border-radius:8px;overflow:hidden;border:0.5px solid rgba(0,0,0,0.06)}
+  .sb{height:56px}
+  .si{padding:7px 9px;background:white}
+  .sn{font-size:11px;font-weight:500;color:var(--ink)}
+  .sh{font-size:10px;color:var(--muted);font-family:monospace}
+
+  /* COMPONENTS */
+  .cgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:28px}
+  .cbox{background:var(--ink2);border-radius:12px;padding:18px;border:0.5px solid var(--ink3)}
+  .cbox.lt{background:white;border-color:#DDE8E2}
+  .clb{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-bottom:14px}
+  .cbox.lt .clb{color:var(--muted)}
+
+  /* Chip */
+  .chip{background:var(--ink);border-radius:100px;padding:9px 14px;display:inline-flex;align-items:center;gap:9px;box-shadow:0 0 0 0.5px rgba(255,255,255,0.06)}
+  .cdot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0;animation:pulse 2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(.75)}}
+  .ctxt{font-size:13px;color:var(--text-on-dark);font-weight:400}
+  .csc{font-size:11px;color:var(--muted2);background:rgba(255,255,255,0.05);padding:2px 6px;border-radius:4px;font-family:monospace}
+
+  /* States */
+  .spill{display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:100px;font-size:12px;background:rgba(255,255,255,0.04);border:0.5px solid rgba(255,255,255,0.06);color:var(--text-on-dark)}
+  .sdot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+  .di{background:var(--muted2)}
+  .dw{background:var(--green);animation:pulse 1.5s ease-in-out infinite}
+  .dt{background:#5B9BD5;animation:pulse .8s ease-in-out infinite}
+  .da{background:var(--green);box-shadow:0 0 0 3px rgba(7,193,96,0.25);animation:pulse .4s ease-in-out infinite}
+
+  /* CMD */
+  .cmd{background:var(--ink);border-radius:11px;overflow:hidden;border:0.5px solid rgba(255,255,255,0.07)}
+  .csrch{display:flex;align-items:center;gap:9px;padding:12px 14px;border-bottom:0.5px solid rgba(255,255,255,0.06)}
+  .cinput{font-size:13px;color:var(--text-on-dark);font-family:'DM Sans',sans-serif;font-weight:300;flex:1}
+  .ccur{width:1.5px;height:14px;background:var(--green);display:inline-block;vertical-align:text-bottom;margin-left:1px;animation:blink 1.1s step-end infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+  .cres{padding:5px}
+  .citem{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:7px;font-size:13px;color:var(--text-on-dark)}
+  .citem.on{background:var(--green-dim)}
+  .cico{font-size:12px;opacity:.5;width:16px;text-align:center}
+  .cbdg{margin-left:auto;font-size:10px;color:var(--green);background:var(--green-dimmer);padding:2px 5px;border-radius:3px;font-weight:500;border:0.5px solid rgba(7,193,96,0.2)}
+
+  /* TRAY */
+  .tray{background:#E2E2E2;border-radius:8px;padding:5px 14px;display:flex;align-items:center;gap:10px;margin-bottom:28px}
+  .titem{display:flex;align-items:center;padding:3px 5px;border-radius:4px}
+  .titem.on{background:rgba(0,0,0,0.1)}
+
+  /* TYPE */
+  .tsamp{display:flex;flex-direction:column;gap:18px;margin-bottom:28px}
+  .trow{display:flex;align-items:baseline;gap:20px;border-bottom:0.5px solid #DDE8E2;padding-bottom:14px}
+  .tmeta{width:90px;flex-shrink:0;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+
+  /* MOTION */
+  .motion{background:white;border-radius:10px;padding:18px 22px;margin-bottom:28px;border:0.5px solid #DDE8E2}
+</style>
+
+<div class="root">
+
+<!-- HERO -->
+<div class="hero">
+  <!-- tight logo mark -->
+  <svg width="80" height="44" viewBox="0 0 80 44" fill="none">
+    <circle cx="20" cy="22" r="14" stroke="#E8F5EE" stroke-width="1.5"/>
+    <circle cx="60" cy="22" r="14" stroke="#E8F5EE" stroke-width="1.5"/>
+    <!-- V snug between the two circles -->
+    <path d="M34 15 L40 28 L46 15" stroke="#07C160" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </svg>
+  <div style="text-align:center">
+    <div style="font-family:'DM Serif Display',serif;font-size:68px;letter-spacing:-.02em;color:#E8F5EE;line-height:1">
+      o<span style="color:#07C160;font-style:italic">v</span>o
+    </div>
+    <div class="hero-tag" style="margin-top:10px">your silent co-pilot · always present, never in the way</div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<!-- LOGO VARIATIONS -->
+<p class="sec" style="margin-top:36px">Logomark · Variations</p>
+<div class="lgrid">
+  <div class="lcell">
+    <svg width="88" height="40" viewBox="0 0 88 40" fill="none">
+      <circle cx="18" cy="20" r="13" stroke="#191919" stroke-width="1.5"/>
+      <circle cx="70" cy="20" r="13" stroke="#191919" stroke-width="1.5"/>
+      <path d="M31 13 L44 27 L57 13" stroke="#07C160" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+    <span class="clabel">On light</span>
+  </div>
+  <div class="lcell dk">
+    <svg width="88" height="40" viewBox="0 0 88 40" fill="none">
+      <circle cx="18" cy="20" r="13" stroke="#E8F5EE" stroke-width="1.5"/>
+      <circle cx="70" cy="20" r="13" stroke="#E8F5EE" stroke-width="1.5"/>
+      <path d="M31 13 L44 27 L57 13" stroke="#07C160" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+    <span class="clabel">On dark</span>
+  </div>
+  <div class="lcell gr">
+    <svg width="88" height="40" viewBox="0 0 88 40" fill="none">
+      <circle cx="18" cy="20" r="13" stroke="rgba(0,0,0,0.5)" stroke-width="1.5"/>
+      <circle cx="70" cy="20" r="13" stroke="rgba(0,0,0,0.5)" stroke-width="1.5"/>
+      <path d="M31 13 L44 27 L57 13" stroke="rgba(0,0,0,0.7)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+    <span class="clabel">On green</span>
+  </div>
+</div>
+
+<!-- DESIGN LOGIC -->
+<div style="background:white;border-radius:10px;padding:18px 22px;margin-bottom:32px;display:flex;gap:28px;flex-wrap:wrap;border:0.5px solid #DDE8E2">
+  <div>
+    <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">V 的位置</div>
+    <div style="font-size:13px;color:var(--ink);line-height:1.7;max-width:320px">
+      V 嵌入两个圆圈之间的间隙，像鼻梁自然连接双眼。顶点与圆弧齐平，整体构成一张极简人脸。
+    </div>
+  </div>
+  <div>
+    <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">绿色的选择</div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:32px;height:32px;border-radius:50%;background:#07C160"></div>
+      <div>
+        <div style="font-size:13px;color:var(--ink);font-weight:500">#07C160</div>
+        <div style="font-size:11px;color:var(--muted);font-family:monospace">WeChat Green</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- APP ICON -->
+<p class="sec">App icon · Size system</p>
+<div class="irow">
+  <div class="iwrap">
+    <div class="aicon" style="width:80px;height:80px">
+      <svg width="50" height="50" viewBox="0 0 80 44" fill="none">
+        <circle cx="20" cy="22" r="14" stroke="#E8F5EE" stroke-width="1.5"/>
+        <circle cx="60" cy="22" r="14" stroke="#E8F5EE" stroke-width="1.5"/>
+        <path d="M34 15 L40 28 L46 15" stroke="#07C160" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+    </div>
+    <span class="isize">512px</span>
+  </div>
+  <div class="iwrap">
+    <div class="aicon" style="width:64px;height:64px">
+      <svg width="40" height="40" viewBox="0 0 80 44" fill="none">
+        <circle cx="20" cy="22" r="14" stroke="#E8F5EE" stroke-width="1.8"/>
+        <circle cx="60" cy="22" r="14" stroke="#E8F5EE" stroke-width="1.8"/>
+        <path d="M34 15 L40 28 L46 15" stroke="#07C160" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+    </div>
+    <span class="isize">256px</span>
+  </div>
+  <div class="iwrap">
+    <div class="aicon" style="width:48px;height:48px">
+      <svg width="30" height="30" viewBox="0 0 80 44" fill="none">
+        <circle cx="20" cy="22" r="14" stroke="#E8F5EE" stroke-width="2"/>
+        <circle cx="60" cy="22" r="14" stroke="#E8F5EE" stroke-width="2"/>
+        <path d="M34 15 L40 28 L46 15" stroke="#07C160" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+    </div>
+    <span class="isize">128px</span>
+  </div>
+  <div class="iwrap">
+    <div class="aicon" style="width:36px;height:36px">
+      <svg width="22" height="22" viewBox="0 0 80 44" fill="none">
+        <circle cx="20" cy="22" r="13" stroke="#E8F5EE" stroke-width="2.5"/>
+        <circle cx="60" cy="22" r="13" stroke="#E8F5EE" stroke-width="2.5"/>
+        <path d="M33 15 L40 27 L47 15" stroke="#07C160" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+    </div>
+    <span class="isize">64px</span>
+  </div>
+  <div class="iwrap">
+    <div class="aicon" style="width:28px;height:28px">
+      <svg width="17" height="17" viewBox="0 0 80 44" fill="none">
+        <circle cx="20" cy="22" r="12" stroke="#E8F5EE" stroke-width="3"/>
+        <circle cx="60" cy="22" r="12" stroke="#E8F5EE" stroke-width="3"/>
+        <path d="M32 16 L40 26 L48 16" stroke="#07C160" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+    </div>
+    <span class="isize">32px</span>
+  </div>
+</div>
+
+<!-- MENU BAR -->
+<p class="sec">Menu bar · Mac tray</p>
+<div class="tray">
+  <div style="display:flex;align-items:center;gap:2px">
+    <div class="titem" style="opacity:.35"><span style="font-size:12px">🔋</span></div>
+    <div class="titem" style="opacity:.35"><span style="font-size:12px">📶</span></div>
+    <div class="titem on">
+      <svg width="20" height="14" viewBox="0 0 80 44" fill="none">
+        <circle cx="20" cy="22" r="13" stroke="#1A1A1A" stroke-width="2.5"/>
+        <circle cx="60" cy="22" r="13" stroke="#1A1A1A" stroke-width="2.5"/>
+        <path d="M33 15 L40 27 L47 15" stroke="#07C160" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+    </div>
+  </div>
+  <div style="flex:1"></div>
+  <div style="font-size:12px;color:#555">ovo 正在观察</div>
+</div>
+
+<!-- COLOR PALETTE -->
+<p class="sec">Color system</p>
+<div class="pal">
+  <div class="sw">
+    <div class="sb" style="background:#07C160"></div>
+    <div class="si"><div class="sn">Green</div><div class="sh">#07C160</div></div>
+  </div>
+  <div class="sw">
+    <div class="sb" style="background:#059A4A"></div>
+    <div class="si"><div class="sn">Green Dark</div><div class="sh">#059A4A</div></div>
+  </div>
+  <div class="sw">
+    <div class="sb" style="background:#191919"></div>
+    <div class="si"><div class="sn">Ink</div><div class="sh">#191919</div></div>
+  </div>
+  <div class="sw">
+    <div class="sb" style="background:#E8F5EE;border-bottom:0.5px solid #DDE8E2"></div>
+    <div class="si"><div class="sn">Mint White</div><div class="sh">#E8F5EE</div></div>
+  </div>
+  <div class="sw">
+    <div class="sb" style="background:#F7FAF8;border-bottom:0.5px solid #DDE8E2"></div>
+    <div class="si"><div class="sn">Surface</div><div class="sh">#F7FAF8</div></div>
+  </div>
+</div>
+
+<!-- TYPOGRAPHY -->
+<p class="sec">Typography</p>
+<div class="tsamp">
+  <div class="trow">
+    <div class="tmeta">Display</div>
+    <div style="font-family:'DM Serif Display',serif;font-size:38px;line-height:1;color:var(--ink);letter-spacing:-.01em">ovo 看见了</div>
+  </div>
+  <div class="trow">
+    <div class="tmeta">Display · italic</div>
+    <div style="font-family:'DM Serif Display',serif;font-style:italic;font-size:30px;line-height:1.1;color:var(--green)">the hand you never feel</div>
+  </div>
+  <div class="trow" style="border:none;padding:0">
+    <div class="tmeta">Body</div>
+    <div style="font-size:14px;color:var(--ink);line-height:1.65;font-weight:300">不打断你，不拦截你。ovo 像空气一样存在，在你需要的时候已经做好了准备。</div>
+  </div>
+</div>
+
+<!-- UI COMPONENTS -->
+<p class="sec" style="margin-top:32px">UI components</p>
+<div class="cgrid">
+  <div class="cbox">
+    <div class="clb">预判提示</div>
+    <div style="margin-bottom:14px">
+      <div class="chip">
+        <div class="cdot"></div>
+        <span class="ctxt">帮你起草回复？</span>
+        <span class="csc">↵</span>
+      </div>
+    </div>
+    <div style="font-size:11px;color:#4A5450;line-height:1.5">悬浮在活动窗口上方<br>4秒内无响应自动消失</div>
+  </div>
+  <div class="cbox">
+    <div class="clb">存在状态</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+      <div class="spill"><div class="sdot di"></div>待机</div>
+      <div class="spill"><div class="sdot dw"></div>观察</div>
+      <div class="spill"><div class="sdot dt"></div>思考</div>
+      <div class="spill"><div class="sdot da"></div>执行</div>
+    </div>
+    <div style="font-size:11px;color:#4A5450;line-height:1.5">仅在菜单栏显示<br>绝不主动弹窗打断</div>
+  </div>
+  <div class="cbox" style="grid-column:span 2">
+    <div class="clb">命令面板 · ⌘K</div>
+    <div class="cmd">
+      <div class="csrch">
+        <svg width="14" height="14" viewBox="0 0 80 44" fill="none" style="opacity:.4">
+          <circle cx="20" cy="22" r="12" stroke="#E8F5EE" stroke-width="3"/>
+          <circle cx="60" cy="22" r="12" stroke="#E8F5EE" stroke-width="3"/>
+          <path d="M32 16 L40 26 L48 16" stroke="#07C160" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+        <div class="cinput">总结这个会议<div class="ccur"></div></div>
+      </div>
+      <div class="cres">
+        <div class="citem on">
+          <div class="cico">✦</div>总结当前窗口内容
+          <div class="cbdg">AI</div>
+        </div>
+        <div class="citem">
+          <div class="cico">✉</div>起草跟进邮件
+        </div>
+        <div class="citem">
+          <div class="cico">◷</div>从内容创建日历事件
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MOTION -->
+<p class="sec">Motion language</p>
+<div class="motion">
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px">
+    <div>
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">出现</div>
+      <div style="font-size:12px;color:var(--ink);font-family:monospace">fade + slide 4px↑<br>120ms ease-out</div>
+    </div>
+    <div>
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">思考脉冲</div>
+      <div style="font-size:12px;color:var(--ink);font-family:monospace">scale 1→.7→1<br>800ms ease ∞</div>
+    </div>
+    <div>
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">消失</div>
+      <div style="font-size:12px;color:var(--ink);font-family:monospace">fade + slide 4px↑<br>80ms ease-in</div>
+    </div>
+  </div>
+  <div style="border-top:0.5px solid #DDE8E2;padding-top:14px;font-size:13px;color:var(--ink);line-height:1.65">
+    不弹，不跳，不晃。ovo 的动效像呼吸一样——缓入，快出。让用户感受到的是<span style="color:var(--green);font-weight:500">存在感</span>，而不是打扰感。
+  </div>
+</div>
+
+</div>
+
+<!-- FOOTER -->
+<div style="background:var(--ink);padding:20px 40px;display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+  <div style="display:flex;align-items:center;gap:10px">
+    <svg width="28" height="16" viewBox="0 0 80 44" fill="none">
+      <circle cx="20" cy="22" r="12" stroke="#E8F5EE" stroke-width="2" opacity=".5"/>
+      <circle cx="60" cy="22" r="12" stroke="#E8F5EE" stroke-width="2" opacity=".5"/>
+      <path d="M32 16 L40 26 L48 16" stroke="#07C160" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+    <span style="font-size:12px;color:#4A5450">ovo · brand identity v2</span>
+  </div>
+  <span style="font-size:11px;color:#2E2E2E;font-family:monospace">DM Serif Display · DM Sans</span>
+</div>
+
+</div>

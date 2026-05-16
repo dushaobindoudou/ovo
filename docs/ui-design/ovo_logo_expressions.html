@@ -1,0 +1,333 @@
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Serif+Display:ital@1&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:transparent}
+
+#app{border-radius:16px;overflow:hidden;background:#111;user-select:none}
+
+/* Stage */
+.stage{
+  position:relative;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:48px 20px 36px;
+  min-height:280px;
+  background:#111;
+  overflow:hidden;
+}
+.stage::before{
+  content:'';position:absolute;inset:0;
+  background-image:radial-gradient(circle at 50% 60%, rgba(7,193,96,0.06) 0%, transparent 65%);
+  transition:opacity .6s;
+}
+[data-state="thinking"] .stage::before{background-image:radial-gradient(circle at 50% 60%, rgba(91,155,213,0.07) 0%, transparent 65%)}
+[data-state="executing"] .stage::before{background-image:radial-gradient(circle at 50% 50%, rgba(7,193,96,0.14) 0%, transparent 55%)}
+
+/* State info */
+.state-name{
+  font-family:'DM Serif Display',serif;font-style:italic;
+  font-size:15px;letter-spacing:.04em;
+  margin-top:28px;
+  transition:color .4s, opacity .3s;
+  color:#07C160;
+}
+.state-desc{
+  font-size:12px;color:#4A5A52;font-weight:300;
+  margin-top:5px;letter-spacing:.04em;
+  transition:opacity .3s;
+}
+
+/* Buttons */
+.controls{
+  display:flex;gap:0;border-top:0.5px solid #1E1E1E;
+}
+.btn{
+  flex:1;padding:14px 0;
+  background:none;border:none;
+  font-family:'DM Sans',sans-serif;font-size:13px;font-weight:400;
+  color:#4A5A52;cursor:pointer;
+  position:relative;
+  transition:color .2s,background .2s;
+}
+.btn::after{
+  content:'';position:absolute;bottom:0;left:25%;right:25%;height:2px;
+  background:#07C160;border-radius:1px;
+  transform:scaleX(0);transition:transform .25s ease;
+}
+.btn:hover{color:#7A9A86;background:rgba(255,255,255,.015)}
+.btn.active{color:#07C160}
+.btn.active::after{transform:scaleX(1)}
+.btn-dot{
+  display:inline-block;width:5px;height:5px;border-radius:50%;
+  background:currentColor;margin-right:6px;vertical-align:middle;
+  opacity:.5;
+}
+.btn.active .btn-dot{opacity:1}
+
+/* Auto toggle */
+.auto-btn{
+  position:absolute;top:14px;right:16px;
+  background:rgba(255,255,255,.04);border:0.5px solid rgba(255,255,255,.08);
+  color:#4A5A52;font-family:'DM Sans',sans-serif;font-size:11px;
+  padding:4px 10px;border-radius:100px;cursor:pointer;
+  transition:all .2s;
+}
+.auto-btn:hover{color:#7A9A86;background:rgba(255,255,255,.07)}
+.auto-btn.on{color:#07C160;border-color:rgba(7,193,96,.3);background:rgba(7,193,96,.07)}
+
+/* ==================
+   SVG ANIMATIONS
+   ================== */
+
+/* Base resets */
+.eye-l,.eye-r,.pupil-l,.pupil-r,.logo-g,.dot1,.dot2,.dot3,.ring-l,.ring-r,.vmark{
+  transform-box:fill-box;transform-origin:center;
+}
+
+/* FADE TRANSITION */
+.logo-g{transition:opacity .25s ease}
+.logo-g.fading{opacity:0}
+
+/* ---- IDLE ---- */
+[data-state="idle"] .logo-g{
+  animation:idle-breathe 3.8s ease-in-out infinite;
+}
+@keyframes idle-breathe{
+  0%,100%{opacity:.42;transform:scale(.97)}
+  50%{opacity:.6;transform:scale(1)}
+}
+[data-state="idle"] .eye-l{animation:blink-l 7s ease-in-out infinite}
+[data-state="idle"] .eye-r{animation:blink-r 7s ease-in-out infinite .18s}
+@keyframes blink-l{0%,78%,100%{transform:scaleY(1)}81%,86%{transform:scaleY(.05)}}
+@keyframes blink-r{0%,78%,100%{transform:scaleY(1)}81%,86%{transform:scaleY(.05)}}
+[data-state="idle"] .pupil-l,
+[data-state="idle"] .pupil-r{opacity:0}
+[data-state="idle"] .vmark{opacity:.22;stroke:#07C160}
+[data-state="idle"] .dot1,
+[data-state="idle"] .dot2,
+[data-state="idle"] .dot3,
+[data-state="idle"] .ring-l,
+[data-state="idle"] .ring-r{opacity:0}
+[data-state="idle"] .eye-l,
+[data-state="idle"] .eye-r{stroke:#8AA896;stroke-width:2}
+
+/* ---- WATCHING ---- */
+[data-state="watching"] .logo-g{
+  animation:head-scan 5s ease-in-out infinite;
+}
+@keyframes head-scan{
+  0%,100%{transform:rotate(-2.5deg)}
+  50%{transform:rotate(2.5deg)}
+}
+[data-state="watching"] .eye-l,
+[data-state="watching"] .eye-r{
+  stroke:#E8F5EE;stroke-width:2;
+  animation:eye-alert 2.5s ease-in-out infinite alternate;
+}
+@keyframes eye-alert{from{stroke-opacity:.7}to{stroke-opacity:1}}
+[data-state="watching"] .pupil-l{
+  opacity:1;
+  animation:scan-pupil 2.5s ease-in-out infinite;
+}
+[data-state="watching"] .pupil-r{
+  opacity:1;
+  animation:scan-pupil 2.5s ease-in-out infinite .05s;
+}
+@keyframes scan-pupil{
+  0%,100%{transform:translateX(-10px)}
+  50%{transform:translateX(10px)}
+}
+[data-state="watching"] .vmark{opacity:1;stroke:#07C160;stroke-dasharray:none}
+[data-state="watching"] .dot1,
+[data-state="watching"] .dot2,
+[data-state="watching"] .dot3,
+[data-state="watching"] .ring-l,
+[data-state="watching"] .ring-r{opacity:0}
+
+/* ---- THINKING ---- */
+[data-state="thinking"] .logo-g{opacity:1}
+[data-state="thinking"] .eye-l,
+[data-state="thinking"] .eye-r{
+  stroke:#B0C8E0;stroke-width:2;
+  animation:squint 3s ease-in-out infinite;
+}
+@keyframes squint{
+  0%,100%{transform:scaleY(.78)}
+  50%{transform:scaleY(.72)}
+}
+[data-state="thinking"] .pupil-l{
+  opacity:.9;fill:#5B9BD5;
+  animation:think-l 3.5s ease-in-out infinite;
+}
+[data-state="thinking"] .pupil-r{
+  opacity:.9;fill:#5B9BD5;
+  animation:think-r 3.5s ease-in-out infinite;
+}
+@keyframes think-l{
+  0%,100%{transform:translate(-5px,-10px)}
+  50%{transform:translate(3px,-12px)}
+}
+@keyframes think-r{
+  0%,100%{transform:translate(3px,-10px)}
+  50%{transform:translate(-5px,-12px)}
+}
+[data-state="thinking"] .vmark{
+  stroke:#5B9BD5;stroke-dasharray:6 4;
+  animation:dash-march .8s linear infinite;
+}
+@keyframes dash-march{to{stroke-dashoffset:-10}}
+[data-state="thinking"] .dot1{animation:think-dot 1s ease-in-out infinite}
+[data-state="thinking"] .dot2{animation:think-dot 1s ease-in-out infinite .22s}
+[data-state="thinking"] .dot3{animation:think-dot 1s ease-in-out infinite .44s}
+@keyframes think-dot{
+  0%,100%{transform:translateY(0);opacity:.25;fill:#5B9BD5}
+  45%{transform:translateY(-8px);opacity:1;fill:#5B9BD5}
+}
+[data-state="thinking"] .ring-l,
+[data-state="thinking"] .ring-r{opacity:0}
+
+/* ---- EXECUTING ---- */
+[data-state="executing"] .logo-g{
+  animation:exec-heartbeat .55s ease-in-out infinite;
+}
+@keyframes exec-heartbeat{
+  0%,100%{transform:scale(1)}
+  40%{transform:scale(1.055)}
+}
+[data-state="executing"] .eye-l,
+[data-state="executing"] .eye-r{
+  stroke:#07C160;stroke-width:2;
+  animation:exec-flash .55s ease-in-out infinite;
+}
+@keyframes exec-flash{
+  0%,100%{stroke-opacity:1;stroke-width:2}
+  50%{stroke-opacity:.5;stroke-width:1.2}
+}
+[data-state="executing"] .pupil-l,
+[data-state="executing"] .pupil-r{
+  fill:#07C160;opacity:1;
+  animation:exec-fill .55s ease-in-out infinite;
+}
+@keyframes exec-fill{
+  0%,100%{transform:scale(1)}
+  50%{transform:scale(2.8);opacity:.7}
+}
+[data-state="executing"] .vmark{
+  stroke:#07C160;
+  stroke-dasharray:62;
+  animation:v-shoot .45s linear infinite;
+}
+@keyframes v-shoot{
+  0%{stroke-dashoffset:62}
+  100%{stroke-dashoffset:0}
+}
+[data-state="executing"] .ring-l{
+  animation:ring-out .55s ease-out infinite;
+}
+[data-state="executing"] .ring-r{
+  animation:ring-out .55s ease-out infinite .1s;
+}
+@keyframes ring-out{
+  0%{r:28;stroke-opacity:.7;stroke-width:2}
+  100%{r:52;stroke-opacity:0;stroke-width:.5}
+}
+[data-state="executing"] .dot1,
+[data-state="executing"] .dot2,
+[data-state="executing"] .dot3{opacity:0}
+</style>
+
+<div id="app">
+  <div class="stage" id="stage" data-state="idle">
+    <button class="auto-btn" id="autoBtn" onclick="toggleAuto()">自动循环</button>
+
+    <svg id="logo" width="240" height="136" viewBox="0 0 160 88" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Expanding rings (executing) -->
+      <circle class="ring-l" cx="40" cy="44" r="28" fill="none" stroke="#07C160" opacity="0"/>
+      <circle class="ring-r" cx="120" cy="44" r="28" fill="none" stroke="#07C160" opacity="0"/>
+
+      <g class="logo-g">
+        <!-- Pupils -->
+        <circle class="pupil-l" cx="40" cy="44" r="8" fill="#07C160" opacity="0"/>
+        <circle class="pupil-r" cx="120" cy="44" r="8" fill="#07C160" opacity="0"/>
+
+        <!-- Eye circles -->
+        <circle class="eye-l" cx="40" cy="44" r="28" stroke="#E8F5EE" stroke-width="2" fill="none"/>
+        <circle class="eye-r" cx="120" cy="44" r="28" stroke="#E8F5EE" stroke-width="2" fill="none"/>
+
+        <!-- V bridge -->
+        <path class="vmark" d="M68 30 L80 56 L92 30"
+          stroke="#07C160" stroke-width="3.5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+
+        <!-- Thinking dots (above, between eyes) -->
+        <circle class="dot1" cx="64" cy="10" r="3.5" fill="#5B9BD5" opacity="0"/>
+        <circle class="dot2" cx="80" cy="10" r="3.5" fill="#5B9BD5" opacity="0"/>
+        <circle class="dot3" cx="96" cy="10" r="3.5" fill="#5B9BD5" opacity="0"/>
+      </g>
+    </svg>
+
+    <div class="state-name" id="stateName">待机</div>
+    <div class="state-desc" id="stateDesc">静静等待，如影随形</div>
+  </div>
+
+  <div class="controls">
+    <button class="btn active" id="btn-idle" onclick="setState('idle')">
+      <span class="btn-dot"></span>待机
+    </button>
+    <button class="btn" id="btn-watching" onclick="setState('watching')">
+      <span class="btn-dot"></span>观察
+    </button>
+    <button class="btn" id="btn-thinking" onclick="setState('thinking')">
+      <span class="btn-dot"></span>思考
+    </button>
+    <button class="btn" id="btn-executing" onclick="setState('executing')">
+      <span class="btn-dot"></span>执行
+    </button>
+  </div>
+</div>
+
+<script>
+const states = {
+  idle:      { name:'待机', desc:'静静等待，如影随形', color:'#8AA896' },
+  watching:  { name:'观察', desc:'感知屏幕，预判意图', color:'#07C160' },
+  thinking:  { name:'思考', desc:'正在推理，片刻即至', color:'#5B9BD5' },
+  executing: { name:'执行', desc:'行动中，手到擒来',  color:'#07C160' },
+};
+const order = ['idle','watching','thinking','executing'];
+
+let current = 'idle';
+let autoTimer = null;
+let autoOn = false;
+
+function setState(s){
+  if(s === current) return;
+  const g = document.querySelector('.logo-g');
+  g.classList.add('fading');
+  setTimeout(()=>{
+    current = s;
+    document.getElementById('stage').dataset.state = s;
+    document.getElementById('stateName').textContent = states[s].name;
+    document.getElementById('stateDesc').textContent  = states[s].desc;
+    document.getElementById('stateName').style.color  = states[s].color;
+    order.forEach(k=>{
+      document.getElementById('btn-'+k).classList.toggle('active', k===s);
+    });
+    g.classList.remove('fading');
+  }, 230);
+}
+
+function toggleAuto(){
+  autoOn = !autoOn;
+  const btn = document.getElementById('autoBtn');
+  btn.classList.toggle('on', autoOn);
+  btn.textContent = autoOn ? '停止循环' : '自动循环';
+  if(autoOn) runAuto(); else clearTimeout(autoTimer);
+}
+
+function runAuto(){
+  if(!autoOn) return;
+  const next = order[(order.indexOf(current)+1)%order.length];
+  setState(next);
+  autoTimer = setTimeout(runAuto, 2400);
+}
+</script>

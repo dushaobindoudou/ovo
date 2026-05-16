@@ -1,13 +1,59 @@
-import { useMemo, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { FloatingIcon } from "./components/FloatingIcon/FloatingIcon";
 import { SuggestionPanel } from "./components/SuggestionPanel/SuggestionPanel";
+import { SuggestionToastWindow } from "./components/SuggestionPanel/SuggestionToastWindow";
 import { ConsoleLayout } from "./components/Console/ConsoleLayout";
 import { useSettingsStore, getResolvedTheme } from "./stores/settingsStore";
 
+const isElectron = typeof window !== "undefined" && !!window.ovoAPI;
+
+function reportRendererError(message: string, context: Record<string, unknown>) {
+  if (!isElectron) return;
+  try {
+    void window.ovoAPI.logger.error("renderer", message, context);
+  } catch {
+    /* swallow */
+  }
+}
+
 function App() {
-  const hash = useMemo(() => window.location.hash || "#console", []);
+  const [hash, setHash] = useState(() => window.location.hash || "#console");
   const theme = useSettingsStore((s) => s.theme);
   const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    if (!isElectron) return;
+    const handleError = (event: ErrorEvent) => {
+      reportRendererError(event.message ?? "renderer error", {
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        stack: event.error instanceof Error ? event.error.stack : undefined
+      });
+    };
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
+      reportRendererError(`unhandledrejection: ${reason.message}`, {
+        stack: reason.stack
+      });
+    };
+    window.addEventListener("error", handleError);
+    window.addEventListener("unhandledrejection", handleRejection);
+    return () => {
+      window.removeEventListener("error", handleError);
+      window.removeEventListener("unhandledrejection", handleRejection);
+    };
+  }, []);
+
+  // 监听 hash 路由变化，确保不同窗口页面可切换
+  useEffect(() => {
+    const handleHashChange = () => {
+      setHash(window.location.hash || "#console");
+    };
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
 
   // 应用主题
   useEffect(() => {
@@ -35,6 +81,7 @@ function App() {
   }
 
   if (hash.startsWith("#float")) return <FloatingIcon />;
+  if (hash.startsWith("#toast")) return <SuggestionToastWindow />;
   if (hash.startsWith("#panel")) return <SuggestionPanel />;
   return <ConsoleLayout />;
 }

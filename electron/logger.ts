@@ -1,8 +1,84 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { KnowledgeGraphEngine } from "./knowledge-graph.js";
+import { loadElectron, getUserDataPath } from "./electron-loader.js";
 
 type SystemLevel = "info" | "warning" | "error";
+
+/**
+ * P1-E: 异步缓冲写日志——避免 appendFileSync 阻塞主进程。
+ * 每个日志文件维护一个内存 buffer，1 秒 flush 一次，或 buffer 超 64KB 立即 flush。
+ * 进程退出时同步 flush，避免丢日志。
+ */
+const LOG_FLUSH_INTERVAL_MS = 1000;
+const LOG_FLUSH_SIZE_THRESHOLD = 64 * 1024;
+const buffers = new Map<string, string[]>();
+const bufferSizes = new Map<string, number>();
+let flushTimer: NodeJS.Timeout | null = null;
+let exitHooksRegistered = false;
+
+function ensureFlushTimer() {
+  if (flushTimer) return;
+  flushTimer = setInterval(flushAll, LOG_FLUSH_INTERVAL_MS);
+  flushTimer.unref?.();
+  if (!exitHooksRegistered) {
+    exitHooksRegistered = true;
+    // 进程退出时同步 flush，避免丢日志
+    process.on("exit", flushAllSync);
+    process.on("SIGINT", () => { flushAllSync(); process.exit(); });
+    process.on("SIGTERM", () => { flushAllSync(); process.exit(); });
+  }
+}
+
+function flushFile(filePath: string) {
+  const lines = buffers.get(filePath);
+  if (!lines || lines.length === 0) return;
+  const data = lines.join("");
+  buffers.set(filePath, []);
+  bufferSizes.set(filePath, 0);
+  // 异步写——失败不阻断
+  fs.appendFile(filePath, data, "utf8", () => { /* swallow */ });
+}
+
+function flushAll() {
+  for (const filePath of buffers.keys()) flushFile(filePath);
+}
+
+function flushAllSync() {
+  for (const [filePath, lines] of buffers) {
+    if (lines.length === 0) continue;
+    try { fs.appendFileSync(filePath, lines.join(""), "utf8"); } catch { /* swallow */ }
+    buffers.set(filePath, []);
+    bufferSizes.set(filePath, 0);
+  }
+}
+
+export function bufferedAppend(filePath: string, line: string) {
+  ensureFlushTimer();
+  let arr = buffers.get(filePath);
+  if (!arr) {
+    arr = [];
+    buffers.set(filePath, arr);
+    bufferSizes.set(filePath, 0);
+  }
+  arr.push(line);
+  const size = (bufferSizes.get(filePath) ?? 0) + Buffer.byteLength(line, "utf8");
+  bufferSizes.set(filePath, size);
+  if (size >= LOG_FLUSH_SIZE_THRESHOLD) flushFile(filePath);
+}
+
+function broadcastLogStream(entry: { timestamp: number; level: SystemLevel; source: string; message: string; context: Record<string, unknown> }) {
+  const electron = loadElectron();
+  if (!electron?.BrowserWindow || typeof electron.BrowserWindow.getAllWindows !== "function") return;
+  for (const win of electron.BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed()) continue;
+    try {
+      win.webContents.send("log:stream", entry);
+    } catch {
+      /* ignore single-window failures */
+    }
+  }
+}
 
 export interface BusinessLogEntry {
   timestamp: number;
@@ -42,17 +118,7 @@ export class Logger {
   }
 
   private getDefaultUserDataPath() {
-    try {
-      // 尝试使用 Electron 的 app.getPath（仅在 Electron 环境中有效）
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const electron = require("electron");
-      if (electron?.app?.getPath) {
-        return electron.app.getPath("userData");
-      }
-    } catch {
-      // Electron 不可用，使用当前目录
-    }
-    return process.cwd();
+    return getUserDataPath();
   }
 
   /** 获取日志目录 */
@@ -71,18 +137,25 @@ export class Logger {
       context: context ?? {}
     };
 
-    // 写入文件
-    fs.appendFileSync(this.systemLogPath, JSON.stringify(entry) + "\n", "utf8");
+    // 写入文件——异步缓冲，避免阻塞主进程
+    bufferedAppend(this.systemLogPath, JSON.stringify(entry) + "\n");
 
     // 写入数据库（如果 KG 可用）
     if (this.kg) {
-      this.kg.addSystemLog({
-        level,
-        source,
-        message,
-        context
-      });
+      try {
+        this.kg.addSystemLog({
+          level,
+          source,
+          message,
+          context
+        });
+      } catch {
+        /* ignore DB error */
+      }
     }
+
+    // 推送给所有渲染窗口（StatusPanel.LiveLogStream 订阅）
+    broadcastLogStream(entry);
   }
 
   info(source: string, message: string, context?: Record<string, unknown>) {
@@ -100,8 +173,8 @@ export class Logger {
   // ==================== 业务日志 ====================
 
   logBusiness(entry: BusinessLogEntry) {
-    // 写入 JSONL 文件
-    fs.appendFileSync(this.businessLogPath, JSON.stringify(entry) + "\n", "utf8");
+    // 写入 JSONL 文件——异步缓冲
+    bufferedAppend(this.businessLogPath, JSON.stringify(entry) + "\n");
 
     // 写入数据库 business_logs（如果 KG 可用）
     if (this.kg && entry.pipelineId) {

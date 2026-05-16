@@ -1,7 +1,21 @@
-import { desktopCapturer } from "electron";
+import { desktopCapturer, systemPreferences } from "electron";
+
+export class ScreenshotPermissionError extends Error {
+  code = "PERMISSION_DENIED" as const;
+  constructor(public status: string) {
+    super(`屏幕录制权限未授权（status=${status}）`);
+    this.name = "ScreenshotPermissionError";
+  }
+}
 
 export class ScreenshotManager {
   async captureScreen(): Promise<Buffer> {
+    if (process.platform === "darwin") {
+      const status = systemPreferences.getMediaAccessStatus("screen");
+      if (status !== "granted") {
+        throw new ScreenshotPermissionError(status);
+      }
+    }
     try {
       const sources = await desktopCapturer.getSources({
         types: ["screen"],
@@ -15,6 +29,7 @@ export class ScreenshotManager {
       const buffer = thumbnail.toPNG();
       return buffer;
     } catch (error) {
+      if (error instanceof ScreenshotPermissionError) throw error;
       throw new Error(
         `屏幕截图失败，请检查"系统设置 -> 隐私与安全性 -> 屏幕录制"权限: ${
           error instanceof Error ? error.message : "unknown"

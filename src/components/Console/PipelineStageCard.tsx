@@ -14,8 +14,8 @@ export function PipelineStageCard({ stage, data, onRate }: PipelineStageCardProp
         {JSON.stringify(data, null, 2)}
       </pre>
       <div className="mt-3 flex gap-2">
-        <GlowButton onClick={() => onRate("good")}>👍</GlowButton>
-        <GlowButton onClick={() => onRate("bad")}>👎</GlowButton>
+        <GlowButton onClick={() => onRate("good")}>好评</GlowButton>
+        <GlowButton onClick={() => onRate("bad")}>差评</GlowButton>
       </div>
     </Card>
   );

@@ -10,7 +10,8 @@
     "onlyBuiltDependencies": [
       "electron",
       "esbuild",
-      "better-sqlite3"
+      "better-sqlite3",
+      "@cherrystudio/mac-system-ocr"
     ]
   },
   "scripts": {
@@ -25,23 +26,31 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "test:agents": "tsx scripts/smoke-agents.ts",
     "test:e2e:scenarios": "tsx scripts/e2e-log-scenarios.ts",
+    "test:flow": "pnpm build:electron && cross-env ELECTRON_RUN_AS_NODE=1 electron dist-electron/scripts/simulate-ui-flow.js",
     "verify:p0": "tsx scripts/verify-p0.ts",
     "verify:real30": "pnpm build:electron && cross-env NODE_ENV=production OVO_RUN_REAL30=1 OVO_REAL_LOG_SCENARIOS=30 electron dist-electron/electron/main.js",
     "pack:dir": "pnpm build && electron-builder --dir",
+    "pack:fresh": "pkill -f 'ovo.app/Contents/MacOS/ovo' 2>/dev/null; rm -rf out && pnpm pack:dir && open out/mac-arm64/ovo.app",
     "pack:mac": "pnpm build && electron-builder --mac dmg",
     "pack:all": "pnpm build && electron-builder -mwl",
-    "test:ci": "pnpm typecheck && pnpm lint && pnpm build && pnpm test:agents",
+    "smoke:postpack": "pnpm build:electron && cross-env ELECTRON_RUN_AS_NODE=1 electron dist-electron/scripts/postpack-smoke.js",
+    "gen:icons": "pnpm build:electron && electron dist-electron/scripts/generate-icons.js",
+    "test:ci": "pnpm typecheck && pnpm lint && pnpm build && pnpm test:agents && pnpm test:flow",
     "start": "electron dist-electron/electron/main.js"
   },
   "dependencies": {
+    "@cherrystudio/mac-system-ocr": "^0.2.7",
+    "@types/three": "^0.184.0",
     "better-sqlite3": "^12.9.0",
     "clsx": "^2.1.1",
     "electron-store": "^10.0.0",
     "execa": "^9.5.2",
     "lucide-react": "^0.518.0",
+    "msedge-tts": "^2.0.5",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tesseract.js": "^6.0.1",
+    "three": "^0.184.0",
     "zustand": "^5.0.6"
   },
   "devDependencies": {

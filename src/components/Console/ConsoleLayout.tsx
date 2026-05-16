@@ -1,62 +1,46 @@
 import { useCallback, useMemo, useState } from "react";
 import { ConsoleSidebar, type ConsolePage } from "./ConsoleSidebar";
-import { ConsoleListPanel } from "./ConsoleListPanel";
-import { StatusPanel } from "./StatusPanel";
-import { WindowPanel } from "./WindowPanel";
+import { OverviewPanel } from "./OverviewPanel";
 import { MemoryPanel } from "./MemoryPanel";
-import { PipelinePanel } from "./PipelinePanel";
+import { ProcessPanel } from "./ProcessPanel";
 import { SettingsPanel } from "./SettingsPanel";
-import { AgentTestPanel } from "./AgentTestPanel";
-import { ScreenshotTestPanel } from "./ScreenshotTestPanel";
-import { AboutPanel } from "./AboutPanel";
+import { PermissionGate } from "../shared/PermissionGate";
+import { BootstrapWizardGate } from "../Onboarding/BootstrapWizard";
+import { LiveStatusBar } from "./LiveStatusBar";
 
-const pageDefaultSelection: Record<ConsolePage, string | null> = {
-  status: "health",
-  window: null,
-  memory: null,
-  pipeline: null,
-  settings: "appearance",
-  agent: "coding",
-  screenshot: null,
-  about: "info",
-};
-
+// UI-S1: 终态 4 tab，全部砍中间列。
+// 内部 selectedId 仅用作 tab 内组件交互（如 KG 点击实体），不再走外层 list panel
 export function ConsoleLayout() {
-  const [page, setPage] = useState<ConsolePage>("status");
-  const [selectedId, setSelectedId] = useState<string | null>("health");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState<ConsolePage>("overview");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const handlePageChange = useCallback((newPage: ConsolePage) => {
     setPage(newPage);
-    setSelectedId(pageDefaultSelection[newPage]);
-    setSearchQuery("");
+    setSelectedId(null);
   }, []);
 
   const content = useMemo(() => {
-    const ctx = { page, selectedId, searchQuery };
-    if (page === "status") return <StatusPanel ctx={ctx} />;
-    if (page === "window") return <WindowPanel ctx={ctx} />;
-    if (page === "memory") return <MemoryPanel ctx={ctx} />;
-    if (page === "pipeline") return <PipelinePanel ctx={ctx} />;
-    if (page === "settings") return <SettingsPanel ctx={ctx} />;
-    if (page === "agent") return <AgentTestPanel ctx={ctx} />;
-    if (page === "screenshot") return <ScreenshotTestPanel />;
-    return <AboutPanel />;
-  }, [page, selectedId, searchQuery]);
+    const ctx = { page, selectedId, searchQuery: "" };
+    if (page === "overview") return <OverviewPanel ctx={ctx} />;
+    if (page === "process") return <ProcessPanel ctx={ctx} />;
+    if (page === "knowledge") return <MemoryPanel ctx={ctx} />;
+    return <SettingsPanel ctx={ctx} />;
+  }, [page, selectedId]);
+
+  // 知识库需要全宽（图谱大）；其他 tab 用 max-w-5xl 居中
+  const isFullWidth = page === "knowledge";
 
   return (
-    <div className="flex h-full w-full bg-[var(--bg-base)] text-[var(--text-primary)]">
-      <ConsoleSidebar page={page} onChange={handlePageChange} />
-      <ConsoleListPanel
-        page={page}
-        onSelect={setSelectedId}
-        selectedId={selectedId}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-      />
-      <main className="flex-1 overflow-auto bg-[var(--bg-content)] p-6">
-        <div className="mx-auto max-w-5xl">{content}</div>
-      </main>
+    <div className="flex h-full w-full flex-col bg-[var(--bg-base)] text-[var(--text-primary)]">
+      <PermissionGate />
+      <BootstrapWizardGate />
+      <LiveStatusBar />
+      <div className="flex min-h-0 flex-1">
+        <ConsoleSidebar page={page} onChange={handlePageChange} />
+        <main className={`flex-1 overflow-auto bg-[var(--bg-content)] ${isFullWidth ? "p-4" : "p-6"}`}>
+          <div className={isFullWidth ? "h-full" : "mx-auto max-w-5xl"}>{content}</div>
+        </main>
+      </div>
     </div>
   );
 }

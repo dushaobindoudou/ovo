@@ -1,11 +1,34 @@
 import type {
+  ActionType,
   AgentAction,
   AgentParsedPayload,
   AgentSchemaMeta,
   AgentSuggestion,
   ExtractedEntity,
-  ExtractedRelation
+  ExtractedRelation,
+  OvoOffer,
+  UserRoleHypothesis
 } from "./types.js";
+import { ACTION_TYPES } from "./types.js";
+
+const ACTION_TYPE_SET = new Set<string>(ACTION_TYPES);
+function normalizeActionType(raw: unknown): ActionType {
+  if (typeof raw === "string" && ACTION_TYPE_SET.has(raw)) return raw as ActionType;
+  return "log_note";
+}
+// P3: 任何会"抢"用户屏幕/键鼠/外发行为的动作都必须等用户确认
+// 用户原话：「会自动打开浏览器操作，这些肯定不行」「不要跟用户抢对电脑的操作」
+// 反例（不进 confirm）：log_note / copy_to_clipboard / summarize / search（纯 KG 内查）
+const REQUIRE_CONFIRM_TYPES = new Set<ActionType>([
+  "send_email",
+  "send_imessage",
+  "open_url",      // 浏览器跳转 = 抢屏
+  "search_web",    // 浏览器跳转 = 抢屏
+  "open_app",      // 切换前台应用
+  "set_reminder",  // 弹系统通知/提醒
+  "add_calendar",  // 改用户日历
+  "index_path"     // 文件系统遍历
+]);
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
@@ -47,6 +70,7 @@ function parseAction(item: unknown): AgentAction | null {
     if (!description) return null;
     return {
       id: toSlug(description, "action"),
+      type: "log_note",
       description,
       params: {},
       requireConfirm: false,
@@ -58,11 +82,13 @@ function parseAction(item: unknown): AgentAction | null {
     asString(item.description, "") || asString(item.content, "") || asString(item.type, "") || asString(item.name, "");
   const id = asString(item.id, "") || toSlug(description || asString(item.type, ""), "action");
   if (!id || !description) return null;
+  const type = normalizeActionType(item.type);
   return {
     id,
+    type,
     description,
     params: isRecord(item.params) ? item.params : {},
-    requireConfirm: Boolean(item.requireConfirm),
+    requireConfirm: REQUIRE_CONFIRM_TYPES.has(type) ? true : Boolean(item.requireConfirm),
     priority: parsePriority(item.priority)
   };
 }
@@ -128,6 +154,39 @@ function asStringArray(v: unknown): string[] {
   return v.filter((x): x is string => typeof x === "string");
 }
 
+function clamp01(v: unknown): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) return 0;
+  if (v <= 0) return 0;
+  if (v >= 1) return 1;
+  return v;
+}
+
+/** Q1: 解析 user_role_hypothesis */
+function parseUserRoleHypothesis(item: unknown): UserRoleHypothesis | undefined {
+  if (!isRecord(item)) return undefined;
+  const role = asString(item.role, "").trim().slice(0, 80);
+  if (!role) return undefined;
+  const evidence = asStringArray(item.evidence).map((e) => e.slice(0, 160)).slice(0, 6);
+  const confidence = clamp01(item.confidence);
+  return { role, evidence, confidence };
+}
+
+/** Q1: 解析单个 offer */
+const FREQUENCY_VALID = new Set(["daily", "weekly", "event-driven", "one-shot"]);
+function parseOffer(item: unknown): OvoOffer | null {
+  if (!isRecord(item)) return null;
+  const title = asString(item.title, "").trim().slice(0, 80);
+  const value_prop = asString(item.value_prop, "").trim().slice(0, 240);
+  if (!title || !value_prop) return null;
+  const id = asString(item.id, "") || toSlug(title, "offer");
+  const freqRaw = asString(item.frequency, "one-shot").trim().toLowerCase();
+  const frequency: OvoOffer["frequency"] = (FREQUENCY_VALID.has(freqRaw) ? freqRaw : "one-shot") as OvoOffer["frequency"];
+  const first_action_preview = asString(item.first_action_preview, "").trim().slice(0, 240) || undefined;
+  const needs_capability = asString(item.needs_capability, "").trim().slice(0, 60) || undefined;
+  const confidence = clamp01(item.confidence);
+  return { id, title, value_prop, first_action_preview, frequency, needs_capability, confidence };
+}
+
 function degradedFromText(raw: string, reason: string): { parsed: AgentParsedPayload; meta: AgentSchemaMeta } {
   return {
     parsed: {
@@ -184,6 +243,84 @@ function unwrapCliResultEnvelope(root: unknown): unknown {
   };
 }
 
+/**
+ * 检测一个对象是不是 prompt 里的 schema 占位（intent / prediction 都是字面值 "string"）。
+ * Hermes 在 quiet 模式下也偶尔会回显部分 prompt，必须跳过这类伪 JSON。
+ */
+function isPlaceholderSchema(obj: Record<string, unknown>): boolean {
+  const intent = obj.intent;
+  const prediction = obj.prediction;
+  if (intent === "string" && prediction === "string") return true;
+  // 仅含 schema 模板的"actions[0].id == 'string'"也是占位
+  if (Array.isArray(obj.actions) && obj.actions.length === 1 && isRecord(obj.actions[0])) {
+    const a = obj.actions[0] as Record<string, unknown>;
+    if (a.id === "string" && a.description === "string") return true;
+  }
+  return false;
+}
+
+/** 在任意文本里扫出所有顶层平衡 `{...}` 块（不进字符串、转义安全）。 */
+function findAllJsonObjects(text: string): string[] {
+  const out: string[] = [];
+  const t = text;
+  let i = 0;
+  while (i < t.length) {
+    const start = t.indexOf("{", i);
+    if (start === -1) break;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let found = -1;
+    for (let j = start; j < t.length; j += 1) {
+      const ch = t[j];
+      if (escape) { escape = false; continue; }
+      if (ch === "\\") { escape = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === "{") depth += 1;
+      else if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) { found = j; break; }
+      }
+    }
+    if (found === -1) break;
+    out.push(t.slice(start, found + 1));
+    i = found + 1;
+  }
+  return out;
+}
+
+/**
+ * 从原文里挑出最像"真实响应"的 JSON 对象：
+ *   1) 优先选不是占位 schema 的；
+ *   2) 同样真实的就选最后一个（hermes 输出末尾通常是最终回答）；
+ *   3) 都是占位的，返回 null（让上层走 degraded）。
+ */
+function extractFirstJsonObject(text: string): Record<string, unknown> | null {
+  const t = text.trim();
+  if (!t) return null;
+  // 整体先试
+  try {
+    const v = JSON.parse(t);
+    if (isRecord(v) && !isPlaceholderSchema(v)) return v;
+  } catch {
+    /* fallthrough */
+  }
+  const candidates = findAllJsonObjects(t);
+  let best: Record<string, unknown> | null = null;
+  for (const slice of candidates) {
+    try {
+      const v = JSON.parse(slice);
+      if (!isRecord(v)) continue;
+      if (isPlaceholderSchema(v)) continue;
+      best = v; // 最后一个非占位优先
+    } catch {
+      /* skip */
+    }
+  }
+  return best;
+}
+
 /** 将任意 LLM 输出规范化为可安全下游消费的 AgentParsedPayload */
 export function normalizeAgentPayload(raw: string): { parsed: AgentParsedPayload; meta: AgentSchemaMeta } {
   const meta: AgentSchemaMeta = { repaired: false, degraded: false, notes: [] };
@@ -191,7 +328,12 @@ export function normalizeAgentPayload(raw: string): { parsed: AgentParsedPayload
   try {
     obj = JSON.parse(raw);
   } catch {
-    return degradedFromText(raw, "JSON.parse 失败");
+    // 1) 试 markdown 围栏；2) 试扫描第一个完整 `{...}`
+    const fenced = tryParseJsonObjectFromText(raw);
+    const fallback = fenced ?? extractFirstJsonObject(raw);
+    if (!fallback) return degradedFromText(raw, "JSON.parse 失败");
+    obj = fallback;
+    meta.notes.push(fenced ? "解析 markdown 围栏 JSON" : "扫描首个 JSON 对象");
   }
 
   obj = unwrapCliResultEnvelope(obj);
@@ -205,6 +347,13 @@ export function normalizeAgentPayload(raw: string): { parsed: AgentParsedPayload
   const entitiesRaw = obj.entities;
   const relationshipsRaw = obj.relationships;
 
+  const summaryRaw = asString(obj.summary, "").trim().slice(0, 60);
+  const riskValid = new Set(["none", "low", "medium", "high", "critical"]);
+  const riskRaw = asString(obj.risk, "").trim().toLowerCase();
+  const offersRaw = obj.offers;
+  const offers = Array.isArray(offersRaw)
+    ? offersRaw.map(parseOffer).filter((x): x is OvoOffer => x !== null).slice(0, 3)
+    : undefined;
   const parsed: AgentParsedPayload = {
     intent: asString(obj.intent, "unknown"),
     prediction: asString(obj.prediction, ""),
@@ -218,7 +367,12 @@ export function normalizeAgentPayload(raw: string): { parsed: AgentParsedPayload
       : [],
     relationships: Array.isArray(relationshipsRaw)
       ? relationshipsRaw.map(parseRelation).filter((x): x is ExtractedRelation => x !== null)
-      : []
+      : [],
+    summary: summaryRaw || undefined,
+    risk: riskValid.has(riskRaw) ? (riskRaw as AgentParsedPayload["risk"]) : undefined,
+    user_role_hypothesis: parseUserRoleHypothesis(obj.user_role_hypothesis),
+    latent_intent: asString(obj.latent_intent, "").trim().slice(0, 240) || undefined,
+    offers: offers && offers.length > 0 ? offers : undefined
   };
 
   const missingCore = !parsed.intent || parsed.intent === "unknown";
@@ -226,6 +380,19 @@ export function normalizeAgentPayload(raw: string): { parsed: AgentParsedPayload
     meta.degraded = true;
     meta.notes.push("缺少 intent 且无可展示字段，已填充原始片段到 content");
     parsed.content = [raw.slice(0, 4000)];
+  }
+
+  // 强制 actions ≥ 1：LLM 没出动作时本地兜底一条 log_note
+  if (parsed.actions.length === 0) {
+    parsed.actions.push({
+      id: `log_${Date.now().toString(36)}`,
+      type: "log_note",
+      description: "归档当前屏幕活动到知识库（自动兜底）",
+      params: { auto: true, reason: "llm_returned_empty_actions" },
+      requireConfirm: false,
+      priority: 5
+    });
+    meta.notes.push("autofill: log_note");
   }
 
   return { parsed, meta };

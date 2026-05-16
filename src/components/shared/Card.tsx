@@ -10,7 +10,7 @@ export function Card({ title, className, children }: CardProps) {
   return (
     <section
       className={clsx(
-        "rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[var(--shadow-sm)] transition-all duration-200 hover:shadow-[var(--shadow-md)]",
+        "rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[var(--shadow-sm)]",
         className
       )}
     >

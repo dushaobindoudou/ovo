@@ -1,25 +1,33 @@
 import { useCallback } from "react";
 import { useRuntimeStore } from "../stores/runtimeStore";
 
+const isElectron = typeof window !== "undefined" && !!window.ovoAPI;
+
 export function useOCR() {
   const { setCapturing } = useRuntimeStore();
 
   const initialize = useCallback(async () => {
-    await window.nudgeAPI.ocr.initialize();
+    if (!isElectron) return;
+    await window.ovoAPI.ocr.initialize();
   }, []);
 
-  const recognize = useCallback(async () => window.nudgeAPI.ocr.recognize({}), []);
+  const recognize = useCallback(async () => {
+    if (!isElectron) return null;
+    return window.ovoAPI.ocr.recognize({});
+  }, []);
 
   const startCapture = useCallback(
     async (intervalSeconds: number) => {
-      await window.nudgeAPI.capture.start({ intervalSeconds });
+      if (!isElectron) return;
+      await window.ovoAPI.capture.start({ intervalSeconds });
       setCapturing(true);
     },
     [setCapturing]
   );
 
   const stopCapture = useCallback(async () => {
-    await window.nudgeAPI.capture.stop();
+    if (!isElectron) return;
+    await window.ovoAPI.capture.stop();
     setCapturing(false);
   }, [setCapturing]);
 

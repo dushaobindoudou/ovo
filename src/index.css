@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* WeChat Mac 风格设计系统 - 支持双主题 */
+/* macOS 原生风格设计系统——系统字体 + systemBlue 主色 + 克制留白 */
 :root {
   /* 主背景 - 浅灰/白色 */
   --bg-base: #f5f5f5;
@@ -16,46 +16,46 @@
   --text-secondary: #666666;
   --text-muted: #999999;
 
-  /* 主题色 - 微信绿 */
-  --text-accent: #07c160;
-  --accent: #07c160;
-  --accent-dim: rgba(7, 193, 96, 0.1);
-  --accent-glow: rgba(7, 193, 96, 0.2);
-  --accent-hover: #06ad56;
+  /* 主题色 - macOS systemBlue（避免与微信品牌冲突） */
+  --text-accent: #007aff;
+  --accent: #007aff;
+  --accent-dim: rgba(0, 122, 255, 0.1);
+  --accent-glow: rgba(0, 122, 255, 0.2);
+  --accent-hover: #0066d6;
 
   /* 辅助色 */
-  --secondary: #4a90d9;
+  --secondary: #5856d6;
 
-  /* 状态色 - 来自品牌设计 */
-  --state-idle: #8AA896;
-  --state-watching: #07C160;
-  --state-thinking: #5B9BD5;
-  --state-executing: #07C160;
+  /* 状态色 - 中性化（不再绑定微信绿） */
+  --state-idle: #8e8e93;
+  --state-watching: #007aff;
+  --state-thinking: #5856d6;
+  --state-executing: #34c759;
 
   /* 品牌色扩展 */
-  --accent-dark: #059A4A;
+  --accent-dark: #0051a8;
   --ink: #191919;
-  --mint-white: #E8F5EE;
-  --surface: #F7FAF8;
+  --mint-white: #E8F1FB;
+  --surface: #F7FAFC;
 
   /* 边框 */
   --border: #e5e5e5;
   --border-light: #f0f0f0;
-  --border-active: rgba(7, 193, 96, 0.4);
+  --border-active: rgba(0, 122, 255, 0.4);
 
   /* 状态色 */
-  --success: #07c160;
-  --warning: #faad14;
-  --danger: #ff4d4f;
-  --info: #1890ff;
+  --success: #34c759;
+  --warning: #ff9500;
+  --danger: #ff3b30;
+  --info: #007aff;
 
-  /* 阴影 */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  /* 阴影 - 双层柔和阴影，更接近 macOS */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06), 0 0 1px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.1), 0 16px 32px rgba(0, 0, 0, 0.1);
 
   /* 焦点环 */
-  --focus-ring: 0 0 0 2px rgba(7, 193, 96, 0.4);
+  --focus-ring: 0 0 0 2px rgba(0, 122, 255, 0.4);
 }
 
 /* 暗黑主题 - 优化对比度 */
@@ -73,19 +73,26 @@
   --text-secondary: #b0b0b0;
   --text-muted: #808080;
 
+  /* 主题色 - dark mode systemBlue */
+  --text-accent: #0a84ff;
+  --accent: #0a84ff;
+  --accent-dim: rgba(10, 132, 255, 0.15);
+  --accent-glow: rgba(10, 132, 255, 0.25);
+  --accent-hover: #409cff;
+
   /* 边框 */
   --border: #3d3d3d;
   --border-light: #2d2d2d;
-  --border-active: rgba(7, 193, 96, 0.4);
+  --border-active: rgba(10, 132, 255, 0.4);
 
   /* 状态色 - 深色模式 */
-  --state-idle: #6a8a76;
-  --state-watching: #07C160;
-  --state-thinking: #4a8ac4;
-  --state-executing: #07C160;
+  --state-idle: #6e6e73;
+  --state-watching: #0a84ff;
+  --state-thinking: #5e5ce6;
+  --state-executing: #30d158;
 
   /* 品牌色扩展 - 深色模式 */
-  --ink: #E8F5EE;
+  --ink: #E8F1FB;
   --mint-white: #1a1a1a;
   --surface: #242424;
 
@@ -95,7 +102,7 @@
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
 
   /* 焦点环 */
-  --focus-ring: 0 0 0 2px rgba(7, 193, 96, 0.5);
+  --focus-ring: 0 0 0 2px rgba(10, 132, 255, 0.5);
 }
 
 html,
@@ -107,9 +114,12 @@ body,
   height: 100%;
   background: var(--bg-base);
   color: var(--text-primary);
-  font-family: "PingFang SC", "SF Pro Display", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  /* 微信规范：行高 1.5 */
-  line-height: 1.5;
+  /* 系统字体栈：优先 macOS 原生 SF Pro，中文走苹方，避免远程加载阻塞启动 */
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", system-ui, sans-serif;
+  /* macOS 系统正文行高 */
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 * {
@@ -129,9 +139,19 @@ button {
   -webkit-user-select: none;
 }
 
-button:active {
-  transform: scale(0.98);
+/* 列表按钮禁用点击动画和焦点环 */
+button.list-item-btn {
+  -webkit-tap-highlight-color: transparent;
 }
+button.list-item-btn:active {
+  transform: none;
+}
+button.list-item-btn:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* macOS 原生不会缩放按钮——去掉 iOS 风的 scale 反馈 */
 
 button:disabled {
   cursor: not-allowed;
@@ -169,4 +189,19 @@ a:hover {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
+}
+
+@keyframes suggestion-toast-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.suggestion-toast-enter {
+  animation: suggestion-toast-enter 160ms ease-out;
 }

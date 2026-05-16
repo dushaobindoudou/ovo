@@ -15,14 +15,12 @@
  */
 import path from "node:path";
 import { KnowledgeGraphEngine } from "../electron/knowledge-graph.js";
-import { Logger, type BusinessLogEntry } from "../electron/logger.js";
+import { Logger } from "../electron/logger.js";
 import { EventProcessor } from "../electron/event-processor.js";
 import { buildIntentPrompt } from "../electron/prompt-engine.js";
 import { AgentBridge } from "../electron/agent-bridge.js";
 import { SuggestionEngine } from "../electron/suggestion-engine.js";
 import { ActionExecutor } from "../electron/action-executor.js";
-import { normalizeAgentPayload } from "../electron/agent-response-normalize.js";
-import type { WindowBuffer, AgentParsedPayload } from "../electron/types.js";
 
 // 模拟 3 个用户常见场景
 const SCENARIOS = [

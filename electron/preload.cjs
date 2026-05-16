@@ -7,11 +7,17 @@ const ALLOWED_CHANNELS = new Set([
   "windows:set-monitored",
   "windows:get-monitored",
   "windows:get-capture-stats",
+  "windows:get-thumbnails",
   "capture:start",
   "capture:stop",
   "capture:set-interval",
+  "capture:set-bg-monitoring",
+  "capture:get-bg-monitoring",
+  "capture:set-agent-interval",
+  "capture:get-agent-interval",
   "capture:get-buffers",
   "capture:take-screenshot",
+  "capture:clear-cache",
   "health:get-latest",
   "health:get-config",
   "health:set-config",
@@ -26,9 +32,27 @@ const ALLOWED_CHANNELS = new Set([
   "kg:get-entity",
   "kg:get-events",
   "kg:get-stats",
+  "kg:get-graph",
+  "kg:trigger-summarize",
   "kg:analyze-personality",
   "kg:clear",
   "kg:export",
+  "kg:set-pinned",
+  "kg:delete-entity",
+  "kg:get-entity-detail",
+  "kg:run-gc",
+  "prompt-eval:list",
+  "prompt-eval:set-status",
+  "prompt-eval:run-now",
+  "kg:weekly-acceptance",
+  "process:timeline",
+  "process:pipelines",
+  "history:list-actions",
+  "privacy:get-blacklist",
+  "privacy:set-blacklist",
+  "privacy:pause",
+  "privacy:resume",
+  "privacy:get-pause-state",
   "suggestion:feedback",
   "action:confirm",
   "action:cancel",
@@ -43,10 +67,33 @@ const ALLOWED_CHANNELS = new Set([
   "business-log:update",
   "tts:speak",
   "app:get-version",
+  "app:runtime-check",
   "app:open-console",
+  "app:toggle-console",
   // 错误日志
   "error-log:get-recent",
   "error-log:get-count",
+  // 调度器与告警
+  "scheduler:get-status",
+  "floating:get-state",
+  "floating:clear-unread",
+  "floating:drag-start",
+  "floating:drag-move",
+  "floating:drag-end",
+  "floating:set-expanded",
+  "toast:set-verbosity",
+  "alert:get-recent",
+  // 用户偏好
+  "prefs:get-personality-overrides",
+  "prefs:set-personality-overrides",
+  "prefs:get-bootstrap-status",
+  "prefs:save-bootstrap",
+  // 调试
+  "dev:run-sample-pipeline",
+  // 权限检测
+  "permissions:get-status",
+  "permissions:open-settings",
+  "permissions:request-screen",
   // 日志系统
   "logger:info",
   "logger:warning",
@@ -62,7 +109,12 @@ const ALLOWED_EVENT_CHANNELS = new Set([
   "pipeline:update",
   "suggestion:new",
   "action:pending",
-  "action:result"
+  "action:result",
+  "alert:new",
+  "permissions:status",
+  "log:stream",
+  "floating:state-update",
+  "agent:insights"
 ]);
 
 const invokeChecked = (channel, payload) => {
@@ -73,7 +125,7 @@ const invokeChecked = (channel, payload) => {
   return ipcRenderer.invoke(channel, payload);
 };
 
-contextBridge.exposeInMainWorld("nudgeAPI", {
+contextBridge.exposeInMainWorld("ovoAPI", {
   invoke: (channel, payload) => invokeChecked(channel, payload),
   on: (channel, listener) => {
     if (!ALLOWED_EVENT_CHANNELS.has(channel)) {
@@ -89,14 +141,20 @@ contextBridge.exposeInMainWorld("nudgeAPI", {
     getActive: () => ipcRenderer.invoke("windows:get-active"),
     setMonitored: (windowKeys) => ipcRenderer.invoke("windows:set-monitored", windowKeys),
     getMonitored: () => ipcRenderer.invoke("windows:get-monitored"),
-    getCaptureStats: () => ipcRenderer.invoke("windows:get-capture-stats")
+    getCaptureStats: () => ipcRenderer.invoke("windows:get-capture-stats"),
+    getThumbnails: () => ipcRenderer.invoke("windows:get-thumbnails")
   },
   capture: {
     start: (payload) => ipcRenderer.invoke("capture:start", payload),
     stop: () => ipcRenderer.invoke("capture:stop"),
     setInterval: (seconds) => ipcRenderer.invoke("capture:set-interval", seconds),
+    setBackgroundMonitoring: (enabled) => ipcRenderer.invoke("capture:set-bg-monitoring", enabled),
+    getBackgroundMonitoring: () => ipcRenderer.invoke("capture:get-bg-monitoring"),
+    setAgentInterval: (seconds) => ipcRenderer.invoke("capture:set-agent-interval", seconds),
+    getAgentInterval: () => ipcRenderer.invoke("capture:get-agent-interval"),
     getBuffers: () => ipcRenderer.invoke("capture:get-buffers"),
-    takeScreenshot: () => ipcRenderer.invoke("capture:take-screenshot")
+    takeScreenshot: () => ipcRenderer.invoke("capture:take-screenshot"),
+    clearCache: () => ipcRenderer.invoke("capture:clear-cache")
   },
   health: {
     getLatest: () => ipcRenderer.invoke("health:get-latest"),
@@ -117,11 +175,39 @@ contextBridge.exposeInMainWorld("nudgeAPI", {
   kg: {
     searchEntities: (payload) => ipcRenderer.invoke("kg:search-entities", payload),
     getEntity: (id) => ipcRenderer.invoke("kg:get-entity", id),
-    getEvents: (limit) => ipcRenderer.invoke("kg:get-events", limit),
+    getEvents: (payload) => ipcRenderer.invoke("kg:get-events", payload),
     getStats: () => ipcRenderer.invoke("kg:get-stats"),
+    getGraph: (limit) => ipcRenderer.invoke("kg:get-graph", limit),
+    triggerSummarize: () => ipcRenderer.invoke("kg:trigger-summarize"),
     analyzePersonality: () => ipcRenderer.invoke("kg:analyze-personality"),
     clear: () => ipcRenderer.invoke("kg:clear"),
-    export: () => ipcRenderer.invoke("kg:export")
+    export: () => ipcRenderer.invoke("kg:export"),
+    setPinned: (payload) => ipcRenderer.invoke("kg:set-pinned", payload),
+    deleteEntity: (entityId) => ipcRenderer.invoke("kg:delete-entity", entityId),
+    getEntityDetail: (entityId) => ipcRenderer.invoke("kg:get-entity-detail", entityId),
+    runGC: () => ipcRenderer.invoke("kg:run-gc")
+  },
+  promptEval: {
+    list: (limit) => ipcRenderer.invoke("prompt-eval:list", limit),
+    setStatus: (payload) => ipcRenderer.invoke("prompt-eval:set-status", payload),
+    runNow: () => ipcRenderer.invoke("prompt-eval:run-now")
+  },
+  insights: {
+    weeklyAcceptance: () => ipcRenderer.invoke("kg:weekly-acceptance")
+  },
+  process: {
+    getTimeline: (limit) => ipcRenderer.invoke("process:timeline", limit),
+    getPipelines: (limit) => ipcRenderer.invoke("process:pipelines", limit)
+  },
+  history: {
+    listActions: (limit) => ipcRenderer.invoke("history:list-actions", limit)
+  },
+  privacy: {
+    getBlacklist: () => ipcRenderer.invoke("privacy:get-blacklist"),
+    setBlacklist: (apps) => ipcRenderer.invoke("privacy:set-blacklist", apps),
+    pause: (minutes) => ipcRenderer.invoke("privacy:pause", minutes),
+    resume: () => ipcRenderer.invoke("privacy:resume"),
+    getPauseState: () => ipcRenderer.invoke("privacy:get-pause-state")
   },
   suggestion: {
     feedback: (payload) => ipcRenderer.invoke("suggestion:feedback", payload)
@@ -156,10 +242,43 @@ contextBridge.exposeInMainWorld("nudgeAPI", {
   },
   app: {
     getVersion: () => ipcRenderer.invoke("app:get-version"),
-    openConsole: () => ipcRenderer.invoke("app:open-console")
+    runtimeCheck: () => ipcRenderer.invoke("app:runtime-check"),
+    openConsole: () => ipcRenderer.invoke("app:open-console"),
+    toggleConsole: () => ipcRenderer.invoke("app:toggle-console")
   },
   errorLog: {
     getRecent: (limit) => ipcRenderer.invoke("error-log:get-recent", limit),
     getCount: () => ipcRenderer.invoke("error-log:get-count")
+  },
+  permissions: {
+    getStatus: () => ipcRenderer.invoke("permissions:get-status"),
+    openSettings: (payload) => ipcRenderer.invoke("permissions:open-settings", payload),
+    requestScreen: () => ipcRenderer.invoke("permissions:request-screen")
+  },
+  scheduler: {
+    getStatus: () => ipcRenderer.invoke("scheduler:get-status")
+  },
+  floating: {
+    getState: () => ipcRenderer.invoke("floating:get-state"),
+    clearUnread: () => ipcRenderer.invoke("floating:clear-unread"),
+    dragStart: () => ipcRenderer.invoke("floating:drag-start"),
+    dragMove: (payload) => ipcRenderer.invoke("floating:drag-move", payload),
+    dragEnd: () => ipcRenderer.invoke("floating:drag-end"),
+    setExpanded: (expanded) => ipcRenderer.invoke("floating:set-expanded", expanded)
+  },
+  toast: {
+    setVerbosity: (v) => ipcRenderer.invoke("toast:set-verbosity", v)
+  },
+  alerts: {
+    getRecent: (limit) => ipcRenderer.invoke("alert:get-recent", limit)
+  },
+  prefs: {
+    getPersonalityOverrides: () => ipcRenderer.invoke("prefs:get-personality-overrides"),
+    setPersonalityOverrides: (overrides) => ipcRenderer.invoke("prefs:set-personality-overrides", overrides),
+    getBootstrapStatus: () => ipcRenderer.invoke("prefs:get-bootstrap-status"),
+    saveBootstrap: (payload) => ipcRenderer.invoke("prefs:save-bootstrap", payload)
+  },
+  dev: {
+    runSamplePipeline: () => ipcRenderer.invoke("dev:run-sample-pipeline")
   }
 });

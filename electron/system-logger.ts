@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { app, BrowserWindow } from "electron";
 import { KnowledgeGraphEngine } from "./knowledge-graph.js";
+import { bufferedAppend } from "./logger.js";
 
 type SystemLevel = "info" | "warning" | "error";
 
@@ -23,7 +24,8 @@ export class SystemLogger {
       message,
       context: context ?? {}
     };
-    fs.appendFileSync(this.logFilePath, `${JSON.stringify(entry)}\n`, "utf8");
+    // P1-E: 异步缓冲写，避免阻塞主进程
+    bufferedAppend(this.logFilePath, `${JSON.stringify(entry)}\n`);
     this.kg.addSystemLog({
       level,
       source,

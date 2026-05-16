@@ -11,5 +11,5 @@
     "esModuleInterop": true,
     "resolveJsonModule": true
   },
-  "include": ["electron/**/*.ts"]
+  "include": ["electron/**/*.ts", "scripts/simulate-ui-flow.ts", "scripts/postpack-smoke.ts", "scripts/generate-icons.ts"]
 }

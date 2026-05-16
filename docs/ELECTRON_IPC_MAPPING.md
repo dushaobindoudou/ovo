@@ -1,6 +1,6 @@
 # Electron IPC 功能映射（前后端一一对应）
 
-更新时间：2026-04-16
+更新时间：2026-04-25
 
 本文件作为 Electron 前后端对齐的单一事实源，覆盖：
 - 前端功能入口（`src/` 组件与 hooks）
@@ -35,24 +35,32 @@
 ## 2) Channel 盘点（治理状态）
 
 ### used
-`windows:get-all`, `windows:get-active`, `windows:set-monitored`, `windows:get-capture-stats`,  
-`capture:start`, `capture:stop`, `capture:get-buffers`, `capture:take-screenshot`,  
+`windows:get-all`, `windows:get-active`, `windows:set-monitored`, `windows:get-monitored`, `windows:get-capture-stats`,  
+`capture:start`, `capture:stop`, `capture:set-interval`, `capture:get-buffers`, `capture:take-screenshot`,  
 `health:get-latest`, `health:get-config`, `health:set-config`, `health:update`,  
 `ocr:initialize`, `ocr:recognize`,  
-`agent:detect-backends`, `agent:set-backend`, `agent:set-api-config`, `agent:test-scenario`,  
-`kg:search-entities`, `kg:get-entity`, `kg:get-stats`, `kg:analyze-personality`,  
+`agent:detect-backends`, `agent:set-backend`, `agent:set-api-config`, `agent:status`, `agent:test-scenario`,  
+`kg:search-entities`, `kg:get-entity`, `kg:get-events`, `kg:get-stats`, `kg:analyze-personality`, `kg:clear`, `kg:export`,  
 `suggestion:new`, `suggestion:feedback`,  
 `action:pending`, `action:result`, `action:confirm`, `action:cancel`,  
-`pipeline:get-recent`, `pipeline:rate-stage`, `pipeline:rate-overall`, `pipeline:clear`, `pipeline:new`, `pipeline:update`,  
-`app:get-version`
+`pipeline:get-recent`, `pipeline:get-detail`, `pipeline:rate-stage`, `pipeline:rate-overall`, `pipeline:clear`, `pipeline:new`, `pipeline:update`,  
+`system-log:list`, `business-log:list`, `business-log:create`, `business-log:update`,  
+`tts:speak`,  
+`scheduler:get-status`, `alert:get-recent`, `alert:new`,  
+`permissions:get-status`, `permissions:open-settings`, `permissions:request-screen`, `permissions:status`,  
+`prefs:get-personality-overrides`, `prefs:set-personality-overrides`,  
+`app:get-version`, `app:open-console`, `app:runtime-check`,  
+`error-log:get-recent`, `error-log:get-count`,  
+`logger:info`, `logger:warning`, `logger:error`, `logger:business`, `logger:get-logs`
 
 ### unused（当前代码未消费）
-`windows:get-monitored`, `capture:set-interval`, `agent:status`, `kg:get-events`, `kg:clear`, `kg:export`, `pipeline:get-detail`, `system-log:list`, `business-log:list`, `business-log:create`, `business-log:update`, `tts:speak`, `app:open-console`
+（无；2026-04-25 全部接入完毕）
 
 ## 3) 已完成对齐项
 
 - `agent:set-api-config`：补齐 typed API，移除 UI 字符串直调。
 - `on(channel)`：新增事件白名单，和 `invoke(channel)` 同级治理。
-- `kg:search-entities`：修复 query 参数语义，改为真实检索。
+- `kg:search-entities`：修复 query 参数语义，改为真实检索；返回值新增 `id`。
 - 高频面板（状态/设置/窗口/待确认 action）完成 hooks 收敛，降低组件内 IPC 细节暴露。
 - 移除捕获/窗口枚举的模拟回退：权限不足时失败可见，而不是静默假数据。
+- 2026-04-25：所有"unused" channel 接入 UI 消费方；引入统一调度器 (`scheduler:get-status`)、分级告警 (`alert:get-recent` / `alert:new`)、权限事件推送 (`permissions:status`)、用户偏好 (`prefs:*`)。`kg:get-events` 改造支持按 `entityId` 查询近期证据事件。`capture:set-interval` 实时下发，无需重启采集服务。

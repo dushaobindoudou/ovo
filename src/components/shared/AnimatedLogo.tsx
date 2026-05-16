@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import { useMemo } from "react";
 
 export type LogoState = "idle" | "watching" | "thinking" | "executing";
@@ -53,8 +52,6 @@ export function AnimatedLogo({ size = 48, state = "idle", className }: AnimatedL
 
   useMemo(() => injectStyles(), []);
 
-  const isDark = typeof document !== "undefined" && document.documentElement.dataset.theme === "dark";
-  const circleStroke = isDark ? "#E8F5EE" : "#191919";
   const defaultStroke = "#8AA896";
 
   // State-specific SVG rendering

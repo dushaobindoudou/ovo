@@ -5,10 +5,10 @@ interface StatusBadgeProps {
 
 const colorMap: Record<StatusBadgeProps["status"], string> = {
   success: "bg-[var(--accent-dim)] text-[var(--accent)]",
-  warning: "bg-amber-50 text-amber-600",
-  danger: "bg-red-50 text-red-600",
-  info: "bg-blue-50 text-blue-600",
-  neutral: "bg-gray-50 text-[var(--text-secondary)]"
+  warning: "bg-[var(--warning)]/10 text-[var(--warning)]",
+  danger: "bg-[var(--danger)]/10 text-[var(--danger)]",
+  info: "bg-[var(--info)]/10 text-[var(--info)]",
+  neutral: "bg-[var(--text-muted)]/10 text-[var(--text-secondary)]"
 };
 
 export function StatusBadge({ status, label }: StatusBadgeProps) {
