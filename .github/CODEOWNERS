@@ -1,0 +1,38 @@
+# CODEOWNERS — auto-assigns reviewers when a PR touches matched paths.
+# Syntax: https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Order matters: later patterns override earlier ones.
+
+# ─── Default owner for everything ────────────────────────────────────────────
+*                                       @dushaobindoudou
+
+# ─── Critical areas (extra eyes recommended) ─────────────────────────────────
+# Anything touching screen capture, OCR, sensitive data, or LLM calls must be
+# reviewed carefully — these are privacy-critical paths.
+/electron/auto-capture.ts               @dushaobindoudou
+/electron/screenshot.ts                 @dushaobindoudou
+/electron/ocr-engine.ts                 @dushaobindoudou
+/electron/ocr-extractor.ts              @dushaobindoudou
+/electron/sensitive-filter.ts           @dushaobindoudou
+/electron/secrets-store.ts              @dushaobindoudou
+/electron/agent-bridge.ts               @dushaobindoudou
+/electron/preferences-store.ts          @dushaobindoudou
+
+# IPC surface area (security-critical — see BUG_REPORT C4)
+/electron/preload.cjs                   @dushaobindoudou
+/electron/ipc-handlers.ts               @dushaobindoudou
+
+# Release / build pipeline
+/electron-builder.yml                   @dushaobindoudou
+/.github/workflows/                     @dushaobindoudou
+/scripts/setup-github-repo.sh           @dushaobindoudou
+/package.json                           @dushaobindoudou
+/pnpm-lock.yaml                         @dushaobindoudou
+
+# Docs that define product direction — changes here should be discussed
+/docs/PRODUCT_PHILOSOPHY.md             @dushaobindoudou
+/docs/GITHUB_GROWTH_PLAN.md             @dushaobindoudou
+/README.md                              @dushaobindoudou
+/README_CN.md                           @dushaobindoudou
+/LICENSE                                @dushaobindoudou
+/SECURITY.md                            @dushaobindoudou

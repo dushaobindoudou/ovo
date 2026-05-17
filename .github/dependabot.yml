@@ -1,0 +1,63 @@
+# Dependabot configuration — automated dependency updates.
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+
+updates:
+  # ─── npm (pnpm-compatible) ─────────────────────────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    labels:
+      - "chore"
+      - "area: build-release"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      # Group minor/patch updates together to reduce PR noise
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+      # Group major Electron-related deps separately (high-impact updates)
+      electron-core:
+        patterns:
+          - "electron"
+          - "electron-builder"
+          - "electron-store"
+        update-types:
+          - "major"
+      # Group all React-related upgrades
+      react-ecosystem:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react*"
+        update-types:
+          - "minor"
+          - "major"
+    # Ignore Tesseract.js auto-updates — large native binary, manual review preferred
+    ignore:
+      - dependency-name: "tesseract.js"
+        update-types: ["version-update:semver-major"]
+
+  # ─── GitHub Actions ────────────────────────────────────────────────────────
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 3
+    labels:
+      - "chore"
+      - "area: build-release"
+    commit-message:
+      prefix: "chore(actions)"
