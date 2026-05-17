@@ -1,3 +1,25 @@
+/**
+ * Action 类型 — 与 electron/types.ts ActionType 必须保持同步。
+ * 用于 prefs:set-trust-level 等需要类型收窄的 IPC。
+ */
+export type ActionType =
+  | "log_note"
+  | "create_todo"
+  | "send_email"
+  | "send_imessage"
+  | "copy_to_clipboard"
+  | "search"
+  | "search_web"
+  | "open_url"
+  | "open_app"
+  | "summarize"
+  | "set_reminder"
+  | "add_calendar"
+  | "index_path"
+  | "other";
+
+export type TrustLevel = 0 | 1 | 2 | 3 | 4;
+
 export type OvoInvokeChannel =
   | "windows:get-all"
   | "windows:get-active"
@@ -23,6 +45,8 @@ export type OvoInvokeChannel =
   | "agent:detect-backends"
   | "agent:set-backend"
   | "agent:set-api-config"
+  | "agent:get-api-config-status"
+  | "agent:clear-api-config"
   | "agent:status"
   | "agent:test-scenario"
   | "kg:search-entities"
@@ -45,6 +69,8 @@ export type OvoInvokeChannel =
   | "process:timeline"
   | "process:pipelines"
   | "history:list-actions"
+  | "history:list-notifications"
+  | "action:get-detail"
   | "privacy:get-blacklist"
   | "privacy:set-blacklist"
   | "privacy:pause"
@@ -82,6 +108,18 @@ export type OvoInvokeChannel =
   | "prefs:set-personality-overrides"
   | "prefs:get-bootstrap-status"
   | "prefs:save-bootstrap"
+  | "prefs:get-trust-levels"
+  | "prefs:set-trust-level"
+  | "prefs:reset-trust-levels"
+  | "prefs:get-retention-days"
+  | "prefs:set-retention-days"
+  | "prefs:get-redaction-level"
+  | "prefs:set-redaction-level"
+  | "kg:add-negative-pattern"
+  | "kg:list-negative-patterns"
+  | "kg:delete-negative-pattern"
+  | "system:report-online"
+  | "system:is-online"
   | "dev:run-sample-pipeline"
   | "permissions:get-status"
   | "permissions:open-settings"
@@ -213,6 +251,10 @@ export interface AgentAction {
   params: Record<string, unknown>;
   requireConfirm: boolean;
   priority: number;
+  /** action 类型，决定执行路径 + 信任分级（与 electron/types.ts ActionType 同步） */
+  type?: ActionType;
+  /** PHIL-1: 玻璃管家三层叙述中的"因为" — LLM 给的执行理由（可选） */
+  reason?: string;
 }
 
 export interface ActionResultPayload {
@@ -263,6 +305,8 @@ export interface OvoInvokePayloadMap {
   "agent:detect-backends": undefined;
   "agent:set-backend": string;
   "agent:set-api-config": AgentApiConfig;
+  "agent:get-api-config-status": undefined;
+  "agent:clear-api-config": undefined;
   "agent:status": undefined;
   "agent:test-scenario": { scenarioId: string; customPrompt?: string };
   "kg:search-entities": string;
@@ -285,6 +329,8 @@ export interface OvoInvokePayloadMap {
   "process:timeline": number | undefined;
   "process:pipelines": number | undefined;
   "history:list-actions": number | undefined;
+  "history:list-notifications": number | undefined;
+  "action:get-detail": string;
   "privacy:get-blacklist": undefined;
   "privacy:set-blacklist": string[];
   "privacy:pause": number;
@@ -336,6 +382,18 @@ export interface OvoInvokePayloadMap {
   "prefs:set-personality-overrides": Record<string, number>;
   "prefs:get-bootstrap-status": undefined;
   "prefs:save-bootstrap": { interests: string[]; currentProject: string; roles: string[] };
+  "prefs:get-trust-levels": undefined;
+  "prefs:set-trust-level": { type: ActionType; level: 0 | 1 | 2 | 3 | 4 };
+  "prefs:reset-trust-levels": undefined;
+  "prefs:get-retention-days": undefined;
+  "prefs:set-retention-days": number;
+  "prefs:get-redaction-level": undefined;
+  "prefs:set-redaction-level": "basic" | "strict" | "paranoid";
+  "kg:add-negative-pattern": { appName?: string; intent?: string; actionType?: ActionType; patternText: string; contextSignature?: string };
+  "kg:list-negative-patterns": number | undefined;
+  "kg:delete-negative-pattern": string;
+  "system:report-online": boolean;
+  "system:is-online": undefined;
   "dev:run-sample-pipeline": undefined;
   "permissions:get-status": undefined;
   "permissions:open-settings": { target?: "screen" | "camera" | "microphone" } | undefined;
@@ -423,7 +481,15 @@ export interface OvoAPI {
     status: () => Promise<any>;
     detectBackends: () => Promise<string[]>;
     setBackend: (backend: string) => Promise<any>;
-    setApiConfig: (config: AgentApiConfig) => Promise<{ ok: boolean }>;
+    setApiConfig: (config: AgentApiConfig) => Promise<{ ok: boolean; error?: string }>;
+    getApiConfigStatus: () => Promise<{
+      hasKey: boolean;
+      maskedKey: string;
+      baseUrl: string;
+      model: string;
+      encryptionAvailable: boolean;
+    }>;
+    clearApiConfig: () => Promise<{ ok: boolean }>;
     testScenario: (payload: { scenarioId: string; customPrompt?: string }) => Promise<any>;
   };
   kg: {
@@ -453,6 +519,22 @@ export interface OvoAPI {
       eventCount: number;
     }>;
     runGC: () => Promise<{ deleted: number; rescored: number }>;
+    // PHIL-1 / P0.4: negative patterns
+    addNegativePattern: (payload: {
+      appName?: string;
+      intent?: string;
+      actionType?: ActionType;
+      patternText: string;
+      contextSignature?: string;
+    }) => Promise<{ ok: boolean; id?: string; error?: string }>;
+    listNegativePatterns: (limit?: number) => Promise<Array<{
+      id: string; created_at: number;
+      app_name: string | null; intent: string | null;
+      action_type: string | null; pattern_text: string;
+      context_signature: string | null;
+      hit_count: number; last_hit_at: number | null;
+    }>>;
+    deleteNegativePattern: (id: string) => Promise<{ ok: boolean }>;
   };
   promptEval: {
     list: (limit?: number) => Promise<Array<{
@@ -526,6 +608,15 @@ export interface OvoAPI {
       appName?: string;
       windowTitle?: string;
     }>>;
+    listNotifications: (limit?: number) => Promise<Array<{
+      id: string;
+      timestamp: number;
+      title: string;
+      type: string;
+      priority: number;
+      tier: string;
+      content: string;
+    }>>;
   };
   privacy: {
     getBlacklist: () => Promise<string[]>;
@@ -540,6 +631,7 @@ export interface OvoAPI {
   action: {
     confirm: (payload: { actionId?: string; action?: any; pipelineId?: string }) => Promise<any>;
     cancel: (payload: { actionId: string; pipelineId?: string }) => Promise<any>;
+    getDetail: (actionId: string) => Promise<ActionDetail | null>;
   };
   pipeline: {
     getRecent: (limit?: number) => Promise<any[]>;
@@ -610,6 +702,11 @@ export interface OvoAPI {
   alerts: {
     getRecent: (limit?: number) => Promise<AlertPayload[]>;
   };
+  // T13 / M8: 系统事件 — 网络状态
+  system: {
+    reportOnline: (online: boolean) => Promise<{ ok: boolean }>;
+    isOnline: () => Promise<boolean>;
+  };
   prefs: {
     getPersonalityOverrides: () => Promise<Record<string, number>>;
     setPersonalityOverrides: (overrides: Record<string, number>) => Promise<{ ok: boolean }>;
@@ -620,6 +717,15 @@ export interface OvoAPI {
       roles: string[];
     }>;
     saveBootstrap: (payload: { interests: string[]; currentProject: string; roles: string[] }) => Promise<{ ok: boolean }>;
+    // 信任分级（P0.3 / P0.10）
+    getTrustLevels: () => Promise<Record<ActionType, TrustLevel>>;
+    setTrustLevel: (payload: { type: ActionType; level: TrustLevel }) => Promise<{ ok: boolean; error?: string }>;
+    resetTrustLevels: () => Promise<{ ok: boolean }>;
+    // 隐私核心（P0.11）
+    getRetentionDays: () => Promise<number>;
+    setRetentionDays: (days: number) => Promise<{ ok: boolean; error?: string }>;
+    getRedactionLevel: () => Promise<"basic" | "strict" | "paranoid">;
+    setRedactionLevel: (level: "basic" | "strict" | "paranoid") => Promise<{ ok: boolean; error?: string }>;
   };
   dev: {
     runSamplePipeline: () => Promise<{ ok: boolean; pipelinesAdded: number; entitiesAdded: number }>;
@@ -639,6 +745,37 @@ export interface OvoAPI {
     }) => Promise<{ id: string }>;
     getLogs: (type?: "system" | "business", limit?: number) => Promise<any[]>;
   };
+}
+
+// C: ActionDetail——给 ActionDetailDrawer 用
+export interface ActionDetail {
+  actionId: string;
+  found: boolean;
+  type?: string;
+  description?: string;
+  params?: Record<string, unknown>;
+  requireConfirm?: boolean;
+  status?: string;
+  output?: string;
+  error?: string;
+  confirmedByUser?: boolean;
+  startedAt?: number;
+  durationMs?: number;
+  pipelineId?: string;
+  pipelineStartedAt?: number;
+  appName?: string;
+  windowTitle?: string;
+  ocrPreview?: string;
+  intent?: string;
+  summary?: string;
+  timeline?: Array<{
+    node: string;
+    status: string;
+    startTime: number;
+    endTime: number;
+    durationMs: number;
+    error?: string;
+  }>;
 }
 
 declare global {

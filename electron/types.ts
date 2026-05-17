@@ -77,6 +77,8 @@ export interface AgentAction {
   priority: number;
   /** 行为类型，约束 LLM 输出，便于本地路由执行 */
   type?: ActionType;
+  /** PHIL-1: 玻璃管家三层叙述中的"因为"——LLM 给的执行理由（可选） */
+  reason?: string;
 }
 
 export interface AgentSuggestion {

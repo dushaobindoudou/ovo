@@ -3,17 +3,9 @@ import { AgentBridge } from "./agent-bridge.js";
 import { planAndExecuteAction } from "./agent-executor.js";
 import type { KnowledgeGraphEngine } from "./knowledge-graph.js";
 import { loadElectron } from "./electron-loader.js";
-import {
-  createReminder,
-  createCalendarEvent,
-  sendIMessage,
-  createMailDraft,
-  openUrl,
-  searchWeb
-} from "./macos-actions.js";
-import fs from "node:fs/promises";
-import path from "node:path";
-import os from "node:os";
+import { preferencesStore } from "./preferences-store.js";
+import type { TrustLevel } from "./preferences-store.js";
+import { safeExecute } from "./safe-execute.js";
 
 export interface ActionResult {
   actionId: string;
@@ -80,11 +72,18 @@ export class ActionExecutor {
         duration: Date.now() - started
       };
     } catch (error) {
+      // P1.25: 失败时也填 output，让 UI 能在 PipelineDetail 看到"尝试了什么 + 走到哪一步"
+      const attemptContext = {
+        attempt: type,
+        description: action.description,
+        paramKeys: Object.keys(action.params ?? {}),
+        ctx: { appName: ctx.appName, windowTitle: ctx.windowTitle, intent: ctx.intent }
+      };
       return {
         actionId: action.id,
         type,
         status: "failed",
-        output: "",
+        output: JSON.stringify(attemptContext),
         duration: Date.now() - started,
         error: error instanceof Error ? error.message : String(error)
       };
@@ -95,16 +94,22 @@ export class ActionExecutor {
     const ordered = [...actions].sort((a, b) => b.priority - a.priority);
     const results: ActionResult[] = [];
     for (const action of ordered) {
-      // 硬性「不打扰」白名单：任何可能抢占屏幕/外发数据/调用系统应用的动作一律 pending，
-      // 即便 LLM 把 requireConfirm 写成了 false 也不放行。
-      // 自动执行只允许：日志归档、TODO、剪贴板（用户可见的轻量本地操作）
-      const needsConfirm = action.requireConfirm || !ActionExecutor.canAutoExecute(action.type);
+      // P0.3 / P0.10 信任分级：
+      //   Lv.0/1/2 → pending（仅展示 / 草拟 / 一键确认）
+      //   Lv.3/4   → 立即执行（撤销窗口由 UI 层 T10 实现）
+      //   LLM 标记 requireConfirm=true 仍然尊重——这是 LLM 的"我自己也不确定"信号
+      const trustLevel = preferencesStore.getTrustLevel(action.type ?? "other");
+      const needsConfirm = action.requireConfirm === true || trustLevel < 3;
       if (needsConfirm) {
         results.push({
           actionId: action.id,
           type: action.type,
           status: "pending",
-          output: "等待用户确认",
+          output: trustLevel === 0
+            ? "仅展示（你的信任级别设为 Lv.0）"
+            : trustLevel === 1
+            ? "已为你准备好草稿"
+            : "等待用户确认",
           duration: 0
         });
         continue;
@@ -114,9 +119,18 @@ export class ActionExecutor {
     return results;
   }
 
-  /** 安全自动执行白名单：只有这几类动作可以在没有用户确认的情况下静默执行 */
+  /**
+   * 兼容性 helper —— 旧代码可能仍引用 canAutoExecute；现已委托给信任分级。
+   * @deprecated 直接读 preferencesStore.getTrustLevel() 更清晰
+   */
   static canAutoExecute(type?: ActionType): boolean {
-    return type === "log_note" || type === "create_todo" || type === "copy_to_clipboard";
+    const t = type ?? "other";
+    return preferencesStore.getTrustLevel(t) >= 3;
+  }
+
+  /** UI 层查询：当前 action 的 trust level（决定 pending 卡片显示文案） */
+  static getTrustLevel(type?: ActionType): TrustLevel {
+    return preferencesStore.getTrustLevel(type ?? "other");
   }
 
   // ---- 本地动作处理 ----
@@ -167,9 +181,9 @@ export class ActionExecutor {
     const dueAt = String(action.params?.dueAt ?? "");
     // todo 暂时落到 KG event 表（importance=6, tag=todo），后续可拓展专表
     if (this.kg && ctx.appName) {
-      try {
-        this.kg.addEvent({
-          appName: ctx.appName,
+      safeExecute(() => {
+        this.kg!.addEvent({
+          appName: ctx.appName!,
           windowTitle: ctx.windowTitle ?? "",
           content: `[TODO] ${title}${dueAt ? `（@${dueAt}）` : ""}`,
           summary: title,
@@ -177,7 +191,7 @@ export class ActionExecutor {
           sourceWindowId: ctx.windowId ?? "",
           entityIds: []
         });
-      } catch { /* swallow */ }
+      }, "action.create-todo.kg-write", undefined, "warn");
     }
     return {
       actionId: action.id,
@@ -193,7 +207,9 @@ export class ActionExecutor {
     try {
       const electron = loadElectron();
       electron?.clipboard?.writeText?.(text);
-    } catch { /* swallow */ }
+    } catch {
+      // 剪贴板失败不影响主流程，silently degrade
+    }
     return {
       actionId: action.id,
       type: "copy_to_clipboard",
@@ -203,220 +219,9 @@ export class ActionExecutor {
     };
   }
 
-  // ---- M3 macOS 原生动作 ----
-
-  private async handleSetReminder(action: AgentAction, started: number): Promise<ActionResult> {
-    const title = String(action.params?.title ?? action.description ?? "");
-    const dueAt = action.params?.dueAt ? String(action.params.dueAt) : undefined;
-    try {
-      await createReminder({ title, dueAt });
-      return {
-        actionId: action.id, type: "set_reminder", status: "success",
-        output: JSON.stringify({ title, dueAt }), duration: Date.now() - started
-      };
-    } catch (error) {
-      return {
-        actionId: action.id, type: "set_reminder", status: "failed",
-        output: "", duration: Date.now() - started,
-        error: error instanceof Error ? error.message : String(error)
-      };
-    }
-  }
-
-  private async handleAddCalendar(action: AgentAction, started: number): Promise<ActionResult> {
-    const title = String(action.params?.title ?? action.description ?? "");
-    const startsAt = String(action.params?.startsAt ?? "");
-    if (!startsAt) {
-      return {
-        actionId: action.id, type: "add_calendar", status: "failed",
-        output: "", duration: Date.now() - started, error: "缺少 startsAt"
-      };
-    }
-    try {
-      await createCalendarEvent({
-        title,
-        startsAt,
-        endsAt: action.params?.endsAt ? String(action.params.endsAt) : undefined,
-        location: action.params?.location ? String(action.params.location) : undefined
-      });
-      return {
-        actionId: action.id, type: "add_calendar", status: "success",
-        output: JSON.stringify({ title, startsAt }), duration: Date.now() - started
-      };
-    } catch (error) {
-      return {
-        actionId: action.id, type: "add_calendar", status: "failed",
-        output: "", duration: Date.now() - started,
-        error: error instanceof Error ? error.message : String(error)
-      };
-    }
-  }
-
-  private async handleSendIMessage(action: AgentAction, started: number): Promise<ActionResult> {
-    const to = String(action.params?.to ?? "");
-    const body = String(action.params?.body ?? "");
-    if (!to || !body) {
-      return {
-        actionId: action.id, type: "send_imessage", status: "failed",
-        output: "", duration: Date.now() - started, error: "缺少 to 或 body"
-      };
-    }
-    try {
-      await sendIMessage({ to, body });
-      return {
-        actionId: action.id, type: "send_imessage", status: "success",
-        output: JSON.stringify({ to, length: body.length }), duration: Date.now() - started
-      };
-    } catch (error) {
-      return {
-        actionId: action.id, type: "send_imessage", status: "failed",
-        output: "", duration: Date.now() - started,
-        error: error instanceof Error ? error.message : String(error)
-      };
-    }
-  }
-
-  private async handleSendEmail(action: AgentAction, started: number): Promise<ActionResult> {
-    try {
-      await createMailDraft({
-        to: action.params?.to ? String(action.params.to) : undefined,
-        subject: action.params?.subject ? String(action.params.subject) : undefined,
-        body: action.params?.body ? String(action.params.body) : undefined
-      });
-      return {
-        actionId: action.id, type: "send_email", status: "success",
-        output: JSON.stringify({ draftCreated: true }), duration: Date.now() - started
-      };
-    } catch (error) {
-      return {
-        actionId: action.id, type: "send_email", status: "failed",
-        output: "", duration: Date.now() - started,
-        error: error instanceof Error ? error.message : String(error)
-      };
-    }
-  }
-
-  private async handleOpenUrl(action: AgentAction, started: number): Promise<ActionResult> {
-    const url = String(action.params?.url ?? "");
-    if (!url) {
-      return {
-        actionId: action.id, type: "open_url", status: "failed",
-        output: "", duration: Date.now() - started, error: "缺少 url"
-      };
-    }
-    try {
-      await openUrl(url);
-      return {
-        actionId: action.id, type: "open_url", status: "success",
-        output: JSON.stringify({ url }), duration: Date.now() - started
-      };
-    } catch (error) {
-      return {
-        actionId: action.id, type: "open_url", status: "failed",
-        output: "", duration: Date.now() - started,
-        error: error instanceof Error ? error.message : String(error)
-      };
-    }
-  }
-
-  private async handleSearchWeb(action: AgentAction, started: number): Promise<ActionResult> {
-    const query = String(action.params?.query ?? "");
-    const target = action.params?.target ? String(action.params.target) : undefined;
-    if (!query) {
-      return {
-        actionId: action.id, type: "search_web", status: "failed",
-        output: "", duration: Date.now() - started, error: "缺少 query"
-      };
-    }
-    try {
-      await searchWeb(query, target);
-      return {
-        actionId: action.id, type: "search_web", status: "success",
-        output: JSON.stringify({ query, target: target ?? "google" }), duration: Date.now() - started
-      };
-    } catch (error) {
-      return {
-        actionId: action.id, type: "search_web", status: "failed",
-        output: "", duration: Date.now() - started,
-        error: error instanceof Error ? error.message : String(error)
-      };
-    }
-  }
-
-  /**
-   * M5 配套：按需扫描某个目录的元数据。requireConfirm=true 由用户授权后才走到这。
-   * 上限 maxFiles 默认 200；不读文件内容；不递归整个 home。
-   */
-  private async handleIndexPath(action: AgentAction, ctx: ActionExecutionContext, started: number): Promise<ActionResult> {
-    const rawPath = String(action.params?.path ?? "");
-    const recursive = !!action.params?.recursive;
-    const maxFiles = Math.max(1, Math.min(1000, Number(action.params?.maxFiles) || 200));
-    if (!rawPath) {
-      return {
-        actionId: action.id, type: "index_path", status: "failed",
-        output: "", duration: Date.now() - started, error: "缺少 path"
-      };
-    }
-    const expanded = rawPath.startsWith("~")
-      ? path.join(os.homedir(), rawPath.slice(1))
-      : rawPath;
-    // 安全：拒绝扫整个 home 或根
-    const home = os.homedir();
-    if (expanded === home || expanded === "/" || expanded.length < 4) {
-      return {
-        actionId: action.id, type: "index_path", status: "failed",
-        output: "", duration: Date.now() - started, error: "拒绝扫描根目录或 home，请指定子目录"
-      };
-    }
-    try {
-      const files: Array<{ path: string; ext: string; size: number; mtime: number }> = [];
-      const walk = async (dir: string, depth: number) => {
-        if (files.length >= maxFiles) return;
-        const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
-        for (const ent of entries) {
-          if (files.length >= maxFiles) break;
-          const full = path.join(dir, ent.name);
-          if (ent.isDirectory()) {
-            if (recursive && depth < 3) await walk(full, depth + 1);
-          } else if (ent.isFile()) {
-            const stat = await fs.stat(full).catch(() => null);
-            if (!stat) continue;
-            files.push({
-              path: full,
-              ext: path.extname(ent.name).slice(1).toLowerCase(),
-              size: stat.size,
-              mtime: stat.mtimeMs
-            });
-          }
-        }
-      };
-      await walk(expanded, 0);
-      // 登记到 KG
-      let added = 0;
-      if (this.kg) {
-        for (const f of files) {
-          try {
-            this.kg.upsertEntity({
-              name: f.path,
-              type: "application_file",
-              description: `${f.ext.toUpperCase() || "file"} · ${(f.size / 1024).toFixed(1)} KB`,
-              attributes: { path: f.path, ext: f.ext, size: f.size, mtime: f.mtime, lastSeenAppName: ctx.appName ?? "" }
-            });
-            added += 1;
-          } catch { /* swallow */ }
-        }
-      }
-      return {
-        actionId: action.id, type: "index_path", status: "success",
-        output: JSON.stringify({ scanned: files.length, indexed: added, dir: expanded, recursive, maxFiles }),
-        duration: Date.now() - started
-      };
-    } catch (error) {
-      return {
-        actionId: action.id, type: "index_path", status: "failed",
-        output: "", duration: Date.now() - started,
-        error: error instanceof Error ? error.message : String(error)
-      };
-    }
-  }
+  // C3 死代码已删除（2026-05-17）—— 7 个 handler 自从 AX-1 路由架构上线后就没人调用，
+  // 全部走 planAndExecuteAction。当时注释说"保留作为应急回滚参考"，但实际上：
+  //   - 旧 handler 不再过 SEC-1/2/3 的 osascript-argv 防注入
+  //   - 旧 handler 不走 SEC-2 的 scheme 白名单
+  // 留着反而是安全后门。如需回滚，从 git history 取即可（pre-action-executor-retire）。
 }

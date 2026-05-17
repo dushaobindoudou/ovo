@@ -27,8 +27,13 @@ interface RedactionRule {
   replacement?: string;
 }
 
-// 顺序敏感：先匹配更具体的（信用卡 / 银行卡），后匹配通用（数字串）
-const RULES: RedactionRule[] = [
+// P0.11: 三档脱敏强度
+//   basic    — 默认。只擦"明确敏感"内容（token/卡号/身份证/手机号/密码字段/私钥）
+//   strict   — basic + 所有邮箱、所有 URL、所有文件路径
+//   paranoid — strict + 6+ 位数字串、域名、代码片段（最严格，可能影响 LLM 理解）
+export type RedactionLevel = "basic" | "strict" | "paranoid";
+
+const BASIC_RULES: RedactionRule[] = [
   // API tokens（前缀明确，几乎零误伤）
   { type: "api_token", pattern: /\b(sk-[A-Za-z0-9_-]{20,}|sk_(?:live|test)_[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{30,}|ghs_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|xoxb-[A-Za-z0-9-]{20,}|xoxp-[A-Za-z0-9-]{20,}|hf_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{30,}|AKIA[0-9A-Z]{16})\b/g },
   // JWT
@@ -51,18 +56,60 @@ const RULES: RedactionRule[] = [
   { type: "otp_cn", pattern: /(?:验证码|otp|verification\s+code)[^\n]{0,15}\b\d{4,8}\b/gi }
 ];
 
+const STRICT_EXTRA_RULES: RedactionRule[] = [
+  // 全部邮箱（不再要求前缀敏感词）
+  { type: "email_any", pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g },
+  // 全部 URL
+  { type: "url_any", pattern: /https?:\/\/[^\s)<>"'`]+/g },
+  // 文件路径（绝对路径）
+  { type: "file_path", pattern: /(?:^|\s)\/(?:Users|home|opt|etc|var|tmp|Applications|System)\/[^\s)<>"'`]+/g }
+];
+
+const PARANOID_EXTRA_RULES: RedactionRule[] = [
+  // 6+ 位数字串（可能泄露订单号 / 工号 / 票号 / IP segment 等）
+  { type: "long_number", pattern: /\b\d{6,}\b/g },
+  // 域名（包括邮箱里没匹到的，例如 "我们用 example.com 服务"）
+  { type: "domain_any", pattern: /\b[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z]{2,})+\b/gi },
+  // 代码块（```...```）
+  { type: "code_block", pattern: /```[\s\S]{0,2000}?```/g },
+  // 行内代码（`...` 长度 ≥ 8）
+  { type: "code_inline", pattern: /`[^`\n]{8,}?`/g }
+];
+
+const RULES_BY_LEVEL: Record<RedactionLevel, RedactionRule[]> = {
+  basic: BASIC_RULES,
+  strict: [...BASIC_RULES, ...STRICT_EXTRA_RULES],
+  paranoid: [...BASIC_RULES, ...STRICT_EXTRA_RULES, ...PARANOID_EXTRA_RULES]
+};
+
+// 模块级当前脱敏强度。由主进程启动时通过 setRedactionLevel() 同步；preferences 更新时也调一次。
+// 这样 redactSensitive 调用方不需要每次传 level，保持 API 简单。
+let currentLevel: RedactionLevel = "basic";
+
+export function setActiveRedactionLevel(level: RedactionLevel) {
+  currentLevel = level;
+}
+
+export function getActiveRedactionLevel(): RedactionLevel {
+  return currentLevel;
+}
+
 /**
  * 对一段 OCR 文本应用全部脱敏规则。
  * 返回脱敏后的文本 + 各类型命中次数。
+ *
+ * P0.11: level 可选——不传时用模块级 currentLevel（由 main 进程在启动 / 设置变更时同步）。
+ * 这样调用方不用每次显式传 level，行为按用户配置自动调档。
  */
-export function redactSensitive(input: string): SensitiveFilterResult {
+export function redactSensitive(input: string, level?: RedactionLevel): SensitiveFilterResult {
   if (!input || input.length < 4) {
     return { cleaned: input ?? "", redactionCounts: {}, hadAny: false };
   }
   let text = input;
   const counts: Record<string, number> = {};
+  const rulesForCall = RULES_BY_LEVEL[level ?? currentLevel] ?? BASIC_RULES;
 
-  for (const rule of RULES) {
+  for (const rule of rulesForCall) {
     const placeholder = rule.replacement ?? `[REDACTED:${rule.type}]`;
     const before = text;
     let hits = 0;
@@ -97,7 +144,14 @@ export function summarizeRedactionsForPrompt(counts: Record<string, number>): st
     password_label: "密码字段",
     private_key: "私钥",
     env_secret: ".env 密钥",
-    otp_cn: "验证码"
+    otp_cn: "验证码",
+    email_any: "邮箱",
+    url_any: "URL",
+    file_path: "文件路径",
+    long_number: "数字串",
+    domain_any: "域名",
+    code_block: "代码块",
+    code_inline: "代码片段"
   };
   return entries.map(([k, v]) => `${labelMap[k] ?? k} × ${v}`).join(" · ");
 }

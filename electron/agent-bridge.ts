@@ -46,7 +46,10 @@ interface AgentRequest {
 export class AgentBridge {
   private available: AgentBackend[] = [];
   private preferred: AgentBackend | null = null;
-  private apiConfig: { baseUrl: string; key: string; model: string } | null = null;
+  // SEC-4: 不再在内存里存 API key 明文。baseUrl / model 走 secrets-store 落盘（不敏感不加密），
+  // key 通过 secrets-store.getApiKey() 在调用时按需读取（safeStorage 解密），用完即弃。
+  // 这样即便主进程内存被 dump，也只看到 baseUrl + model，不会泄露 key。
+  private apiConfigured = false;
   private callCount = 0;
   private failureCount = 0;
   private lastCallAt = 0;
@@ -69,7 +72,7 @@ export class AgentBridge {
         // no-op
       }
     }
-    if (this.apiConfig) available.push("api");
+    if (this.apiConfigured) available.push("api");
     this.available = available;
     return available;
   }
@@ -78,8 +81,12 @@ export class AgentBridge {
     this.preferred = backend;
   }
 
-  setApiConfig(config: { baseUrl: string; key: string; model: string }) {
-    this.apiConfig = config;
+  /**
+   * 标记 API 后端已配置——key 落 secrets-store（safeStorage 加密），baseUrl / model 也走那里。
+   * 这里只接收"已配置"信号，不再持有原始 key 在内存。
+   */
+  markApiConfigured(configured: boolean) {
+    this.apiConfigured = configured;
   }
 
   getStatus() {
@@ -98,7 +105,7 @@ export class AgentBridge {
   private pickBackend(): AgentBackend {
     if (this.preferred && this.available.includes(this.preferred)) return this.preferred;
     if (this.available.length > 0) return this.available[0];
-    if (this.apiConfig) return "api";
+    if (this.apiConfigured) return "api";
     throw new Error("没有可用的 Agent 后端");
   }
 
@@ -107,7 +114,7 @@ export class AgentBridge {
     const order: AgentBackend[] = [];
     if (this.preferred && this.available.includes(this.preferred)) order.push(this.preferred);
     for (const b of this.available) if (!order.includes(b)) order.push(b);
-    if (this.apiConfig && !order.includes("api")) order.push("api");
+    if (this.apiConfigured && !order.includes("api")) order.push("api");
     return order;
   }
 
@@ -171,12 +178,19 @@ export class AgentBridge {
         const msg = error instanceof Error ? error.message : String(error);
         const shortMsg = msg.slice(0, 240);
         triedNotes.push(`${backend} 调用失败: ${shortMsg}`);
-        // 推到 UI 让用户看到正在 fallback
+        // 推到 UI 让用户看到正在 fallback。errorLogger.alert 自己已有 try/catch 保底，
+        // 这里再加一层是因为 alert 本身可能抛（BrowserWindow 已 destroy 等极端态）。
+        // 失败也只能落 stderr——已经在错误处理路径上了，再走 safeExecute 会绕回 errorLogger。
         try {
           errorLogger.alert("warn", "agent-bridge", `${backend} 调用失败，尝试 fallback`, {
             error: shortMsg
           });
-        } catch { /* ignore */ }
+        } catch (alertErr) {
+          try {
+            const reason = alertErr instanceof Error ? alertErr.message : String(alertErr);
+            process.stderr.write(`[agent-bridge.alert-failed] ${reason}\n`);
+          } catch { /* */ }
+        }
         // 继续尝试下一个 backend
       }
     }
@@ -224,19 +238,27 @@ export class AgentBridge {
       );
       return stripCliNoise(stdout);
     }
-    if (!this.apiConfig) throw new Error("API 后端未配置");
+    if (!this.apiConfigured) throw new Error("API 后端未配置");
+    // SEC-4: 调用时按需从 safeStorage 读 key，用完即弃，不留在内存
+    const { secretsStore } = await import("./secrets-store.js");
+    const apiKey = secretsStore.getApiKey();
+    const apiBaseUrl = secretsStore.getApiBaseUrl();
+    const apiModel = secretsStore.getApiModel();
+    if (!apiKey) throw new Error("API key 不可用（safeStorage 解密失败或未配置）");
+    if (!apiBaseUrl) throw new Error("API baseUrl 未配置");
+    if (!apiModel) throw new Error("API model 未配置");
     // CODE-4: fetch 必须有超时；否则后端 hang 会一路卡死 scheduler → 全 pipeline 停摆。
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
     try {
-      const response = await fetch(`${this.apiConfig.baseUrl}/v1/chat/completions`, {
+      const response = await fetch(`${apiBaseUrl}/v1/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${this.apiConfig.key}`
+          Authorization: `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: this.apiConfig.model,
+          model: apiModel,
           messages: [{ role: "user", content: request.prompt }]
         }),
         signal: controller.signal

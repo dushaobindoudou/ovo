@@ -77,17 +77,36 @@ export class EventProcessor {
     return [...this.buffers.values()];
   }
 
+  /**
+   * 取出所有窗口的累积 OCR 数据。
+   *
+   * **不变量（NEW-2，必须保持）**：返回的每个 WindowBuffer 严格属于单一 (windowId, appName)，
+   * 绝不可跨窗口/跨应用合并。下游 pipeline 按窗口独立调用 LLM，混合会导致：
+   *   - LLM 把多 app 内容当一段理解 → 推断混乱
+   *   - 敏感信息跨应用泄露（看银行 + 看推特 = 银行内容被当推特的上下文）
+   *   - 用户体验：建议明显错位
+   * 修改 buffers Map 的 key 策略（当前 `${windowId}::${appName}`）前必须同步修这里。
+   */
   drainBuffers() {
     const list: WindowBuffer[] = [];
-    // Use for...of to atomically drain all buffers
-    for (const value of this.buffers.values()) {
-      if (value.entries.length > 0) {
-        list.push({
-          ...value,
-          entries: [...value.entries]
+    for (const [key, value] of this.buffers.entries()) {
+      if (value.entries.length === 0) continue;
+      // Invariant 检查：key 必须能反推回 windowId + appName
+      const expectedKey = `${value.windowId}::${value.appName}`;
+      if (key !== expectedKey) {
+        errorLogger.alert("error", "event-processor", "buffer key 不变量被破坏", {
+          actualKey: key,
+          expectedKey,
+          windowId: value.windowId,
+          appName: value.appName
         });
-        value.entries = [];
+        continue; // 拒绝输出可疑的 buffer，宁可丢一帧也不混发
       }
+      list.push({
+        ...value,
+        entries: [...value.entries]
+      });
+      value.entries = [];
     }
     return list;
   }

@@ -11,14 +11,22 @@ interface SidebarProps {
   onChange: (page: ConsolePage) => void;
 }
 
-const allMenus: Array<{ id: ConsolePage; label: string; icon: ComponentType<{ size?: number }> }> = [
-  { id: "overview", label: "现在", icon: Zap },
-  { id: "knowledge", label: "记忆", icon: BookOpen },
-  { id: "process", label: "回放", icon: History },
+// P1.5: 加 tooltip 解释每个 tab 是什么
+interface Menu {
+  id: ConsolePage;
+  label: string;
+  tooltip: string;
+  icon: ComponentType<{ size?: number }>;
+}
+
+const allMenus: Menu[] = [
+  { id: "overview", label: "现在", tooltip: "Ovo 此刻在看什么、想什么、有什么待办", icon: Zap },
+  { id: "knowledge", label: "记忆", tooltip: "Ovo 关于你形成的世界模型（实体 + 关系 + 画像）", icon: BookOpen },
+  { id: "process", label: "回放", tooltip: "Ovo 过去做过的事 + 每条推理的完整因果链", icon: History },
 ];
 
-const toolMenus: Array<{ id: ConsolePage; label: string; icon: ComponentType<{ size?: number }> }> = [
-  { id: "settings", label: "设置", icon: Settings },
+const toolMenus: Menu[] = [
+  { id: "settings", label: "设置", tooltip: "信任分级 / 隐私 / AI 后端 / 外观", icon: Settings },
 ];
 
 export function ConsoleSidebar({ page, onChange }: SidebarProps) {
@@ -51,7 +59,7 @@ export function ConsoleSidebar({ page, onChange }: SidebarProps) {
 }
 
 interface SidebarItemProps {
-  menu: { id: ConsolePage; label: string; icon: ComponentType<{ size?: number }> };
+  menu: Menu;
   active: boolean;
   onClick: () => void;
 }
@@ -62,7 +70,8 @@ function SidebarItem({ menu, active, onClick }: SidebarItemProps) {
     <button
       type="button"
       onClick={onClick}
-      title={menu.label}
+      title={menu.tooltip}
+      aria-label={`${menu.label} — ${menu.tooltip}`}
       className="group flex w-[60px] flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition-colors"
     >
       <span

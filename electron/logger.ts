@@ -36,8 +36,15 @@ function flushFile(filePath: string) {
   const data = lines.join("");
   buffers.set(filePath, []);
   bufferSizes.set(filePath, 0);
-  // 异步写——失败不阻断
-  fs.appendFile(filePath, data, "utf8", () => { /* swallow */ });
+  // 异步写——失败不阻断主流程。但 logger 自身是底层模块，不能再回头调 errorLogger
+  // （会循环依赖）。失败时往 stderr 倒一行，运维至少能在 launchd 日志里看到。
+  fs.appendFile(filePath, data, "utf8", (err) => {
+    if (err) {
+      try {
+        process.stderr.write(`[logger.flushFile-failed] ${filePath}: ${err.message}\n`);
+      } catch { /* */ }
+    }
+  });
 }
 
 function flushAll() {
@@ -47,7 +54,15 @@ function flushAll() {
 function flushAllSync() {
   for (const [filePath, lines] of buffers) {
     if (lines.length === 0) continue;
-    try { fs.appendFileSync(filePath, lines.join(""), "utf8"); } catch { /* swallow */ }
+    try {
+      fs.appendFileSync(filePath, lines.join(""), "utf8");
+    } catch (e) {
+      // 进程退出最后一刻：能落 stderr 就落 stderr，至少这一批 buffer 别静默丢
+      try {
+        const reason = e instanceof Error ? e.message : String(e);
+        process.stderr.write(`[logger.flushAllSync-failed] ${filePath}: ${reason}\n`);
+      } catch { /* */ }
+    }
     buffers.set(filePath, []);
     bufferSizes.set(filePath, 0);
   }
@@ -74,8 +89,13 @@ function broadcastLogStream(entry: { timestamp: number; level: SystemLevel; sour
     if (win.isDestroyed()) continue;
     try {
       win.webContents.send("log:stream", entry);
-    } catch {
-      /* ignore single-window failures */
+    } catch (e) {
+      // 单窗口 webContents.send 失败是正常的（窗口正在 destroy 边缘态），
+      // 不阻断其他窗口；落 stderr 留个尾巴，调试时能注意到
+      try {
+        const reason = e instanceof Error ? e.message : String(e);
+        process.stderr.write(`[logger.broadcast-skip-window] ${reason}\n`);
+      } catch { /* */ }
     }
   }
 }

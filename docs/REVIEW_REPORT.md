@@ -529,3 +529,72 @@ pipeline.drain → adaptive-prompt.ts:245-256
 | 4 | **DATA-2 + DATA-3**: pipeline_logs / business_logs 不再存原文 preview | 30 分钟 | 消除冗余存储 |
 | 5 | **DATA-10**: 30 天 retention 自动 GC | 1 小时 | 限制数据膨胀 |
 | 6 | **SQLite 加密**（SQLCipher） | 半天 | 终极方案 |
+
+---
+
+## 七、用户产品需求（2026-05-16 增补）
+
+用户明确提出 4 项产品/架构要求，需要与已知问题一起修复：
+
+### NEW-1 [P0] 必须保留 OCR 历史记录
+- 不能因为隐私问题就不保留——历史是 ovo 的核心价值（"做过的事"、可审计、可学习）
+- 但必须满足：脱敏后存 + 限长 + 长期 retention + （未来）加密
+- **与 DATA-1/7/10 复合解决**
+
+### NEW-2 [P0] 喂 LLM 必须按窗口分发，绝不能混合
+- 当前 `runPipelineForWindow(buffer)` 已是窗口级（`ipc-handlers.ts:625-642` for-loop per buffer），但**没有静态约束**保证未来重构不退化
+- 退路：至少按 appName 分；绝不允许把多个 app 的 OCR 拼成一段送 LLM
+- 修复：① 加显式 invariant 注释 + assertion；② 后续考虑加 lint 规则禁止合并 buffer
+
+### NEW-3 [P0] 同窗口连续帧只发 diff（节省 LLM token）
+- 当前 `aggregate` 阶段把 buffer.entries 全 join 成 mergedText（`ipc-handlers.ts:667`），即便 5 帧 OCR 文本 95% 相同也会送 5 份
+- 应改成：第一帧全量 + 后续帧只发 diff（行级 diff 或字符级 diff）
+- 节省 token + 也让 LLM 关注 "什么变了" 而不是 "看到了什么"
+
+### NEW-4 [P0] 持久化双轨：原始 + LLM 总结，UI 优先显示总结
+- 当前 `memory_events` 有 content（原始 OCR） + summary（LLM 摘要），但 UI 上 ProcessPanel 显示 `c.ocrPreview` 原始内容，给用户看到一堆乱码 + 无用 UI 文字
+- 应改成：
+  - 持久化层：保留 content（原文，供审计）+ summary（人类可读总结）
+  - 展示层：默认显示 summary；"查看原文"按钮才展开 content
+  - OCR confidence < 阈值的乱码不入 KG（与 DATA-11 合并修）
+
+
+---
+
+## 八、Sprint 2 SEC-3/4/8 修复记录（2026-05-16）
+
+### SEC-3: AppleScript 注入路径完全堵死 ✅
+- `macos-actions.ts` 四个函数全部改用 `osascript on run argv` 机制
+- 用户/LLM 提供的字符串作为命令行参数传入，AppleScript 把它们当字面量字符串读取
+- `\n` `"` 等控制字符无法逃逸出 string literal，注入面归零
+
+### SEC-4: API key 走 safeStorage ✅
+- 新建 `electron/secrets-store.ts`，封装 `safeStorage.encryptString` (macOS Keychain)
+- API key 落盘到 `userData/secrets.json` 加密形态
+- `agentBridge` 不再持有明文 key——调用时从 secrets-store 读，用完即弃
+- renderer 通过 IPC 只能 set / clear / 查询 mask 状态，**永远拿不到明文**
+- baseUrl 白名单（仅 5 家可信厂商）防 XSS 重定向窃 key
+- 老用户 zustand persist v3→v4 迁移：`apiKey` 字段从 localStorage 抹除
+- UI 改成「已配置 + sk-***abc / 修改 / 清除」三态
+
+### SEC-8: 字段级加密（务实方案，非全库加密）⚠️
+- **尝试**：`better-sqlite3-multiple-ciphers` 全库 SQLCipher 加密。该包用旧 V8 API（非 N-API），与 Node 25 ABI 不兼容，编译失败。
+- **务实方案**：
+  - `memory_events.content / summary` 高敏感字段走 `safeStorage.encryptString` **字段级加密**（密钥在 macOS Keychain）
+  - 落盘格式 `enc:v1:<base64>`，老数据自动向前兼容（明文不动）
+  - 读取时 `decryptEventRow` 统一过解密层
+  - userData 目录 chmod 700、data 子目录 chmod 700、ovo.sqlite 文件 chmod 600
+- **保护效果**：
+  - 攻击者拿到 ovo.sqlite 文件 → 看到 `enc:v1:...` 密文，没 Keychain 解不开
+  - 同机其他用户 → 文件权限阻挡
+  - 同用户其他进程（malware） → safeStorage 调用同样需要 Keychain 解锁（与登录态绑定）
+- **遗留风险（明确告知）**：
+  - `entities` / `relationships` / `entities.aliases` 仍明文——LLM 抽出的概念名 / 关系描述
+  - `pipeline_logs.stages` / `business_logs.input/output` 已限到 200-500 字 preview，但仍明文
+  - 真正的"全库 SQLCipher 加密"需要：① 找一个 N-API 兼容的 SQLCipher 绑定包 / ② 切换到 `@journeyapps/sqlcipher`（用 node-sqlite3 不是 better-sqlite3，重写大量代码） / ③ 用 `@electron/rebuild` 让 multi-ciphers 用 Electron Node v20 头编译——后续 sprint 解决
+
+### 验证
+- `pnpm typecheck` ✓
+- `pnpm lint` ✓
+- `pnpm build` (renderer + electron) ✓
+- `pnpm test:agents` ✓（2 PASS, 2 SKIP）

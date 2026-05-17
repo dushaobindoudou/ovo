@@ -4,6 +4,14 @@ import Database from "better-sqlite3";
 import type { ExtractedEntity, ExtractedRelation } from "./types.js";
 import type { GraphContext } from "./prompt-engine.js";
 import { getUserDataPath } from "./electron-loader.js";
+import { redactSensitive } from "./sensitive-filter.js";
+import { secretsStore } from "./secrets-store.js";
+import { safeExecute } from "./safe-execute.js";
+
+// NEW-1 + DATA-7: memory_events.content 入库截断长度（足够保留上下文，避免无界增长）
+const MEMORY_CONTENT_MAX_CHARS = 8000;
+const MEMORY_SUMMARY_MAX_CHARS = 1000;
+const MEMORY_TITLE_MAX_CHARS = 200;
 
 /** 同义词表：用于实体去重的人工映射，lowercase 键 → 规范化名称。 */
 const ENTITY_SYNONYMS: Record<string, string> = {
@@ -74,6 +82,15 @@ export class KnowledgeGraphEngine {
     const dbPath = path.join(actualDataDir, "ovo.sqlite");
     this.db = new Database(dbPath);
     this.bootstrap();
+    // SEC-8: 多重防御——
+    //   ① userData 整个目录 chmod 700，阻止同机其他用户读取
+    //   ② data/ 子目录 chmod 700
+    //   ③ ovo.sqlite 单文件 chmod 600
+    // memory_events 的高敏感字段已经走 safeStorage 字段级加密（addEvent）
+    // 即便文件被偷走，攻击者拿到的也是 enc:v1:... 密文，没 Keychain 解不开
+    try { fs.chmodSync(userDataPath, 0o700); } catch { /* 不影响功能 */ }
+    try { fs.chmodSync(actualDataDir, 0o700); } catch { /* */ }
+    try { fs.chmodSync(dbPath, 0o600); } catch { /* */ }
   }
 
   private getDefaultUserDataPath() {
@@ -174,8 +191,19 @@ export class KnowledgeGraphEngine {
       if (!cols.some((c) => c.name === "intent_type")) {
         this.db.exec("ALTER TABLE user_feedback ADD COLUMN intent_type TEXT");
       }
-    } catch {
-      /* swallow migration errors */
+    } catch (err) {
+      // C9 + A7: 不再 swallow migration——失败必须被看见。
+      // 但仍继续启动（多数失败是"列已存在"良性错误），不阻断
+      try {
+        const msg = err instanceof Error ? err.message : String(err);
+        // "already exists" / "duplicate column" 类错误是良性的，不告警
+        if (!/already exists|duplicate column/i.test(msg)) {
+          // 延迟加载 errorLogger 避免循环依赖
+          void import("./error-logger.js").then(({ errorLogger }) => {
+            errorLogger.alert("error", "kg.migration", "KG schema 迁移失败", { error: msg });
+          }).catch(() => { /* */ });
+        }
+      } catch { /* */ }
     }
 
     // KG-B: entities 加 quality_score / pinned / last_referenced_at 三个字段
@@ -197,8 +225,19 @@ export class KnowledgeGraphEngine {
       // 索引：quality_score 倒序常用，pinned 用于 GC 保护
       this.db.exec("CREATE INDEX IF NOT EXISTS idx_entities_quality ON entities(quality_score DESC)");
       this.db.exec("CREATE INDEX IF NOT EXISTS idx_entities_pinned ON entities(pinned)");
-    } catch {
-      /* swallow migration errors */
+    } catch (err) {
+      // C9 + A7: 不再 swallow migration——失败必须被看见。
+      // 但仍继续启动（多数失败是"列已存在"良性错误），不阻断
+      try {
+        const msg = err instanceof Error ? err.message : String(err);
+        // "already exists" / "duplicate column" 类错误是良性的，不告警
+        if (!/already exists|duplicate column/i.test(msg)) {
+          // 延迟加载 errorLogger 避免循环依赖
+          void import("./error-logger.js").then(({ errorLogger }) => {
+            errorLogger.alert("error", "kg.migration", "KG schema 迁移失败", { error: msg });
+          }).catch(() => { /* */ });
+        }
+      } catch { /* */ }
     }
 
     // KG-G: relationships 加 inferred 字段（标记是否由二次 pass 推断的）
@@ -209,8 +248,19 @@ export class KnowledgeGraphEngine {
       if (!relCols.some((c) => c.name === "inferred")) {
         this.db.exec("ALTER TABLE relationships ADD COLUMN inferred INTEGER DEFAULT 0");
       }
-    } catch {
-      /* swallow migration errors */
+    } catch (err) {
+      // C9 + A7: 不再 swallow migration——失败必须被看见。
+      // 但仍继续启动（多数失败是"列已存在"良性错误），不阻断
+      try {
+        const msg = err instanceof Error ? err.message : String(err);
+        // "already exists" / "duplicate column" 类错误是良性的，不告警
+        if (!/already exists|duplicate column/i.test(msg)) {
+          // 延迟加载 errorLogger 避免循环依赖
+          void import("./error-logger.js").then(({ errorLogger }) => {
+            errorLogger.alert("error", "kg.migration", "KG schema 迁移失败", { error: msg });
+          }).catch(() => { /* */ });
+        }
+      } catch { /* */ }
     }
 
     // P7: pipeline_logs 加 outcome_score（pipeline 整体效果分），user_feedback 加 pipeline_id
@@ -223,8 +273,19 @@ export class KnowledgeGraphEngine {
       if (!ufCols.some((c) => c.name === "pipeline_id")) {
         this.db.exec("ALTER TABLE user_feedback ADD COLUMN pipeline_id TEXT");
       }
-    } catch {
-      /* swallow migration errors */
+    } catch (err) {
+      // C9 + A7: 不再 swallow migration——失败必须被看见。
+      // 但仍继续启动（多数失败是"列已存在"良性错误），不阻断
+      try {
+        const msg = err instanceof Error ? err.message : String(err);
+        // "already exists" / "duplicate column" 类错误是良性的，不告警
+        if (!/already exists|duplicate column/i.test(msg)) {
+          // 延迟加载 errorLogger 避免循环依赖
+          void import("./error-logger.js").then(({ errorLogger }) => {
+            errorLogger.alert("error", "kg.migration", "KG schema 迁移失败", { error: msg });
+          }).catch(() => { /* */ });
+        }
+      } catch { /* */ }
     }
 
     // P8: prompt_eval_suggestions 表（自评结果，待人工 review）
@@ -241,6 +302,25 @@ export class KnowledgeGraphEngine {
       );
     `);
 
+    // PHIL-1 / P0.4: negative_patterns 表 —— 玻璃管家"永远不要这样"按钮的落地点
+    //   用户主动拒绝 + 给出理由 → 写一条 pattern → adaptive-prompt 注入硬约束给 LLM
+    //   feedback-engine 读这张表给 action 评分降权
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS negative_patterns (
+        id TEXT PRIMARY KEY,
+        created_at INTEGER NOT NULL,
+        app_name TEXT,
+        intent TEXT,
+        action_type TEXT,
+        pattern_text TEXT NOT NULL,
+        context_signature TEXT,
+        hit_count INTEGER DEFAULT 0,
+        last_hit_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_negative_patterns_lookup
+        ON negative_patterns(app_name, action_type, intent);
+    `);
+
     // P2-fix: memory_events 早期写入没有带 source_window_id，召回时不该被当作"当前
     // 窗口的历史"。给所有 NULL / 空串的存量记录回填 sentinel "__legacy__"，召回路径
     // 默认排除它。新写入永远带真实 windowId（auto-capture / action-executor 已修）。
@@ -254,8 +334,19 @@ export class KnowledgeGraphEngine {
       this.db.exec(
         "CREATE INDEX IF NOT EXISTS idx_memory_events_window ON memory_events(source_window_id, timestamp DESC)"
       );
-    } catch {
-      /* swallow migration errors */
+    } catch (err) {
+      // C9 + A7: 不再 swallow migration——失败必须被看见。
+      // 但仍继续启动（多数失败是"列已存在"良性错误），不阻断
+      try {
+        const msg = err instanceof Error ? err.message : String(err);
+        // "already exists" / "duplicate column" 类错误是良性的，不告警
+        if (!/already exists|duplicate column/i.test(msg)) {
+          // 延迟加载 errorLogger 避免循环依赖
+          void import("./error-logger.js").then(({ errorLogger }) => {
+            errorLogger.alert("error", "kg.migration", "KG schema 迁移失败", { error: msg });
+          }).catch(() => { /* */ });
+        }
+      } catch { /* */ }
     }
   }
 
@@ -279,7 +370,8 @@ export class KnowledgeGraphEngine {
       .get(pipelineId) as { stages: string } | undefined;
     if (!row) return 0;
     let stages: Record<string, { output?: Record<string, unknown> }> = {};
-    try { stages = JSON.parse(row.stages); } catch { /* ignore */ }
+    // 历史 row 可能是空字符串或半截 JSON，parse 失败就当无 stages（合理 silent）
+    try { stages = JSON.parse(row.stages); } catch { /* legitimate: 默认空对象 */ }
     const agentOut = stages.agent?.output as Record<string, unknown> | undefined;
     const intent = (agentOut?.intent as string | undefined) ?? "";
     const role = agentOut?.role as string | undefined;
@@ -331,6 +423,7 @@ export class KnowledgeGraphEngine {
       .all(since, limit) as Array<{ id: string; timestamp: number; outcome_score: number; stages: string }>;
     return rows.map((r) => {
       let summary = "";
+      // 单行 stages JSON 解析失败时 summary 留空，不影响其他 row 的 self-eval（合理 silent）
       try {
         const stages = JSON.parse(r.stages) as Record<string, { output?: Record<string, unknown> }>;
         const out = stages.agent?.output as Record<string, unknown> | undefined;
@@ -341,7 +434,7 @@ export class KnowledgeGraphEngine {
           actions: out?.actions,
           suggestions: out?.suggestions
         });
-      } catch { /* ignore */ }
+      } catch { /* legitimate: row 无 stages 时跳过 summary */ }
       return {
         id: r.id,
         timestamp: r.timestamp,
@@ -380,6 +473,98 @@ export class KnowledgeGraphEngine {
            FROM prompt_eval_suggestions ORDER BY created_at DESC LIMIT ?`
       )
       .all(limit) as Array<{ id: string; created_at: number; scope: string; problem: string; proposed_change: string; evidence: string; confidence: number; status: string }>;
+  }
+
+  // ============================================================
+  // PHIL-1 / P0.4: 玻璃管家 negative patterns
+  // ============================================================
+
+  /**
+   * 用户点"永远不要这样"时调用。把禁忌写入 KG，下次 LLM prompt 会注入这些约束。
+   * pattern_text 是用户原话；context_signature 是 Ovo 抽取的"以后碰到这种情况"特征。
+   */
+  insertNegativePattern(payload: {
+    appName?: string;
+    intent?: string;
+    actionType?: string;
+    patternText: string;
+    contextSignature?: string;
+  }): string {
+    const id = this.id("np");
+    this.db
+      .prepare(
+        `INSERT INTO negative_patterns
+           (id, created_at, app_name, intent, action_type, pattern_text, context_signature, hit_count)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0)`
+      )
+      .run(
+        id,
+        Date.now(),
+        payload.appName ?? null,
+        payload.intent ?? null,
+        payload.actionType ?? null,
+        payload.patternText.slice(0, 500),
+        (payload.contextSignature ?? "").slice(0, 500)
+      );
+    return id;
+  }
+
+  /**
+   * 查询当前上下文相关的 negative patterns（用于注入 prompt 或 feedback 降权）。
+   * 匹配规则：app_name 精确匹配 + action_type 精确匹配（任一为 NULL 视为通配）
+   */
+  getRelevantNegativePatterns(ctx: {
+    appName?: string;
+    actionType?: string;
+    intent?: string;
+  }, limit = 20): Array<{
+    id: string; pattern_text: string; app_name: string | null;
+    action_type: string | null; intent: string | null;
+    context_signature: string | null; hit_count: number; created_at: number;
+  }> {
+    return this.db
+      .prepare(
+        `SELECT id, pattern_text, app_name, action_type, intent, context_signature, hit_count, created_at
+           FROM negative_patterns
+          WHERE (app_name IS NULL OR app_name = ?)
+            AND (action_type IS NULL OR action_type = ?)
+            AND (intent IS NULL OR intent = ?)
+          ORDER BY created_at DESC
+          LIMIT ?`
+      )
+      .all(
+        ctx.appName ?? "",
+        ctx.actionType ?? "",
+        ctx.intent ?? "",
+        limit
+      ) as Array<{ id: string; pattern_text: string; app_name: string | null; action_type: string | null; intent: string | null; context_signature: string | null; hit_count: number; created_at: number }>;
+  }
+
+  /** 列出全部 negative patterns（用于 SettingsPanel "教过 Ovo 的禁忌"列表） */
+  listNegativePatterns(limit = 100): Array<{
+    id: string; created_at: number; app_name: string | null;
+    intent: string | null; action_type: string | null;
+    pattern_text: string; context_signature: string | null;
+    hit_count: number; last_hit_at: number | null;
+  }> {
+    return this.db
+      .prepare(
+        `SELECT id, created_at, app_name, intent, action_type, pattern_text, context_signature, hit_count, last_hit_at
+           FROM negative_patterns ORDER BY created_at DESC LIMIT ?`
+      )
+      .all(limit) as Array<{ id: string; created_at: number; app_name: string | null; intent: string | null; action_type: string | null; pattern_text: string; context_signature: string | null; hit_count: number; last_hit_at: number | null }>;
+  }
+
+  /** 命中时调用（adaptive-prompt 注入了某条 pattern 后） */
+  markNegativePatternHit(id: string): void {
+    this.db
+      .prepare(`UPDATE negative_patterns SET hit_count = hit_count + 1, last_hit_at = ? WHERE id = ?`)
+      .run(Date.now(), id);
+  }
+
+  /** 用户取消某条 pattern */
+  deleteNegativePattern(id: string): void {
+    this.db.prepare(`DELETE FROM negative_patterns WHERE id = ?`).run(id);
   }
 
   /** P8: 标记自评建议状态（applied/dismissed） */
@@ -515,6 +700,11 @@ export class KnowledgeGraphEngine {
       const promptPreview = String(agentData.promptSent ?? "").slice(0, 1500);
       const rawResponse = String(agentOut.rawPreview ?? "").slice(0, 1500);
 
+      // 关系推断元数据——必须在第一次可能 assemblePipeline() 之前初始化，
+      // 否则 if (agentStatus === "failed") return assemblePipeline() 这条路径会触发
+      // "Cannot access 'rel' before initialization" TDZ 错误（assemblePipeline 内部捕获了 rel）
+      const rel = relationByPipe.get(row.id);
+
       // action 项展开（最多 5 条）
       const actionResults = Array.isArray(actionsOut.results) ? (actionsOut.results as Array<{ type?: string; status?: string; output?: string; description?: string }>) : [];
       const actItems = actionResults.slice(0, 5).map((a) => {
@@ -622,7 +812,7 @@ export class KnowledgeGraphEngine {
       }
 
       // ⑤ 补关系 —— 仅当真触发过（business_logs 里有 kg.relation-inference）
-      const rel = relationByPipe.get(row.id);
+      // 注意：rel 已在 promptPreview 后初始化（防 TDZ）
       if (rel && (rel.added > 0 || rel.reinforced > 0)) {
         const relParts: string[] = [];
         if (rel.added > 0) relParts.push(`+${rel.added} 新关系`);
@@ -896,20 +1086,33 @@ export class KnowledgeGraphEngine {
       }
     }
 
-    // 用 pipeline_logs 补 app/window 上下文（一次批量 LEFT JOIN 风格，避免 N+1）
+    // pipeline_logs 表没有 app_name / window_title 列（schema 见 bootstrap）；
+    // 这些信息在 stages JSON 的 aggregate.input 里。一次批量查 + 解析。
     const pipelineIds = Array.from(new Set(flat.map((f) => f.pipelineId).filter(Boolean))) as string[];
     if (pipelineIds.length) {
       const placeholders = pipelineIds.map(() => "?").join(",");
       const ctxRows = this.db
-        .prepare(`SELECT id, app_name, window_title FROM pipeline_logs WHERE id IN (${placeholders})`)
-        .all(...pipelineIds) as Array<{ id: string; app_name: string; window_title: string }>;
-      const ctxMap = new Map(ctxRows.map((c) => [c.id, c]));
+        .prepare(`SELECT id, stages FROM pipeline_logs WHERE id IN (${placeholders})`)
+        .all(...pipelineIds) as Array<{ id: string; stages: string }>;
+      const ctxMap = new Map<string, { appName: string; windowTitle: string }>();
+      for (const c of ctxRows) {
+        let appName = "";
+        let windowTitle = "";
+        // parse 失败时 appName/windowTitle 留空——下游会用空串兜底（合理 silent）
+        try {
+          const stages = JSON.parse(c.stages ?? "{}") as Record<string, { input?: Record<string, unknown> }>;
+          const aggIn = stages.aggregate?.input ?? {};
+          appName = String((aggIn as Record<string, unknown>).appName ?? "");
+          windowTitle = String((aggIn as Record<string, unknown>).windowTitle ?? "");
+        } catch { /* legitimate: 历史脏数据 row */ }
+        ctxMap.set(c.id, { appName, windowTitle });
+      }
       for (const f of flat) {
         if (f.pipelineId) {
           const c = ctxMap.get(f.pipelineId);
           if (c) {
-            f.appName = c.app_name;
-            f.windowTitle = c.window_title;
+            f.appName = c.appName;
+            f.windowTitle = c.windowTitle;
           }
         }
       }
@@ -1071,6 +1274,40 @@ export class KnowledgeGraphEngine {
    */
   setPinned(entityId: string, pinned: boolean) {
     this.db.prepare("UPDATE entities SET pinned = ? WHERE id = ?").run(pinned ? 1 : 0, entityId);
+  }
+
+  /**
+   * DATA-10: 数据 retention——定期清掉过期的事件 / 日志，保留实体图谱。
+   *
+   * 默认保留 30 天的：
+   *   - memory_events（OCR 内容）
+   *   - business_logs / pipeline_logs（pipeline 执行日志）
+   *   - system_logs（系统日志）
+   * 但不删 entities / relationships——那是用户的"长期记忆"，应该跟着 quality_score
+   * 衰减由 runEntityGC 单独处理（pinned entity 永保留）。
+   *
+   * 用户主动 clearAll 不影响这个；这是后台被动清理。
+   */
+  runRetentionGC(retentionDays = 30): {
+    memoryEventsDeleted: number;
+    pipelineLogsDeleted: number;
+    businessLogsDeleted: number;
+    systemLogsDeleted: number;
+  } {
+    const cutoff = Date.now() - retentionDays * 86_400_000;
+    const tx = this.db.transaction(() => {
+      const r1 = this.db.prepare("DELETE FROM memory_events WHERE timestamp < ?").run(cutoff);
+      const r2 = this.db.prepare("DELETE FROM pipeline_logs WHERE timestamp < ?").run(cutoff);
+      const r3 = this.db.prepare("DELETE FROM business_logs WHERE start_time < ?").run(cutoff);
+      const r4 = this.db.prepare("DELETE FROM system_logs WHERE timestamp < ?").run(cutoff);
+      return {
+        memoryEventsDeleted: Number(r1.changes ?? 0),
+        pipelineLogsDeleted: Number(r2.changes ?? 0),
+        businessLogsDeleted: Number(r3.changes ?? 0),
+        systemLogsDeleted: Number(r4.changes ?? 0)
+      };
+    });
+    return tx();
   }
 
   /**
@@ -1295,9 +1532,12 @@ export class KnowledgeGraphEngine {
       description,
       attributes: { generatedAt: Date.now() }
     });
-    try {
-      this.db.prepare("UPDATE entities SET importance = ? WHERE id = ?").run(importance, id);
-    } catch { /* swallow */ }
+    safeExecute(
+      () => this.db.prepare("UPDATE entities SET importance = ? WHERE id = ?").run(importance, id),
+      "kg.insight-summary.set-importance",
+      undefined,
+      "warn"
+    );
     return id;
   }
 
@@ -1357,15 +1597,21 @@ export class KnowledgeGraphEngine {
         description: `活动关键词：${kw}`,
         attributes: { isActivityRoot: true, keyword: kw }
       });
-      try {
-        this.upsertRelation({
-          source: entityName,
-          target: activityEntityName,
-          relation: "plays_role_in",
-          context: `近 ${sinceDays} 天共现 ${hits} 次`
-        });
-        relations += 1;
-      } catch { /* swallow */ }
+      const ok = safeExecute(
+        () => {
+          this.upsertRelation({
+            source: entityName,
+            target: activityEntityName,
+            relation: "plays_role_in",
+            context: `近 ${sinceDays} 天共现 ${hits} 次`
+          });
+          return true;
+        },
+        "kg.scene-role.upsert-relation",
+        false,
+        "warn"
+      );
+      if (ok) relations += 1;
     }
     return { pairs, relations };
   }
@@ -1416,17 +1662,23 @@ export class KnowledgeGraphEngine {
       const hour = Number(hourStr);
       const patternName = `pattern::${dowNames[dow]}${hourLabels[hour]}::${entityName}`;
       const desc = `近 ${sinceDays} 天里，${dowNames[dow]}${hourLabels[hour]}时段共 ${hits} 次涉及 "${entityName}"`;
-      try {
-        const id = this.upsertEntity({
-          name: patternName,
-          type: "behavior_pattern",
-          description: desc,
-          attributes: { dow, hourBucket: hour, hits, relatedEntity: entityName, generatedAt: Date.now() }
-        });
-        // importance=8 让它在 getUserContext 加权排序里靠前
-        this.db.prepare("UPDATE entities SET importance = ? WHERE id = ?").run(8, id);
-        patterns += 1;
-      } catch { /* swallow */ }
+      const ok = safeExecute(
+        () => {
+          const id = this.upsertEntity({
+            name: patternName,
+            type: "behavior_pattern",
+            description: desc,
+            attributes: { dow, hourBucket: hour, hits, relatedEntity: entityName, generatedAt: Date.now() }
+          });
+          // importance=8 让它在 getUserContext 加权排序里靠前
+          this.db.prepare("UPDATE entities SET importance = ? WHERE id = ?").run(8, id);
+          return true;
+        },
+        "kg.behavior-pattern.upsert",
+        false,
+        "warn"
+      );
+      if (ok) patterns += 1;
     }
     return { patterns };
   }
@@ -1449,7 +1701,8 @@ export class KnowledgeGraphEngine {
            WHERE source_window_id != '__legacy__'
            ORDER BY timestamp DESC
            LIMIT ?`;
-    return this.db.prepare(sql).all(limit) as Array<{
+    // SEC-8: 读取时统一过解密
+    const rows = this.db.prepare(sql).all(limit) as Array<{
       id: string;
       timestamp: number;
       appName: string;
@@ -1460,6 +1713,7 @@ export class KnowledgeGraphEngine {
       importance: number;
       sourceWindowId: string;
     }>;
+    return rows.map((r) => this.decryptEventRow(r));
   }
 
   /**
@@ -1468,7 +1722,7 @@ export class KnowledgeGraphEngine {
    */
   getRecentEventsByWindow(windowId: string, limit = 20) {
     if (!windowId || windowId === "__legacy__") return [];
-    return this.db
+    const rows = this.db
       .prepare(
         `SELECT id, timestamp, app_name as appName, window_title as windowTitle,
                 content, summary, intent, importance
@@ -1487,6 +1741,7 @@ export class KnowledgeGraphEngine {
       intent: string;
       importance: number;
     }>;
+    return rows.map((r) => this.decryptEventRow(r));
   }
 
   private id(prefix: string) {
@@ -1575,7 +1830,28 @@ export class KnowledgeGraphEngine {
     intent?: string;
     sourceWindowId?: string;
     entityIds?: string[];
+    /** OCR 整体置信度 0-1，低于 0.5 直接拒绝入库（DATA-11） */
+    confidence?: number;
   }) {
+    // DATA-11: OCR confidence < 0.5 当作乱码丢弃，不污染 KG
+    if (typeof payload.confidence === "number" && payload.confidence > 0 && payload.confidence < 0.5) {
+      return "";
+    }
+    // NEW-1 + DATA-7: 入库前二次脱敏 + 截断
+    // 二次脱敏防 auto-capture 那一道漏过的（多重防御）
+    // 截断保证单事件不会无界膨胀（长 PDF OCR 几万字会让 memory_events 表爆）
+    const contentRedacted = redactSensitive(payload.content || "").cleaned;
+    const summaryRedacted = redactSensitive(payload.summary || "").cleaned;
+    const titleRedacted = redactSensitive(payload.windowTitle || "").cleaned;
+    const appRedacted = redactSensitive(payload.appName || "").cleaned;
+    // SEC-8: 高敏感字段（OCR 正文 + LLM 总结）走 safeStorage 字段级加密。
+    // 即便 ovo.sqlite 被偷走，攻击者也只能拿到 enc:v1:... 密文，没有 Keychain 解不开。
+    // app_name / window_title / intent 保持明文以便索引和 UI 展示
+    const content = secretsStore.encryptField(contentRedacted.slice(0, MEMORY_CONTENT_MAX_CHARS));
+    const summary = secretsStore.encryptField(summaryRedacted.slice(0, MEMORY_SUMMARY_MAX_CHARS));
+    const windowTitle = titleRedacted.slice(0, MEMORY_TITLE_MAX_CHARS);
+    const appName = appRedacted.slice(0, MEMORY_TITLE_MAX_CHARS);
+
     const id = this.id("evt");
     this.db
       .prepare(
@@ -1585,15 +1861,25 @@ export class KnowledgeGraphEngine {
       .run(
         id,
         Date.now(),
-        payload.appName,
-        payload.windowTitle,
-        payload.content,
-        payload.summary ?? "",
+        appName,
+        windowTitle,
+        content,
+        summary,
         payload.intent ?? "",
         JSON.stringify(payload.entityIds ?? []),
         payload.sourceWindowId ?? ""
       );
     return id;
+  }
+
+  /**
+   * SEC-8: 读 memory_events 时统一过解密层。
+   * 历史明文数据（enc:v1: 前缀缺失）原样返回，向前兼容。
+   */
+  private decryptEventRow<T extends { content?: string; summary?: string }>(row: T): T {
+    if (row.content) row.content = secretsStore.decryptField(row.content);
+    if (row.summary) row.summary = secretsStore.decryptField(row.summary);
+    return row;
   }
 
   /**
@@ -1684,10 +1970,11 @@ export class KnowledgeGraphEngine {
       .all(limit * 2) as Array<{ name: string; attributes: string; last_seen: number }>;
     const out = rows.map((r) => {
       let confidence = 0.5;
+      // attributes 为半截 JSON 时 confidence 走默认 0.5（合理 silent）
       try {
         const attrs = JSON.parse(r.attributes || "{}") as { confidence?: unknown };
         if (typeof attrs.confidence === "number") confidence = Math.max(0, Math.min(1, attrs.confidence));
-      } catch { /* ignore */ }
+      } catch { /* legitimate: 默认 confidence=0.5 */ }
       return { role: r.name, confidence, lastSeen: r.last_seen ?? 0 };
     });
     out.sort((a, b) => b.confidence - a.confidence);
@@ -1708,10 +1995,11 @@ export class KnowledgeGraphEngine {
     let newConfidence = c;
     if (existing) {
       let oldConf = 0.5;
+      // attributes 半截 JSON 时按 0.5 起算（合理 silent）
       try {
         const a = JSON.parse(existing.attributes || "{}") as { confidence?: number };
         if (typeof a.confidence === "number") oldConf = a.confidence;
-      } catch { /* ignore */ }
+      } catch { /* legitimate: oldConf 用默认 0.5 */ }
       newConfidence = 0.7 * oldConf + 0.3 * c;
     }
     this.upsertEntity({
@@ -1800,7 +2088,9 @@ export class KnowledgeGraphEngine {
     // KG-D: 默认 limit 200（让 UI 列表能显示更多），多带 quality_score / pinned / mention_count
     const keyword = query.trim();
     const all = !keyword;
-    const needle = all ? "" : `%${keyword}%`;
+    // CODE-5: LIKE 通配符 % / _ / \ 必须转义，否则用户搜 "100%" / "a_b" 会全表 scan 且语义错乱
+    const escaped = keyword.replace(/[%_\\]/g, (m) => `\\${m}`);
+    const needle = all ? "" : `%${escaped}%`;
     const rows = all
       ? (this.db
           .prepare(
@@ -1823,7 +2113,7 @@ export class KnowledgeGraphEngine {
                     COALESCE(pinned, 0) as pinned,
                     COALESCE(mention_count, 1) as mention_count
                FROM entities
-              WHERE name LIKE ? OR type LIKE ? OR description LIKE ?
+              WHERE name LIKE ? ESCAPE '\\' OR type LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\'
               ORDER BY pinned DESC, quality_score DESC, last_seen DESC
               LIMIT ?`
           )
@@ -1844,7 +2134,10 @@ export class KnowledgeGraphEngine {
   }
 
   getEvents(limit = 100) {
-    return this.db.prepare("SELECT * FROM memory_events ORDER BY timestamp DESC LIMIT ?").all(limit);
+    const rows = this.db.prepare("SELECT * FROM memory_events ORDER BY timestamp DESC LIMIT ?").all(limit) as Array<{
+      content?: string; summary?: string;
+    }>;
+    return rows.map((r) => this.decryptEventRow(r));
   }
 
   /** 取整张图的快照：节点 + 边，限制规模避免渲染爆炸。 */
@@ -1912,14 +2205,15 @@ export class KnowledgeGraphEngine {
   /** 按实体 id 查询最近相关的 memory_events。entity_ids 是 JSON 数组字符串，使用 LIKE 匹配。 */
   getEventsByEntity(entityId: string, limit = 50) {
     const needle = `%"${entityId}"%`;
-    return this.db
+    const rows = this.db
       .prepare(
         `SELECT * FROM memory_events
          WHERE entity_ids LIKE ?
          ORDER BY timestamp DESC
          LIMIT ?`
       )
-      .all(needle, limit);
+      .all(needle, limit) as Array<{ content?: string; summary?: string }>;
+    return rows.map((r) => this.decryptEventRow(r));
   }
 
   /**
@@ -1944,6 +2238,38 @@ export class KnowledgeGraphEngine {
     });
     tx();
     return rows.length;
+  }
+
+  /**
+   * CODE-6: feedback-engine 不再反射访问私有 db；走这个公开方法插入用户反馈记录。
+   */
+  insertFeedback(payload: {
+    suggestionId: string;
+    suggestionType: string;
+    action: "accepted" | "rejected" | "ignored";
+    personalityContext?: string;
+    appContext?: string;
+    intentType?: string;
+    pipelineId?: string;
+  }): string {
+    const id = `fb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    this.db
+      .prepare(
+        `INSERT INTO user_feedback (id,suggestion_id,suggestion_type,action,personality_context,app_context,intent_type,pipeline_id,timestamp)
+         VALUES (?,?,?,?,?,?,?,?,?)`
+      )
+      .run(
+        id,
+        payload.suggestionId,
+        payload.suggestionType,
+        payload.action,
+        payload.personalityContext ?? "",
+        payload.appContext ?? "",
+        payload.intentType ?? "",
+        payload.pipelineId ?? null,
+        Date.now()
+      );
+    return id;
   }
 
   getStats() {
@@ -2082,6 +2408,221 @@ export class KnowledgeGraphEngine {
         JSON.stringify(payload.context ?? {})
       );
     return id;
+  }
+
+  /**
+   * 取单个 action 的完整上下文——给主控台 ActionDetailDrawer 用。
+   * 整合 business_logs 中所有相关节点 + 关联 pipeline 的 OCR / LLM 推理片段。
+   */
+  getActionDetail(actionId: string): {
+    actionId: string;
+    found: boolean;
+    type: string;
+    description: string;
+    params: Record<string, unknown>;
+    requireConfirm: boolean;
+    status: string;
+    output: string;
+    error?: string;
+    confirmedByUser: boolean;
+    startedAt: number;
+    durationMs: number;
+    pipelineId?: string;
+    pipelineStartedAt?: number;
+    appName?: string;
+    windowTitle?: string;
+    /** OCR 看到的原文片段（脱敏后） */
+    ocrPreview?: string;
+    /** LLM 推断意图 */
+    intent?: string;
+    /** LLM 给出的总结 */
+    summary?: string;
+    /** 该 action 在 pipeline 中的所有 business_logs 节点 */
+    timeline: Array<{
+      node: string;
+      status: string;
+      startTime: number;
+      endTime: number;
+      durationMs: number;
+      error?: string;
+    }>;
+  } | null {
+    // 1) 在 business_logs 中找 actions.execute 或 action.confirm.execute，其 input.actions 或 input.actionId 包含 actionId
+    // 用 LIKE 粗筛——这里 LIKE 转义不重要（actionId 是内部 id 不会含 % 或 _）
+    const escaped = String(actionId).replace(/[%_]/g, (m) => `\\${m}`);
+    const candidates = this.db
+      .prepare(
+        `SELECT id, pipeline_id, node, input, output, error, start_time, end_time
+           FROM business_logs
+           WHERE (node = 'actions.execute' OR node = 'action.confirm.execute')
+             AND (input LIKE '%' || ? || '%' ESCAPE '\\' OR output LIKE '%' || ? || '%' ESCAPE '\\')
+           ORDER BY start_time DESC
+           LIMIT 5`
+      )
+      .all(escaped, escaped) as Array<{
+      id: string; pipeline_id: string; node: string;
+      input: string; output: string; error: string;
+      start_time: number; end_time: number;
+    }>;
+
+    if (candidates.length === 0) return { actionId, found: false } as ReturnType<KnowledgeGraphEngine["getActionDetail"]> & { found: false };
+
+    let foundType = "";
+    let foundDescription = "";
+    let foundParams: Record<string, unknown> = {};
+    let foundRequireConfirm = false;
+    let foundStatus = "";
+    let foundOutput = "";
+    let foundError: string | undefined;
+    let foundConfirmed = false;
+    let foundStartedAt = 0;
+    let foundDurationMs = 0;
+    let foundPipelineId: string | undefined;
+
+    for (const c of candidates) {
+      try {
+        const inp = JSON.parse(c.input ?? "{}") as Record<string, unknown>;
+        const out = JSON.parse(c.output ?? "{}") as Record<string, unknown>;
+        // 在 actions.execute 里 input.actions 是数组
+        const inputActions = (inp.actions as Array<Record<string, unknown>> | undefined) ?? [];
+        const inputAction = inputActions.find((a) => a.id === actionId);
+        // 在 action.confirm.execute 里 input 直接是 {actionId, description}
+        const isConfirm = c.node === "action.confirm.execute" && inp.actionId === actionId;
+        // 在 output.results 找对应 result
+        const results = (out.results as Array<Record<string, unknown>> | undefined) ?? [];
+        const result = results.find((r) => r.actionId === actionId) ?? (isConfirm ? out : undefined);
+        if (!inputAction && !isConfirm && !result) continue;
+
+        const a = inputAction ?? {};
+        foundType = String(a.type ?? (result?.type) ?? "");
+        foundDescription = String(a.description ?? inp.description ?? "");
+        foundParams = (a.params as Record<string, unknown>) ?? {};
+        foundRequireConfirm = Boolean(a.requireConfirm ?? isConfirm);
+        if (result) {
+          foundStatus = String(result.status ?? "");
+          foundOutput = String(result.output ?? "");
+          foundError = result.error ? String(result.error) : undefined;
+          foundDurationMs = Number(result.duration ?? 0);
+        }
+        foundConfirmed = isConfirm || foundConfirmed;
+        foundStartedAt = c.start_time;
+        foundPipelineId = c.pipeline_id;
+        break;
+      } catch { /* skip malformed row */ }
+    }
+
+    // 关联 pipeline_logs 取上下文（app / window / OCR 预览 / 意图 / 总结）
+    let appName: string | undefined;
+    let windowTitle: string | undefined;
+    let ocrPreview: string | undefined;
+    let intent: string | undefined;
+    let summary: string | undefined;
+    let pipelineStartedAt: number | undefined;
+    if (foundPipelineId) {
+      const plRow = this.db
+        .prepare(`SELECT timestamp, stages FROM pipeline_logs WHERE id = ?`)
+        .get(foundPipelineId) as { timestamp: number; stages: string } | undefined;
+      if (plRow) {
+        pipelineStartedAt = plRow.timestamp;
+        try {
+          const stages = JSON.parse(plRow.stages ?? "{}") as Record<string, { input?: Record<string, unknown>; output?: Record<string, unknown> }>;
+          const aggIn = stages.aggregate?.input ?? {};
+          const aggOut = stages.aggregate?.output ?? {};
+          const agentOut = stages.agent?.output ?? {};
+          appName = String((aggIn as Record<string, unknown>).appName ?? "");
+          windowTitle = String((aggIn as Record<string, unknown>).windowTitle ?? "");
+          ocrPreview = String((aggOut as Record<string, unknown>).preview ?? "").slice(0, 500);
+          intent = String((agentOut as Record<string, unknown>).intent ?? "");
+          summary = String((agentOut as Record<string, unknown>).summary ?? (agentOut as Record<string, unknown>).prediction ?? "");
+        } catch { /* */ }
+      }
+    }
+
+    // 整条 timeline——同 pipeline 里所有 business_logs 节点
+    let timeline: ReturnType<KnowledgeGraphEngine["getActionDetail"]> extends infer T
+      ? T extends { timeline: infer L } ? L : never
+      : never = [];
+    if (foundPipelineId) {
+      const rows = this.db
+        .prepare(
+          `SELECT node, status, error, start_time, end_time
+             FROM business_logs
+             WHERE pipeline_id = ?
+             ORDER BY start_time ASC`
+        )
+        .all(foundPipelineId) as Array<{
+        node: string; status: string; error: string;
+        start_time: number; end_time: number;
+      }>;
+      timeline = rows.map((r) => ({
+        node: r.node,
+        status: r.status,
+        startTime: r.start_time,
+        endTime: r.end_time ?? r.start_time,
+        durationMs: Math.max(0, (r.end_time ?? r.start_time) - r.start_time),
+        error: r.error || undefined
+      }));
+    }
+
+    return {
+      actionId,
+      found: true,
+      type: foundType,
+      description: foundDescription,
+      params: foundParams,
+      requireConfirm: foundRequireConfirm,
+      status: foundStatus,
+      output: foundOutput,
+      error: foundError,
+      confirmedByUser: foundConfirmed,
+      startedAt: foundStartedAt,
+      durationMs: foundDurationMs,
+      pipelineId: foundPipelineId,
+      pipelineStartedAt,
+      appName,
+      windowTitle,
+      ocrPreview,
+      intent,
+      summary,
+      timeline
+    };
+  }
+
+  /**
+   * 拉 toast 弹窗历史——给主控台「通知历史」面板用。
+   * 复用 system_logs 表，source LIKE "toast.%" 过滤。
+   */
+  getToastHistory(limit = 100): Array<{
+    id: string;
+    timestamp: number;
+    title: string;
+    type: string;
+    priority: number;
+    tier: string;
+    content: string;
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT id, timestamp, message, context
+           FROM system_logs
+           WHERE source = 'toast.shown'
+           ORDER BY timestamp DESC
+           LIMIT ?`
+      )
+      .all(limit) as Array<{ id: string; timestamp: number; message: string; context: string }>;
+    return rows.map((r) => {
+      let ctx: Record<string, unknown> = {};
+      try { ctx = JSON.parse(r.context ?? "{}"); } catch { /* */ }
+      return {
+        id: r.id,
+        timestamp: r.timestamp,
+        title: r.message ?? "",
+        type: String(ctx.type ?? ""),
+        priority: Number(ctx.priority ?? 0),
+        tier: String(ctx.tier ?? ""),
+        content: String(ctx.content ?? "")
+      };
+    });
   }
 
   getSystemLogs(limit = 200) {

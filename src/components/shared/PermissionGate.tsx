@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { ShieldAlert, ExternalLink, RefreshCcw, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ShieldAlert, ExternalLink, RefreshCcw, X, CheckCircle2 } from "lucide-react";
 import { GlowButton } from "./GlowButton";
 import { usePermissions } from "../../hooks/usePermissions";
 
@@ -8,10 +8,16 @@ const DISMISS_MS = 1000 * 60 * 30; // 30 分钟内不再弹
 
 /**
  * 屏幕录制权限全局引导。
- * - 当 `screenRecordingMissing` 为 true 时，在控制台顶部展示引导条
- * - 用户可临时关闭（30 分钟）或直接跳转系统设置
- * - 提供"我已授权 → 重新检查"让用户确认后立即刷新
- * - 首次进入应用（且权限缺失）时展示一次性教学弹窗
+ *
+ * 修复 P0.9 / P1.10 / P1.21：
+ *   - 删除"需要退出并重启"的错误文案（底层已实现 3s 轮询热重载，见 usePermissions:148-166）
+ *   - 加授权成功后短暂绿色反馈条（3 秒自动消失）
+ *   - 修复隐藏 bug：requestScreenRecording 返回 {ok, message} 对象，旧代码当布尔用永远 truthy
+ *
+ * 行为：
+ * - 当 screenRecordingMissing=true 时顶部条 + 首次教学弹窗
+ * - 用户授权后 usePermissions 自动感知（3s 轮询 + 主进程 push），显示"Ovo 已经在为你工作了"
+ * - 顶部条可临时关闭（30 分钟）
  */
 export function PermissionGate() {
   const { loaded, screenRecordingMissing, status, openSettings, checkStatus, requestScreenRecording, runtimeDiagnostic } = usePermissions();
@@ -24,6 +30,9 @@ export function PermissionGate() {
   });
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [requesting, setRequesting] = useState(false);
+  // P1.21: 授权成功后 3 秒显示绿色反馈
+  const [showJustGranted, setShowJustGranted] = useState(false);
+  const wasMissingRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!loaded) return;
@@ -38,8 +47,27 @@ export function PermissionGate() {
     } catch { /* ignore */ }
   }, [loaded, screenRecordingMissing]);
 
+  // P1.21: 检测"由缺失 → 已授权"的转变，弹绿色成功条 3 秒
+  useEffect(() => {
+    if (!loaded) return;
+    if (screenRecordingMissing) {
+      wasMissingRef.current = true;
+      return;
+    }
+    // 当前已授权
+    if (wasMissingRef.current) {
+      wasMissingRef.current = false;
+      setShowJustGranted(true);
+      // 同时关闭教学弹窗
+      setShowOnboarding(false);
+      const timer = window.setTimeout(() => setShowJustGranted(false), 3000);
+      return () => window.clearTimeout(timer);
+    }
+  }, [loaded, screenRecordingMissing]);
+
   if (!loaded) return null;
-  if (!screenRecordingMissing && !runtimeDiagnostic) return null;
+  // P1.21: 即使没有问题但刚刚授权也要显示绿色条
+  if (!screenRecordingMissing && !runtimeDiagnostic && !showJustGranted) return null;
 
   const handleDismiss = () => {
     try { localStorage.setItem(DISMISS_KEY, String(Date.now())); } catch { /* ignore */ }
@@ -49,10 +77,9 @@ export function PermissionGate() {
   const handleRequestAccess = async () => {
     setRequesting(true);
     try {
-      const ok = await requestScreenRecording();
-      // 首次调用 macOS 会弹原生提示，用户允许后系统会要求重启应用
-      if (!ok) {
-        // 未授予：直接打开系统设置
+      const result = await requestScreenRecording();
+      // P0.9 修复：result 是 {ok, message} 对象，旧代码 `if (!ok)` 永远是 false（对象 truthy）
+      if (!result.ok) {
         openSettings("screen");
       }
     } finally {
@@ -70,6 +97,25 @@ export function PermissionGate() {
 
   return (
     <>
+      {/* P1.21: 授权成功后短暂绿色反馈，3 秒自动消失 */}
+      {showJustGranted && (
+        <div className="border-b border-[var(--success)]/40 bg-[var(--success)]/10 px-4 py-2.5">
+          <div className="mx-auto flex max-w-6xl items-center gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--success)]/20 text-[var(--success)]">
+              <CheckCircle2 size={16} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-[var(--text-primary)]">
+                Ovo 已经在为你工作了
+              </p>
+              <p className="text-xs text-[var(--text-secondary)]">
+                屏幕录制权限已授权 · Ovo 会默认只看不做，所有操作之前都会问你
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!dismissed && runtimeDiagnostic && (
         <div className="border-b border-[var(--danger)]/30 bg-[var(--danger)]/8 px-4 py-2.5">
           <div className="mx-auto flex max-w-6xl items-center gap-3">
@@ -78,7 +124,7 @@ export function PermissionGate() {
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-[var(--text-primary)]">
-                运行时自检异常（可能启动了旧版 ovo）
+                系统状态异常（可能启动了旧版 Ovo）
               </p>
               <p className="text-xs text-[var(--text-secondary)]">
                 {runtimeDiagnostic.message}
@@ -162,13 +208,13 @@ export function PermissionGate() {
             <div className="space-y-3 rounded-xl bg-[var(--bg-base)] p-4 text-sm">
               <p className="font-medium text-[var(--text-primary)]">为什么需要屏幕录制？</p>
               <p className="text-[var(--text-secondary)]">
-                ovo 作为主动式助手，会定时对屏幕截图并通过 OCR 理解上下文，从而给出与场景相关的建议。
+                Ovo 默认只看不做——只有看见你的工作场景，才能在你需要时主动帮上忙。
                 <strong className="text-[var(--text-primary)]">所有数据均在本机处理，不上传任何服务器</strong>。
               </p>
               <ol className="ml-4 list-decimal space-y-1 text-xs text-[var(--text-secondary)]">
                 <li>点击下方"触发系统授权提示"，macOS 将弹出授权请求</li>
                 <li>若已被拒绝过，则点击"打开系统设置"，手动开启"屏幕录制 · ovo"</li>
-                <li>首次授权后可能需要<strong className="text-[var(--warning)]">退出并重新启动 ovo</strong>才能生效</li>
+                <li><strong className="text-[var(--success)]">授权后无需重启</strong>，Ovo 会自动检测到并开始工作</li>
               </ol>
             </div>
 

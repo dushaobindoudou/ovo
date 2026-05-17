@@ -9,6 +9,7 @@ import { extractStructured } from "./ocr-extractor.js";
 import { redactSensitive } from "./sensitive-filter.js";
 import { preferencesStore } from "./preferences-store.js";
 import { FrameChangeDetector } from "./frame-change.js";
+import { safeExecute } from "./safe-execute.js";
 
 const SCHEDULER_TASK_ID = "auto-capture";
 
@@ -26,6 +27,12 @@ export interface CaptureSnapshot {
   confidence: number;
   /** 活动窗口主通道或用户勾选的后台监听通道 */
   captureSource?: "active" | "monitored";
+  /** SNAP-2: 实际跑的 OCR 引擎，用于回放和性能监控 */
+  ocrEngine?: "vision" | "tesseract";
+  /** SNAP-3: OCR 单次耗时（毫秒），性能监控用 */
+  ocrDurationMs?: number;
+  /** SNAP-4: 结构化信号——和 buffer 里的同一份，方便 history 回放不需重抽 */
+  structured?: import("./types.js").OCRStructuredSignals;
 }
 
 export interface CaptureHealthCheck {
@@ -121,8 +128,8 @@ export class AutoCaptureService {
    * 不动 KG / 持久化日志，纯重置当前一轮的"看到了什么"。
    */
   clearAllCaches() {
-    try { this.eventProcessor.clearAllBuffers(); } catch { /* ignore */ }
-    try { sessionTracker.clear(); } catch { /* ignore */ }
+    safeExecute(() => this.eventProcessor.clearAllBuffers(), "auto-capture.clear-buffers", undefined, "info");
+    safeExecute(() => sessionTracker.clear(), "auto-capture.clear-session", undefined, "info");
     this.history = [];
     this.windowCaptureStats.clear();
     this.frameChange.clear();
@@ -186,7 +193,7 @@ export class AutoCaptureService {
     if (this.started) return;
     this.started = true;
     // 启动时清空旧 buffer 避免上次留存的 ovo 自身 OCR 残留
-    try { this.eventProcessor.clearAllBuffers(); } catch { /* ignore */ }
+    safeExecute(() => this.eventProcessor.clearAllBuffers(), "auto-capture.start-clear", undefined, "info");
     scheduler.register({
       id: SCHEDULER_TASK_ID,
       intervalMs: this.config.intervalSeconds * 1000,
@@ -304,6 +311,8 @@ export class AutoCaptureService {
       }
       let text = "";
       let confidence = 0;
+      let ocrEngineUsed: "vision" | "tesseract" = "vision";
+      let ocrDurationMs = 0;
       try {
         // P1-A: 只对选定 target 编码 JPEG（远比 PNG 快），未被 OCR 的窗口零编码
         // Vision/Tesseract 都接受 JPEG buffer，OCR 质量与 PNG 等价
@@ -313,6 +322,8 @@ export class AutoCaptureService {
         const redaction = redactSensitive(ocr.text);
         text = redaction.cleaned;
         confidence = ocr.confidence;
+        ocrEngineUsed = ocr.engine;
+        ocrDurationMs = ocr.durationMs;
         if (redaction.hadAny) {
           // 仅记类型 + 数量到错误日志，不记原内容
           errorLogger.alert("info", "sensitive-filter", "脱敏命中", {
@@ -325,18 +336,29 @@ export class AutoCaptureService {
         snapshots.push(null);
         continue;
       }
+      // SNAP-1: windowTitle / appName 也走 redactSensitive。
+      // 邮件主题、客户名、订单号、验证码弹窗经常出现在 windowTitle 里——它们会跟着
+      // CaptureSnapshot 进 history、喂 LLM、写 memory_events.window_title 永久落库。
+      const titleRedaction = redactSensitive(cap.windowTitle || "");
+      const appNameRedaction = redactSensitive(cap.appName || "");
+      const safeTitle = titleRedaction.cleaned;
+      const safeAppName = appNameRedaction.cleaned;
+      // P4: OCR 完成后立即抽结构化信号，跟原文一起入 buffer
+      const structured = extractStructured(text);
       const snapshot: CaptureSnapshot = {
         timestamp: Date.now(),
-        appName: cap.appName,
+        appName: safeAppName,
         windowId: cap.windowId,
-        windowTitle: cap.windowTitle,
+        windowTitle: safeTitle,
         text,
         confidence,
-        captureSource: source
+        captureSource: source,
+        ocrEngine: ocrEngineUsed,
+        ocrDurationMs,
+        structured
       };
-      // P4: OCR 完成后立即抽结构化信号，跟原文一起入 buffer
-      const structured = extractStructured(snapshot.text);
-      this.eventProcessor.append(cap.windowId, cap.appName, cap.windowTitle, {
+      // SNAP-1: 进 buffer / 轨迹的也是脱敏后的 appName / windowTitle
+      this.eventProcessor.append(cap.windowId, safeAppName, safeTitle, {
         timestamp: snapshot.timestamp,
         text: snapshot.text,
         confidence: snapshot.confidence,
@@ -347,8 +369,8 @@ export class AutoCaptureService {
         sessionTracker.append({
           timestamp: snapshot.timestamp,
           windowId: cap.windowId,
-          appName: cap.appName,
-          windowTitle: cap.windowTitle,
+          appName: safeAppName,
+          windowTitle: safeTitle,
           text: snapshot.text
         });
       }
@@ -356,7 +378,7 @@ export class AutoCaptureService {
       this.history = this.history.slice(0, 100);
       this.lastCaptureAt = snapshot.timestamp;
       for (const listener of this.onCaptureListeners) {
-        try { listener(snapshot); } catch { /* ignore */ }
+        safeExecute(() => listener(snapshot), "auto-capture.listener", undefined, "warn");
       }
       this.recordStat(cap.windowId, true);
       snapshots.push(snapshot);

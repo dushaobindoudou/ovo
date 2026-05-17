@@ -1,12 +1,15 @@
 /**
  * 问题4：「ovo 做过的事」的人类可读时间线。
  * 与 ProcessPanel（技术回放）互补——只看 ovo 实际执行的动作，按时间分组。
+ * Sprint 3A: 加「通知历史」子 tab + 点击行展开 action 详情抽屉。
  */
 import { useEffect, useMemo, useState } from "react";
 import {
   ClipboardCopy, FileText, ListTodo, Mail, MessageSquare, Bell, Calendar,
-  Globe, Search, AppWindow, Folder, Sparkles, AlertCircle, CheckCircle2, Clock, XCircle
+  Globe, Search, AppWindow, Folder, Sparkles, AlertCircle, CheckCircle2, Clock, XCircle,
+  BellRing
 } from "lucide-react";
+import { ActionDetailDrawer } from "./ActionDetailDrawer";
 
 const isElectron = typeof window !== "undefined" && !!window.ovoAPI;
 
@@ -152,14 +155,29 @@ function ActionRow({ record }: { record: ActionRecord }) {
   );
 }
 
+interface NotificationRecord {
+  id: string;
+  timestamp: number;
+  title: string;
+  type: string;
+  priority: number;
+  tier: string;
+  content: string;
+}
+
+type Stream = "actions" | "notifications";
+
 export function ActionHistoryPanel() {
+  const [stream, setStream] = useState<Stream>("actions");
   const [records, setRecords] = useState<ActionRecord[]>([]);
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [filter, setFilter] = useState<"all" | "success" | "pending" | "failed">("all");
   const [loading, setLoading] = useState(true);
+  const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isElectron) return;
-    const fetchData = () => {
+    const fetchActions = () => {
       void window.ovoAPI.history.listActions(150)
         .then((rows) => {
           setRecords((rows ?? []) as ActionRecord[]);
@@ -167,8 +185,17 @@ export function ActionHistoryPanel() {
         })
         .catch(() => setLoading(false));
     };
-    fetchData();
-    const t = setInterval(fetchData, 8000);
+    const fetchNotifications = () => {
+      void window.ovoAPI.history.listNotifications(150)
+        .then((rows) => setNotifications((rows ?? []) as NotificationRecord[]))
+        .catch(() => { /* ignore */ });
+    };
+    fetchActions();
+    fetchNotifications();
+    const t = setInterval(() => {
+      fetchActions();
+      fetchNotifications();
+    }, 8000);
     return () => clearInterval(t);
   }, []);
 
@@ -205,45 +232,134 @@ export function ActionHistoryPanel() {
         <div>
           <h2 className="text-lg font-semibold">ovo 做过的事</h2>
           <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-            最近 ovo 替你做的动作。自动执行的会标 <span className="text-[var(--accent)]">自动</span>，等你点头的标 <span className="text-[var(--warning)]">等确认</span>。
+            点击任意行查看详情：触发原因、执行参数、结果输出
           </p>
         </div>
         <div className="flex items-center gap-1 rounded-md bg-[var(--bg-card)] p-1">
-          <FilterChip label={`全部 ${stats.total}`} active={filter === "all"} onClick={() => setFilter("all")} />
-          <FilterChip label={`已完成 ${stats.success}`} active={filter === "success"} onClick={() => setFilter("success")} />
-          <FilterChip label={`等确认 ${stats.pending}`} active={filter === "pending"} onClick={() => setFilter("pending")} />
-          <FilterChip label={`异常 ${stats.failed}`} active={filter === "failed"} onClick={() => setFilter("failed")} />
+          <FilterChip label={`动作 ${records.length}`} active={stream === "actions"} onClick={() => setStream("actions")} />
+          <FilterChip label={`通知 ${notifications.length}`} active={stream === "notifications"} onClick={() => setStream("notifications")} />
         </div>
       </div>
 
-      {loading ? (
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] py-10 text-center text-[12px] text-[var(--text-muted)]">
-          加载中…
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] py-10 text-center">
-          <p className="text-sm text-[var(--text-secondary)]">还没看到匹配的动作</p>
-          <p className="mt-1 text-[11px] text-[var(--text-muted)]">用一会儿 ovo，它做过的每件事都会出现在这里</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {grouped.map((g) => (
-            <section key={g.key} className="space-y-1">
-              <h3 className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
-                {g.label} · {g.items.length} 件
-              </h3>
-              <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] py-1">
-                {g.items.map((r, i) => (
-                  <div key={r.id}>
-                    {i > 0 && <div className="mx-3 h-px bg-[var(--border)]/50" />}
-                    <ActionRow record={r} />
+      {stream === "actions" ? (
+        <>
+          <div className="flex items-center gap-1 rounded-md bg-[var(--bg-card)] p-1 w-fit">
+            <FilterChip label={`全部 ${stats.total}`} active={filter === "all"} onClick={() => setFilter("all")} />
+            <FilterChip label={`已完成 ${stats.success}`} active={filter === "success"} onClick={() => setFilter("success")} />
+            <FilterChip label={`等确认 ${stats.pending}`} active={filter === "pending"} onClick={() => setFilter("pending")} />
+            <FilterChip label={`异常 ${stats.failed}`} active={filter === "failed"} onClick={() => setFilter("failed")} />
+          </div>
+
+          {loading ? (
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] py-10 text-center text-[12px] text-[var(--text-muted)]">
+              加载中…
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] py-10 text-center">
+              <p className="text-sm text-[var(--text-secondary)]">还没看到匹配的动作</p>
+              <p className="mt-1 text-[11px] text-[var(--text-muted)]">用一会儿 ovo，它做过的每件事都会出现在这里</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {grouped.map((g) => (
+                <section key={g.key} className="space-y-1">
+                  <h3 className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                    {g.label} · {g.items.length} 件
+                  </h3>
+                  <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] py-1">
+                    {g.items.map((r, i) => (
+                      <div key={r.id}>
+                        {i > 0 && <div className="mx-3 h-px bg-[var(--border)]/50" />}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedActionId(r.actionId)}
+                          className="block w-full text-left"
+                        >
+                          <ActionRow record={r} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
+                </section>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <NotificationsStream notifications={notifications} />
       )}
+
+      {selectedActionId && (
+        <ActionDetailDrawer
+          actionId={selectedActionId}
+          onClose={() => setSelectedActionId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function NotificationsStream({ notifications }: { notifications: NotificationRecord[] }) {
+  const grouped = useMemo(() => {
+    const map = new Map<string, { label: string; items: NotificationRecord[] }>();
+    for (const n of notifications) {
+      const g = groupKey(n.timestamp);
+      if (!map.has(g.key)) map.set(g.key, { label: g.label, items: [] });
+      map.get(g.key)!.items.push(n);
+    }
+    return Array.from(map.entries()).map(([key, v]) => ({ key, ...v }));
+  }, [notifications]);
+
+  if (notifications.length === 0) {
+    return (
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] py-10 text-center">
+        <p className="text-sm text-[var(--text-secondary)]">还没收到任何通知</p>
+        <p className="mt-1 text-[11px] text-[var(--text-muted)]">ovo 弹的每条提示都会留底在这里</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {grouped.map((g) => (
+        <section key={g.key} className="space-y-1">
+          <h3 className="px-3 text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
+            {g.label} · {g.items.length} 条
+          </h3>
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] py-1">
+            {g.items.map((n, i) => (
+              <div key={n.id}>
+                {i > 0 && <div className="mx-3 h-px bg-[var(--border)]/50" />}
+                <div className="flex items-start gap-3 px-3 py-2.5">
+                  <div
+                    className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
+                      n.tier === "critical"
+                        ? "bg-[var(--danger)]/10 text-[var(--danger)]"
+                        : n.tier === "important"
+                          ? "bg-[var(--warning)]/10 text-[var(--warning)]"
+                          : "bg-[var(--accent)]/10 text-[var(--accent)]"
+                    }`}
+                  >
+                    <BellRing size={14} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 text-[13px]">
+                      <span className="shrink-0 font-medium">{n.title}</span>
+                      <span className="rounded-full bg-[var(--bg-card-hover)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
+                        {n.type || n.tier || "提示"}
+                      </span>
+                    </div>
+                    {n.content && (
+                      <p className="mt-0.5 line-clamp-2 text-[12px] text-[var(--text-muted)]">{n.content}</p>
+                    )}
+                  </div>
+                  <div className="shrink-0 text-[10px] text-[var(--text-muted)]">{clockOf(n.timestamp)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

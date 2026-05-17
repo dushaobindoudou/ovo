@@ -4,6 +4,7 @@ import { SuggestionPanel } from "./components/SuggestionPanel/SuggestionPanel";
 import { SuggestionToastWindow } from "./components/SuggestionPanel/SuggestionToastWindow";
 import { ConsoleLayout } from "./components/Console/ConsoleLayout";
 import { useSettingsStore, getResolvedTheme } from "./stores/settingsStore";
+import { useNetworkWatcher } from "./hooks/useNetworkWatcher";
 
 const isElectron = typeof window !== "undefined" && !!window.ovoAPI;
 
@@ -20,6 +21,8 @@ function App() {
   const [hash, setHash] = useState(() => window.location.hash || "#console");
   const theme = useSettingsStore((s) => s.theme);
   const [mounted, setMounted] = useState(false);
+  // T13 / M8: 监听 navigator.onLine 并上报到主进程（每个 renderer 上报一次足够）
+  useNetworkWatcher();
 
   useEffect(() => {
     if (!isElectron) return;

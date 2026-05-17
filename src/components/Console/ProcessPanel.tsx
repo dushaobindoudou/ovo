@@ -7,9 +7,9 @@
  *  · 展开 4 段 section：看屏幕 / 理解 / 执行 / 记忆 / 补关系
  *  · F4-C: 理解段可看到完整 prompt + LLM 原始返回
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { Card } from "../shared/Card";
-import { ChevronDown, ChevronRight, AlertTriangle, Eye, EyeOff } from "lucide-react";
+import { ChevronDown, ChevronRight, AlertTriangle, Eye, EyeOff, Camera, Brain, Lightbulb, Zap, BookOpen, GitBranch } from "lucide-react";
 import { ActionHistoryPanel } from "./ActionHistoryPanel";
 
 const isElectron = typeof window !== "undefined" && !!window.ovoAPI;
@@ -237,7 +237,7 @@ function PipelineDetailView({ pipeline }: { pipeline: PipelineRow }) {
   return (
     <div className="space-y-3 border-t border-[var(--border)] p-4">
       {/* ① 看到了什么 */}
-      <PipelineSection icon="📸" title="ovo 看到了什么" tint="info">
+      <PipelineSection Icon={Camera} title="ovo 看到了什么" tint="info">
         <div className="space-y-1.5 text-[13px] leading-relaxed">
           <p>
             <span className="text-[var(--text-muted)]">{formatRelative(timestamp)}看了 </span>
@@ -276,7 +276,7 @@ function PipelineDetailView({ pipeline }: { pipeline: PipelineRow }) {
 
       {/* ② 进 AI 的内容 + AI 输出原文（透明日志） */}
       {(u.promptPreview || u.rawResponse) && (
-        <PipelineSection icon="🧠" title="给 AI 的内容 / AI 的回复" tint="ai">
+        <PipelineSection Icon={Brain} title="给 AI 的内容 / AI 的回复" tint="ai">
           <button
             type="button"
             onClick={() => setShowRaw((v) => !v)}
@@ -305,7 +305,7 @@ function PipelineDetailView({ pipeline }: { pipeline: PipelineRow }) {
       )}
 
       {/* ③ AI 决策：意图 / 角色 / 动作 / 记忆 */}
-      <PipelineSection icon="💡" title="AI 的判断与决策" tint="accent">
+      <PipelineSection Icon={Lightbulb} title="AI 的判断与决策" tint="accent">
         <div className="space-y-1.5 text-[13px] leading-relaxed">
           {status === "failed" && !u.intent && (
             <p className="text-[var(--danger)]">理解失败，没看明白</p>
@@ -338,32 +338,39 @@ function PipelineDetailView({ pipeline }: { pipeline: PipelineRow }) {
             </p>
           )}
           {u.risk && u.risk !== "none" && (
-            <p className={u.risk === "high" || u.risk === "critical" ? "text-[var(--danger)]" : "text-[var(--warning)]"}>
-              ⚠ {({ low: "一点点风险", medium: "中等风险", high: "较高风险", critical: "严重风险" } as Record<string, string>)[u.risk] ?? `${u.risk} 风险`}
+            <p className={`flex items-center gap-1.5 ${u.risk === "high" || u.risk === "critical" ? "text-[var(--danger)]" : "text-[var(--warning)]"}`}>
+              <AlertTriangle size={12} className="shrink-0" />
+              {({ low: "一点点风险", medium: "中等风险", high: "较高风险", critical: "严重风险" } as Record<string, string>)[u.risk] ?? `${u.risk} 风险`}
             </p>
           )}
           {(a.executed > 0 || a.pending > 0) && (
-            <p>
-              <span className="text-[var(--text-muted)]">⚡ </span>
-              {a.executed > 0 && <span className="text-[var(--text-muted)]">完成 {a.executed} 个动作</span>}
-              {a.executed > 0 && a.pending > 0 && <span className="text-[var(--text-muted)]">，</span>}
-              {a.pending > 0 && <span className="text-[var(--text-muted)]">{a.pending} 个等你确认</span>}
-              {a.items.length > 0 && (
-                <span className="text-[var(--text-muted)]">: {a.items.slice(0, 3).map((it) => `${it.status} ${it.description}`).join("；")}</span>
-              )}
+            <p className="flex items-start gap-1.5">
+              <Zap size={12} className="mt-1 shrink-0 text-[var(--text-muted)]" />
+              <span>
+                {a.executed > 0 && <span className="text-[var(--text-muted)]">完成 {a.executed} 个动作</span>}
+                {a.executed > 0 && a.pending > 0 && <span className="text-[var(--text-muted)]">，</span>}
+                {a.pending > 0 && <span className="text-[var(--text-muted)]">{a.pending} 个等你确认</span>}
+                {a.items.length > 0 && (
+                  <span className="text-[var(--text-muted)]">: {a.items.slice(0, 3).map((it) => `${it.status} ${it.description}`).join("；")}</span>
+                )}
+              </span>
             </p>
           )}
           {(u.offerCount > 0 || u.suggestionCount > 0) && (
-            <p className="text-[var(--text-muted)]">
-              💬 {u.offerCount > 0 && `提议 ${u.offerCount} 条长期服务`}
-              {u.offerCount > 0 && u.suggestionCount > 0 && "，"}
-              {u.suggestionCount > 0 && `${u.suggestionCount} 条小建议`}
+            <p className="flex items-center gap-1.5 text-[var(--text-muted)]">
+              <Lightbulb size={12} className="shrink-0" />
+              <span>
+                {u.offerCount > 0 && `提议 ${u.offerCount} 条长期服务`}
+                {u.offerCount > 0 && u.suggestionCount > 0 && "，"}
+                {u.suggestionCount > 0 && `${u.suggestionCount} 条小建议`}
+              </span>
             </p>
           )}
           {(r.newEntities > 0 || r.newRelationships > 0) && (
-            <p>
-              <span className="text-[var(--text-muted)]">📚 记下 </span>
+            <p className="flex items-center gap-1.5">
+              <BookOpen size={12} className="shrink-0 text-[var(--text-muted)]" />
               <span>
+                <span className="text-[var(--text-muted)]">记下 </span>
                 {r.newEntities > 0 && `${r.newEntities} 个新概念`}
                 {r.newEntities > 0 && r.newRelationships > 0 && " / "}
                 {r.newRelationships > 0 && `${r.newRelationships} 个新关联`}
@@ -371,11 +378,14 @@ function PipelineDetailView({ pipeline }: { pipeline: PipelineRow }) {
             </p>
           )}
           {(rel.added > 0 || rel.reinforced > 0) && (
-            <p>
-              <span className="text-[var(--text-muted)]">🔗 补 </span>
-              {rel.added > 0 && <span>+{rel.added} 新关系</span>}
-              {rel.added > 0 && rel.reinforced > 0 && " / "}
-              {rel.reinforced > 0 && <span>{rel.reinforced} 条加强</span>}
+            <p className="flex items-center gap-1.5">
+              <GitBranch size={12} className="shrink-0 text-[var(--text-muted)]" />
+              <span>
+                <span className="text-[var(--text-muted)]">补 </span>
+                {rel.added > 0 && <span>+{rel.added} 新关系</span>}
+                {rel.added > 0 && rel.reinforced > 0 && " / "}
+                {rel.reinforced > 0 && <span>{rel.reinforced} 条加强</span>}
+              </span>
             </p>
           )}
         </div>
@@ -385,8 +395,8 @@ function PipelineDetailView({ pipeline }: { pipeline: PipelineRow }) {
 }
 
 function PipelineSection({
-  icon, title, tint, children,
-}: { icon: string; title: string; tint: "info" | "ai" | "accent"; children: React.ReactNode }) {
+  Icon, title, tint, children,
+}: { Icon: ComponentType<{ size?: number; className?: string }>; title: string; tint: "info" | "ai" | "accent"; children: React.ReactNode }) {
   const palette = {
     info:   { bg: "var(--bg-card-hover)", bar: "var(--text-secondary)" },
     ai:     { bg: "var(--bg-card-hover)", bar: "var(--warning)" },
@@ -404,7 +414,7 @@ function PipelineSection({
       />
       <div className="px-3 py-2.5">
         <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
-          <span>{icon}</span>
+          <Icon size={12} className="shrink-0" />
           <span>{title}</span>
         </p>
         {children}

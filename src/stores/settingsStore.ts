@@ -54,9 +54,15 @@ export const useSettingsStore = create<SettingsState>()(
       monitoredWindows: [],
       selectedBackend: "hermes",
       apiBaseUrl: "https://api.anthropic.com",
+      // SEC-4: apiKey 不再走 zustand persist——明文进 localStorage 是 XSS 风险。
+      // 配置时通过 ovoAPI.agent.setApiConfig() 发到主进程 safeStorage 加密落盘；
+      // 这里保留字段是为了用户在 SettingsPanel 输入时的临时 state，
+      // 但 partialize 会过滤掉，不写 localStorage（见下方）。
       apiKey: "",
       apiModel: "claude-sonnet-4-20250514",
-      ttsEnabled: true,
+      // SEC-12: TTS 默认关——开启时文本会发送给 Microsoft Edge TTS WebSocket，
+      // 用户必须显式同意才打开。
+      ttsEnabled: false,
       backgroundMonitoring: false,
       toastVerbosity: "alerts",
       healthCheckEnabled: true,
@@ -79,9 +85,10 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: "ovo-settings",
-      version: 3,
+      version: 4,
       // F1 (v2): 迁移老用户 verbosity="alerts" → "all"
       // F4-B (v3): 迁移 agentInterval 15s → 5s（pipeline 间隔对齐 capture）
+      // SEC-4 (v4): 老用户 apiKey 从 localStorage 迁出——不再持久化
       migrate: (persisted: unknown, fromVersion: number) => {
         if (persisted && typeof persisted === "object") {
           const p = persisted as Record<string, unknown>;
@@ -91,8 +98,19 @@ export const useSettingsStore = create<SettingsState>()(
           if (fromVersion < 3 && (p.agentInterval === 15 || p.agentInterval === undefined)) {
             p.agentInterval = 5;
           }
+          if (fromVersion < 4) {
+            // 把残留的 apiKey 抹掉。提示用户在设置里重新输入一次（会走 safeStorage）。
+            delete p.apiKey;
+          }
         }
         return persisted as SettingsState;
+      },
+      // SEC-4: 不要把 apiKey 写进 localStorage——key 应该走主进程 safeStorage。
+      // partialize 在写盘前过滤字段；只保留非敏感字段。
+      partialize: (state) => {
+        const { apiKey: _omit, ...rest } = state as SettingsState & { apiKey?: string };
+        void _omit;
+        return rest;
       }
     }
   )

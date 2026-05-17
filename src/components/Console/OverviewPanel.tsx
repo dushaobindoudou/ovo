@@ -152,9 +152,26 @@ export function OverviewPanel({ ctx: _ctx }: OverviewPanelProps) {
 
         {/* Pulse 一行 */}
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[var(--border)]/40 pt-3 text-[11px] text-[var(--text-muted)]">
-          {captureAgo >= 0 && <span>📸 {captureAgo < 60 ? `${captureAgo}s` : `${Math.floor(captureAgo / 60)}m`}前看了 {display?.appName ?? "屏幕"}</span>}
-          {latest?.pipelineId && <span>· 💭 {latest.intent ? "已理解" : "已推断"}</span>}
-          {totalPending > 0 && <span className="text-[var(--accent)]">· ★ {totalPending} 等你处理</span>}
+          {captureAgo >= 0 && (
+            <span className="inline-flex items-center gap-1">
+              <Camera size={11} />
+              {captureAgo < 60 ? `${captureAgo}s` : `${Math.floor(captureAgo / 60)}m`}前看了 {display?.appName ?? "屏幕"}
+            </span>
+          )}
+          {latest?.pipelineId && (
+            <span className="inline-flex items-center gap-1">
+              <span>·</span>
+              <Brain size={11} />
+              {latest.intent ? "已理解" : "已推断"}
+            </span>
+          )}
+          {totalPending > 0 && (
+            <span className="inline-flex items-center gap-1 text-[var(--accent)]">
+              <span>·</span>
+              <Sparkles size={11} />
+              {totalPending} 等你处理
+            </span>
+          )}
         </div>
       </Card>
 

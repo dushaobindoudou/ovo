@@ -1,5 +1,80 @@
 @import "tailwindcss";
 
+/* ============================================================
+ * Tailwind v4 @theme — 把 design tokens 暴露为 utility 类名
+ * 修复：B2 (5 套色板绕过 tokens) / B4 (无 tailwind.config) / I2 (圆角)
+ *       I3 (字号) / I4 (按钮变体) / I7 (透明度) — 一改打 5 个洞
+ *
+ * 用法：bg-accent / text-primary / bg-card / border-state-thinking 等
+ * 暗色：data-theme="dark" 下 :root 重定义 CSS 变量，类名自动跟随
+ * ============================================================ */
+@theme {
+  /* === 颜色 — 全部走 :root CSS 变量，类名自动暗色响应 === */
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-dim: var(--accent-dim);
+  --color-accent-glow: var(--accent-glow);
+  --color-secondary: var(--secondary);
+
+  --color-bg-base: var(--bg-base);
+  --color-bg-sidebar: var(--bg-sidebar);
+  --color-bg-content: var(--bg-content);
+  --color-bg-card: var(--bg-card);
+  --color-bg-card-hover: var(--bg-card-hover);
+  --color-bg-input: var(--bg-input);
+  --color-bg-header: var(--bg-header);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-accent: var(--text-accent);
+
+  --color-border-default: var(--border);
+  --color-border-light: var(--border-light);
+  --color-border-active: var(--border-active);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  /* 状态色 — S1 单一状态机色板 */
+  --color-state-idle: var(--state-idle);
+  --color-state-watching: var(--state-watching);
+  --color-state-thinking: var(--state-thinking);
+  --color-state-executing: var(--state-executing);
+  --color-state-alert: var(--danger);
+  --color-state-success: var(--state-executing);
+
+  /* === 字号 scale (I3) — Apple HIG 6 档，禁用 <11px === */
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 17px;
+  --text-xl: 22px;
+
+  /* === 圆角 scale (I2) — 仅 3 档 === */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 9999px;
+
+  /* === 阴影 === */
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+
+  /* === Z-index scale (S5) — 7 档可预测层级 === */
+  --z-base: 0;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-overlay: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+  --z-tooltip: 600;
+}
+
 /* macOS 原生风格设计系统——系统字体 + systemBlue 主色 + 克制留白 */
 :root {
   /* 主背景 - 浅灰/白色 */

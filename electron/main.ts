@@ -8,10 +8,13 @@ import { runVerifyRealLogs } from "./verify-real-logs.js";
 import { errorLogger } from "./error-logger.js";
 import { scheduler } from "./scheduler.js";
 import { preferencesStore } from "./preferences-store.js";
+import { setActiveRedactionLevel } from "./sensitive-filter.js";
+import { systemEvents } from "./system-events.js";
 import { inferActivityState } from "./session-tracker.js";
 import { renderAppIcon, renderTrayIcon } from "./icon-renderer.js";
 import type { AgentSuggestion } from "./types.js";
 import type { AutoCaptureService } from "./auto-capture.js";
+import { safeExecute } from "./safe-execute.js";
 
 let consoleWindow: BrowserWindow | null = null;
 let floatingWindow: BrowserWindow | null = null;
@@ -103,10 +106,32 @@ function createWindow(
       preload: resolvePreloadPath(),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      // SEC-6: 启用 sandbox——纵深防御。preload 只用 contextBridge + ipcRenderer，
+      // sandbox 下仍可用。即便 renderer 被 XSS，sandbox 限制 syscall 面，攻击难度大幅提升。
+      sandbox: true,
+      // SEC-7: 默认安全标志
+      webSecurity: true,
+      allowRunningInsecureContent: false,
       partition
     },
     ...options
+  });
+
+  // SEC-7: 拒绝 renderer 自己 window.open / target=_blank 打开新窗口（XSS 武器化路径）
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  // 限制导航：只允许 dev:5173 / file: 自身页面，其他导航请求拒绝
+  win.webContents.on("will-navigate", (event, url) => {
+    try {
+      const u = new URL(url);
+      const allowedHosts = new Set(["localhost"]);
+      const isOwnFile = u.protocol === "file:";
+      const isDevHost = u.protocol === "http:" && allowedHosts.has(u.hostname) && u.port === "5173";
+      if (!isOwnFile && !isDevHost) {
+        event.preventDefault();
+      }
+    } catch {
+      event.preventDefault();
+    }
   });
 
   const entry = resolveRendererEntry(urlHash);
@@ -267,11 +292,17 @@ class SuggestionToastManager {
         .toLowerCase()
         .replace(/[\s\p{P}]/gu, "")
         .slice(0, 80);
-    const titleKey = `${suggestion.type ?? ""}:${norm(suggestion.title ?? "")}:${norm((suggestion.content ?? "").slice(0, 60))}`;
+    // 特殊 dedup：「有 X 个动作等你确认」无论内容怎么变，1 分钟内只弹一次。
+    // 否则连续多个 pipeline 各自带 pendingActions 会重复弹同一类提示。
+    const isPendingActionAlert = /等你确认/.test(suggestion.title ?? "");
+    const titleKey = isPendingActionAlert
+      ? "pending-action-alert"
+      : `${suggestion.type ?? ""}:${norm(suggestion.title ?? "")}:${norm((suggestion.content ?? "").slice(0, 60))}`;
+    const dedupTtl = isPendingActionAlert ? 60_000 : RECENT_TITLE_TTL;
 
-    // 1) 同标题 1h 内已弹过 → 丢弃
+    // 1) 同标题/同类提示在 TTL 内已弹过 → 丢弃
     const lastSameTitle = this.recentTitles.get(titleKey);
-    if (lastSameTitle && now - lastSameTitle < RECENT_TITLE_TTL) {
+    if (lastSameTitle && now - lastSameTitle < dedupTtl) {
       this.queue.shift();
       this.scheduleFlush(50);
       return;
@@ -319,6 +350,22 @@ class SuggestionToastManager {
     this.queue.shift();
     this.lastToastByTier[tier] = now;
     this.recentTitles.set(titleKey, now);
+    // A: toast 历史留底——写 system_logs，用户可在主控台「通知历史」查到
+    safeExecute(
+      () => {
+        logger?.info("toast.shown", suggestion.title ?? suggestion.type ?? "提醒", {
+          suggestionId: suggestion.id,
+          type: suggestion.type,
+          priority: suggestion.priority,
+          tier,
+          content: (suggestion.content ?? "").slice(0, 500),
+          detail: suggestion.detail
+        });
+      },
+      "toast.history-log",
+      undefined,
+      "info"
+    );
     // 清理过老的 recentTitles 防内存膨胀
     if (this.recentTitles.size > 200) {
       for (const [k, t] of this.recentTitles) {
@@ -362,7 +409,10 @@ class SuggestionToastManager {
       hasShadow: true,
       focusable: false,
       backgroundColor: "#00000000",
-      title: "ovo 建议浮窗"
+      title: "ovo 建议浮窗",
+      // macOS NSPanel：点击 toast 区域不会激活 ovo app，也不会把已 hide 的
+      // console 弹回前台——彻底解决"点 toast 打开主窗口"问题
+      ...(process.platform === "darwin" ? { type: "panel" as const } : {})
     }, { inactive: true });
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
@@ -402,6 +452,7 @@ class SuggestionToastManager {
 }
 
 function createConsoleWindow() {
+  // 启动时显示但不抢焦点——用户能看到 ovo 控制台已就绪，但当前应用焦点不会被打断
   consoleWindow = createWindow("#console", {
     width: 1360,
     height: 860,
@@ -410,7 +461,7 @@ function createConsoleWindow() {
     title: "ovo 控制台界面",
     frame: true,
     backgroundColor: "#0a0a14"
-  });
+  }, { inactive: true });
   // R4: 用户点关闭按钮时不要 destroy 窗口，否则后面悬浮球点击 toggle 找不到。
   // 改成 hide → 下次 toggle 时直接 show()。Cmd-Q 退出 app 走的是 before-quit 路径，不受此影响
   consoleWindow.on("close", (event) => {
@@ -475,7 +526,12 @@ function createFloatingWindow() {
     saveTimer = setTimeout(() => {
       if (!floatingWindow || floatingWindow.isDestroyed()) return;
       const [nx, ny] = floatingWindow.getPosition();
-      try { preferencesStore.setFloatingPosition({ x: nx, y: ny }); } catch { /* ignore */ }
+      safeExecute(
+        () => preferencesStore.setFloatingPosition({ x: nx, y: ny }),
+        "floating.save-position",
+        undefined,
+        "info"
+      );
     }, 500);
   });
 }
@@ -485,14 +541,19 @@ function createAllWindows() {
   createFloatingWindow();
 }
 
-// 进程级未捕获异常兜底：无论 logger 是否就绪都先落到 errorLogger
+// 进程级未捕获异常兜底：无论 logger 是否就绪都先落到 errorLogger。
+// errorLogger.alert 自身可能炸（比如 BrowserWindow.getAllWindows 越界）——
+// 此时再走 safeExecute 会回环到 errorLogger 自己，所以直接写 stderr。
 process.on("uncaughtException", (error) => {
   try {
     errorLogger.alert("critical", "uncaughtException", error.message ?? String(error), {
       stack: error.stack
     });
-  } catch {
-    /* ignore */
+  } catch (alertErr) {
+    try {
+      const reason = alertErr instanceof Error ? alertErr.message : String(alertErr);
+      process.stderr.write(`[main.uncaught-alert-failed] ${reason} :: original=${error.message}\n`);
+    } catch { /* */ }
   }
 });
 process.on("unhandledRejection", (reason) => {
@@ -501,8 +562,11 @@ process.on("unhandledRejection", (reason) => {
     errorLogger.alert("error", "unhandledRejection", message, {
       stack: reason instanceof Error ? reason.stack : undefined
     });
-  } catch {
-    /* ignore */
+  } catch (alertErr) {
+    try {
+      const aReason = alertErr instanceof Error ? alertErr.message : String(alertErr);
+      process.stderr.write(`[main.unhandled-alert-failed] ${aReason}\n`);
+    } catch { /* */ }
   }
 });
 
@@ -514,8 +578,12 @@ app.whenReady().then(async () => {
     const stack = error instanceof Error ? error.stack : undefined;
     try {
       errorLogger.alert("critical", "boot", `应用启动失败: ${msg}`, { stack });
-    } catch {
-      /* ignore */
+    } catch (alertErr) {
+      // 启动失败 + errorLogger 也炸了——stderr 是最后的求救信号
+      try {
+        const aReason = alertErr instanceof Error ? alertErr.message : String(alertErr);
+        process.stderr.write(`[main.boot-alert-failed] ${aReason} :: original=${msg}\n`);
+      } catch { /* */ }
     }
     // 仍然尝试通过 console.error 让 stderr 抓到
     console.error("[ovo:boot] 启动失败", error);
@@ -527,6 +595,10 @@ async function bootstrap() {
   logger = new Logger({ kg: sharedKG });
   errorLogger.init();
   preferencesStore.load();
+  // P0.11: 把脱敏强度同步到 sensitive-filter 模块级状态
+  setActiveRedactionLevel(preferencesStore.getRedactionLevel());
+  // T13 / C5 / M8 / M9 / A5: 初始化系统事件 hub
+  systemEvents.init();
   errorLogger.alert("info", "boot", "ovo 主进程启动", {
     version: app.getVersion(),
     pid: process.pid,
@@ -647,11 +719,12 @@ function broadcastPermissionsStatus() {
   };
   for (const win of BrowserWindow.getAllWindows()) {
     if (win.isDestroyed()) continue;
-    try {
-      win.webContents.send("permissions:status", payload);
-    } catch {
-      /* ignore */
-    }
+    safeExecute(
+      () => win.webContents.send("permissions:status", payload),
+      "main.broadcast-permissions",
+      undefined,
+      "info"
+    );
   }
 }
 
@@ -660,6 +733,27 @@ function broadcastPermissionsStatus() {
  * 授权后立即启动，并通过 permissions:status 事件通知渲染进程。
  */
 function startAutoCaptureWhenAllowed(autoCaptureService: AutoCaptureService) {
+  // T13: 接入系统事件 — 休眠/锁屏自动停，恢复/解锁后回来
+  let pausedBySystem = false;
+  const pauseForSystem = (reason: string) => {
+    if (!autoCaptureService.isStarted()) return;
+    pausedBySystem = true;
+    autoCaptureService.stop();
+    logger?.info("electron:main", `因系统事件暂停截屏采集: ${reason}`);
+  };
+  const resumeIfSystemPaused = (reason: string) => {
+    if (!pausedBySystem) return;
+    pausedBySystem = false;
+    if (isScreenRecordingGranted()) {
+      autoCaptureService.start();
+      logger?.info("electron:main", `因系统事件恢复截屏采集: ${reason}`);
+    }
+  };
+  systemEvents.on("power:suspend", () => pauseForSystem("系统休眠"));
+  systemEvents.on("power:resume", () => resumeIfSystemPaused("系统恢复"));
+  systemEvents.on("power:lock-screen", () => pauseForSystem("屏幕锁定（隐私保护）"));
+  systemEvents.on("power:unlock-screen", () => resumeIfSystemPaused("屏幕解锁"));
+
   if (isScreenRecordingGranted()) {
     logger?.info("electron:main", "屏幕录制权限已授权，启动截屏采集");
     autoCaptureService.start();

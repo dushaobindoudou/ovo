@@ -366,6 +366,8 @@ export interface ObservationContext {
   windowTitle: string;
   /** 反馈画像（可选）—— 影响 offer / suggestion 的语气 */
   feedbackProfile?: string;
+  /** PHIL-1 / P0.4: 用户教过的禁忌（pattern_text 列表），注入到 prompt 硬性约束 LLM */
+  negativePatterns?: string[];
 }
 
 /**
@@ -383,6 +385,11 @@ export function buildSynthesisPrompt(observation: ObservationContext): string {
   const feedbackBlock = observation.feedbackProfile && observation.feedbackProfile.trim()
     ? `\n## 用户反馈画像（基于历史接受/忽略行为）\n${observation.feedbackProfile}\n`
     : "";
+  // PHIL-1 / P0.4: 注入"用户教过 Ovo 的禁忌"——硬性约束 LLM 不能违反
+  const negativeBlock = observation.negativePatterns && observation.negativePatterns.length > 0
+    ? `\n## ⛔ 用户教过的禁忌（必须遵守，不可违反）\n${observation.negativePatterns.map((p) => `- ${p}`).join("\n")}\n
+任何 action / suggestion / offer 都不能违反上述任一条。如果当前场景明显触发某条禁忌，宁可 actions 只剩 log_note。\n`
+    : "";
 
   return `你是 ovo——用户的长期副驾驶。
 
@@ -396,7 +403,7 @@ export function buildSynthesisPrompt(observation: ObservationContext): string {
 - 长期意图: ${observation.latentIntent ?? "(未推断)"}
 - 相关 entity:
 ${entityList || "- 无"}
-${feedbackBlock}
+${feedbackBlock}${negativeBlock}
 # 你要做的 3 类输出
 
 ## offers (长期服务，最多 2 条；可以为空)

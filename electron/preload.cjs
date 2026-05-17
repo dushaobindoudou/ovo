@@ -26,6 +26,8 @@ const ALLOWED_CHANNELS = new Set([
   "agent:detect-backends",
   "agent:set-backend",
   "agent:set-api-config",
+  "agent:get-api-config-status",
+  "agent:clear-api-config",
   "agent:status",
   "agent:test-scenario",
   "kg:search-entities",
@@ -48,6 +50,8 @@ const ALLOWED_CHANNELS = new Set([
   "process:timeline",
   "process:pipelines",
   "history:list-actions",
+  "history:list-notifications",
+  "action:get-detail",
   "privacy:get-blacklist",
   "privacy:set-blacklist",
   "privacy:pause",
@@ -88,6 +92,18 @@ const ALLOWED_CHANNELS = new Set([
   "prefs:set-personality-overrides",
   "prefs:get-bootstrap-status",
   "prefs:save-bootstrap",
+  "prefs:get-trust-levels",
+  "prefs:set-trust-level",
+  "prefs:reset-trust-levels",
+  "prefs:get-retention-days",
+  "prefs:set-retention-days",
+  "prefs:get-redaction-level",
+  "prefs:set-redaction-level",
+  "kg:add-negative-pattern",
+  "kg:list-negative-patterns",
+  "kg:delete-negative-pattern",
+  "system:report-online",
+  "system:is-online",
   // 调试
   "dev:run-sample-pipeline",
   // 权限检测
@@ -170,6 +186,8 @@ contextBridge.exposeInMainWorld("ovoAPI", {
     detectBackends: () => ipcRenderer.invoke("agent:detect-backends"),
     setBackend: (backend) => ipcRenderer.invoke("agent:set-backend", backend),
     setApiConfig: (config) => ipcRenderer.invoke("agent:set-api-config", config),
+    getApiConfigStatus: () => ipcRenderer.invoke("agent:get-api-config-status"),
+    clearApiConfig: () => ipcRenderer.invoke("agent:clear-api-config"),
     testScenario: (payload) => ipcRenderer.invoke("agent:test-scenario", payload)
   },
   kg: {
@@ -185,7 +203,11 @@ contextBridge.exposeInMainWorld("ovoAPI", {
     setPinned: (payload) => ipcRenderer.invoke("kg:set-pinned", payload),
     deleteEntity: (entityId) => ipcRenderer.invoke("kg:delete-entity", entityId),
     getEntityDetail: (entityId) => ipcRenderer.invoke("kg:get-entity-detail", entityId),
-    runGC: () => ipcRenderer.invoke("kg:run-gc")
+    runGC: () => ipcRenderer.invoke("kg:run-gc"),
+    // PHIL-1 / P0.4: 玻璃管家 negative patterns
+    addNegativePattern: (payload) => ipcRenderer.invoke("kg:add-negative-pattern", payload),
+    listNegativePatterns: (limit) => ipcRenderer.invoke("kg:list-negative-patterns", limit),
+    deleteNegativePattern: (id) => ipcRenderer.invoke("kg:delete-negative-pattern", id)
   },
   promptEval: {
     list: (limit) => ipcRenderer.invoke("prompt-eval:list", limit),
@@ -200,7 +222,8 @@ contextBridge.exposeInMainWorld("ovoAPI", {
     getPipelines: (limit) => ipcRenderer.invoke("process:pipelines", limit)
   },
   history: {
-    listActions: (limit) => ipcRenderer.invoke("history:list-actions", limit)
+    listActions: (limit) => ipcRenderer.invoke("history:list-actions", limit),
+    listNotifications: (limit) => ipcRenderer.invoke("history:list-notifications", limit)
   },
   privacy: {
     getBlacklist: () => ipcRenderer.invoke("privacy:get-blacklist"),
@@ -214,6 +237,7 @@ contextBridge.exposeInMainWorld("ovoAPI", {
   },
   action: {
     confirm: (payload) => ipcRenderer.invoke("action:confirm", payload),
+    getDetail: (actionId) => ipcRenderer.invoke("action:get-detail", actionId),
     cancel: (payload) => ipcRenderer.invoke("action:cancel", payload)
   },
   pipeline: {
@@ -272,11 +296,25 @@ contextBridge.exposeInMainWorld("ovoAPI", {
   alerts: {
     getRecent: (limit) => ipcRenderer.invoke("alert:get-recent", limit)
   },
+  // T13 / M8: 系统事件 — 网络状态上报
+  system: {
+    reportOnline: (online) => ipcRenderer.invoke("system:report-online", online),
+    isOnline: () => ipcRenderer.invoke("system:is-online")
+  },
   prefs: {
     getPersonalityOverrides: () => ipcRenderer.invoke("prefs:get-personality-overrides"),
     setPersonalityOverrides: (overrides) => ipcRenderer.invoke("prefs:set-personality-overrides", overrides),
     getBootstrapStatus: () => ipcRenderer.invoke("prefs:get-bootstrap-status"),
-    saveBootstrap: (payload) => ipcRenderer.invoke("prefs:save-bootstrap", payload)
+    saveBootstrap: (payload) => ipcRenderer.invoke("prefs:save-bootstrap", payload),
+    // 信任分级（P0.3 / P0.10）
+    getTrustLevels: () => ipcRenderer.invoke("prefs:get-trust-levels"),
+    setTrustLevel: (payload) => ipcRenderer.invoke("prefs:set-trust-level", payload),
+    resetTrustLevels: () => ipcRenderer.invoke("prefs:reset-trust-levels"),
+    // 隐私核心（P0.11）
+    getRetentionDays: () => ipcRenderer.invoke("prefs:get-retention-days"),
+    setRetentionDays: (days) => ipcRenderer.invoke("prefs:set-retention-days", days),
+    getRedactionLevel: () => ipcRenderer.invoke("prefs:get-redaction-level"),
+    setRedactionLevel: (level) => ipcRenderer.invoke("prefs:set-redaction-level", level)
   },
   dev: {
     runSamplePipeline: () => ipcRenderer.invoke("dev:run-sample-pipeline")

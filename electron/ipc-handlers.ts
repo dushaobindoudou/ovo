@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, systemPreferences, shell, screen } from "electron";
+import { app, BrowserWindow, ipcMain as rawIpcMain, systemPreferences, shell, screen } from "electron";
 import { execFile } from "node:child_process";
 import { WindowManager } from "./window-manager.js";
 import { ScreenshotManager } from "./screenshot.js";
@@ -18,11 +18,15 @@ import { buildObservationPrompt, buildSynthesisPrompt } from "./adaptive-prompt.
 import { buildRelationInferencePrompt, parseInferredRelations } from "./relation-inference.js";
 import { buildSelfEvalPrompt, parseSelfEvalSuggestions } from "./prompt-self-eval.js";
 import { extractFilePaths } from "./file-recognizer.js";
+import { buildAggregatedText, summarizeAggregation } from "./text-diff.js";
 import { Logger } from "./logger.js";
 import { errorLogger } from "./error-logger.js";
 import { scheduler } from "./scheduler.js";
 import { sessionTracker, inferActivityState } from "./session-tracker.js";
 import { preferencesStore } from "./preferences-store.js";
+import { safeExecute, safeExecuteAsync } from "./safe-execute.js";
+import { setActiveRedactionLevel } from "./sensitive-filter.js";
+import { systemEvents } from "./system-events.js";
 import type { AgentAction, AgentSuggestion } from "./types.js";
 import type { ActionResult } from "./action-executor.js";
 
@@ -125,15 +129,50 @@ function buildActionReceipts(actions: AgentAction[], results: ActionResult[]): A
 function broadcastToRendererWindows(channel: string, payload: unknown) {
   for (const win of BrowserWindow.getAllWindows()) {
     if (win.isDestroyed()) continue;
-    try {
-      win.webContents.send(channel, payload);
-    } catch {
-      /* ignore */
-    }
+    safeExecute(
+      () => win.webContents.send(channel, payload),
+      `ipc.broadcast.${channel}`,
+      undefined,
+      "info"
+    );
   }
 }
 
+/**
+ * CODE-3: safeHandle 包装——先 removeHandler 再 handle，幂等且防 dev reload "second handler" 错误。
+ * 直接替换 ipcMain.handle 调用点最稳妥，但全文件 92 处批改成本高，
+ * 这里用 Proxy 在 registerIpcHandlers 内拦截 .handle 调用，对外接口不变。
+ */
+function makeSafeIpcMain(target: typeof import("electron").ipcMain) {
+  const registered = new Set<string>();
+  return new Proxy(target, {
+    get(t, prop, recv) {
+      if (prop === "handle") {
+        return (channel: string, listener: (...args: unknown[]) => unknown) => {
+          if (registered.has(channel)) {
+            // 合理 silent：removeHandler 在 channel 未注册时 throw 是预期行为，
+            // 这里就是"删了如果存在"的语义，throw 等价于"已经不在"——继续往下走
+            try { t.removeHandler(channel); } catch { /* legitimate: remove-if-exists */ }
+          }
+          registered.add(channel);
+          return t.handle(channel, listener as Parameters<typeof t.handle>[1]);
+        };
+      }
+      if (prop === "on") {
+        return (channel: string, listener: (...args: unknown[]) => void) => {
+          // on 没有 once-only 限制，但 dev reload 时会累积；先 removeAllListeners 防累积
+          t.removeAllListeners(channel);
+          return t.on(channel, listener as Parameters<typeof t.on>[1]);
+        };
+      }
+      return Reflect.get(t, prop, recv);
+    }
+  });
+}
+
 export function registerIpcHandlers(options: WindowGetterOptions) {
+  // CODE-3: 用 safeIpcMain 替换 rawIpcMain，幂等注册——dev reload 不再抛 "second handler"
+  const ipcMain = makeSafeIpcMain(rawIpcMain);
   const windowManager = new WindowManager();
   const screenshotManager = new ScreenshotManager();
   const ocrEngine = new OCREngine();
@@ -219,16 +258,19 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
       };
       for (const win of BrowserWindow.getAllWindows()) {
         if (win.isDestroyed()) continue;
-        try {
-          const url = win.webContents.getURL();
-          if (url.includes("#console")) {
-            win.webContents.send("capture:result", snapshot);
-          } else {
-            win.webContents.send("capture:tick", tick);
-          }
-        } catch {
-          /* ignore */
-        }
+        safeExecute(
+          () => {
+            const url = win.webContents.getURL();
+            if (url.includes("#console")) {
+              win.webContents.send("capture:result", snapshot);
+            } else {
+              win.webContents.send("capture:tick", tick);
+            }
+          },
+          "ipc.capture-broadcast",
+          undefined,
+          "info"
+        );
       }
       kg.addBusinessLog({
         node: "capture.snapshot",
@@ -303,10 +345,16 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
   };
 
   // Run initial health check immediately so the status page shows real data
-  void autoCaptureService.runHealthCheck().then((report) => {
-    latestHealth = report;
-    broadcastToRendererWindows("health:update", report);
-  }).catch(() => { /* ignore */ });
+  void safeExecuteAsync(
+    async () => {
+      const report = await autoCaptureService.runHealthCheck();
+      latestHealth = report;
+      broadcastToRendererWindows("health:update", report);
+    },
+    "ipc.initial-health-check",
+    undefined,
+    "warn"
+  );
 
   // 关系强度每日衰减：scheduler 兜底，每 24h 运行一次。
   scheduler.register({
@@ -346,13 +394,18 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
       if (isFresh) continue;
       const corpus = list.slice(0, 10).map((e) => `- [${e.appName}] ${e.summary || e.content?.slice(0, 200)}`).join("\n");
       const prompt = `请用一句中文总结用户在最近 ${list.length} 次"${intent}"意图下的关键收获，60 字以内。\n\n${corpus}\n\n仅输出总结文本本身，无需 JSON、markdown 或前后缀。`;
-      try {
-        const res = await agentBridge.call({ prompt, outputFormat: "text", timeout: 30_000 });
-        if (res.ok) {
-          const summary = (res.raw || "").slice(0, 200).trim();
-          if (summary) kg.insertInsightSummary(recentSummaryName, summary, 8);
-        }
-      } catch { /* swallow */ }
+      await safeExecuteAsync(
+        async () => {
+          const res = await agentBridge.call({ prompt, outputFormat: "text", timeout: 30_000 });
+          if (res.ok) {
+            const summary = (res.raw || "").slice(0, 200).trim();
+            if (summary) kg.insertInsightSummary(recentSummaryName, summary, 8);
+          }
+        },
+        `kg.summarize.${intent}`,
+        undefined,
+        "warn"
+      );
     }
     // M4: 同时跑二级索引（场景角色）+ 三级索引（行为模式）
     try {
@@ -457,6 +510,17 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
       try {
         const result = kg.runEntityGC();
         logSystem("info", "kg.gc", "KG 每日 GC 完成", result);
+        // P0.11: 数据保留期改为读用户配置；默认 30 天
+        // -1 = 不保留（每次 GC 都清光，等于关 Ovo 立刻删）
+        //  0 = 永久（跳过 GC）
+        const retentionDays = preferencesStore.getRetentionDays();
+        if (retentionDays === 0) {
+          logSystem("info", "kg.retention", "数据保留期=永久，跳过 GC", { retentionDays });
+        } else {
+          const effective = retentionDays === -1 ? 0 : retentionDays;
+          const ret = kg.runRetentionGC(effective);
+          logSystem("info", "kg.retention", "数据保留期 GC 完成", { ...ret, retentionDays });
+        }
       } catch (e) {
         logSystem("error", "kg.gc", "KG GC 失败", {
           error: e instanceof Error ? e.message : String(e)
@@ -625,8 +689,19 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
   const runAgentPipelineOnce = async () => {
     const drained = eventProcessor.drainBuffers();
     if (drained.length === 0) return;
-    // 按窗口拆分：每个窗口独立 pipeline。一个窗口的多次 OCR 在 aggregate 阶段合并成一段输入。
+    // NEW-2 不变量：每个窗口独立 pipeline，绝不跨窗口/跨应用合并。
+    // 跨窗口混合会让 LLM 把多 app 内容当一段理解 → 推断混乱 + 敏感信息跨应用泄露
+    // （看银行 + 看推特 = 银行内容被当推特上下文）。修改这段循环结构前必读 NEW-2。
     for (const buffer of drained) {
+      // 不变量再检查：buffer 必须有 windowId（没 windowId 的脏数据丢弃）
+      if (!buffer.windowId || !buffer.appName) {
+        logSystem("warning", "pipeline", "buffer 缺 windowId/appName，跳过", {
+          windowId: buffer.windowId,
+          appName: buffer.appName,
+          entryCount: buffer.entries.length
+        });
+        continue;
+      }
       try {
         await runPipelineForWindow(buffer);
       } catch (error) {
@@ -664,12 +739,19 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
           }
         : null
     };
-    const mergedText = buffer.entries.map((entry) => entry.text).join("\n");
+    // NEW-3: 用增量聚合替换简单 join——单帧时输出全量，多帧时输出「基线 + +/- 变化」
+    // 节省 LLM token 50-70%（同窗口连续帧 OCR 文本通常 80-95% 相同）。
+    const mergedText = buildAggregatedText(buffer.entries);
+    const aggSummary = summarizeAggregation(buffer.entries);
     const aggregateOutput = {
       mergedTextLength: mergedText.length,
-      // 给"ovo 做过的事"页面用：让用户能在回放里看到 AI 当时实际拿到的 OCR 文本，
-      // 太短就没诊断价值；太长 pipeline_logs 会膨胀。2000 字是经验折中。
-      preview: mergedText.slice(0, 2000)
+      // DATA-2: preview 从 2000 字降到 500 字，pipeline_logs 不再当 OCR 副本存
+      preview: mergedText.slice(0, 500),
+      // 暴露聚合统计给"回放"页：用户可看到 ovo 在 N 帧 OCR 里识别了多少变化
+      frameCount: aggSummary.frameCount,
+      changedFrames: aggSummary.changedFrames,
+      totalAdded: aggSummary.totalAdded,
+      totalRemoved: aggSummary.totalRemoved
     };
     const aggregateBizLogId = startBizNode(pipeline.id, "aggregate", aggregateInput);
     pipelineLogger.updateStage(pipeline.id, "aggregate", {
@@ -724,7 +806,8 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
         status: "failed",
         startTime: agentStart,
         duration: obsResponse.duration,
-        input: { promptLength: obsPrompt.length, promptPreview: obsPrompt.slice(0, 800), pass: "observation" },
+        // DATA-3: 不存 prompt 全文，只存长度 + 短 preview（200 字够定位问题）
+        input: { promptLength: obsPrompt.length, promptPreview: obsPrompt.slice(0, 200), pass: "observation" },
         output: agentOutput,
         error: obsResponse.error ?? "Pass 1 (observation) 失败",
         data: { ...agentOutput, error: obsResponse.error }
@@ -743,6 +826,11 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
 
     // Pass 2: 合成
     const obsParsed = obsResponse.parsed;
+    // PHIL-1 / P0.4: 取出"用户教过的禁忌"注入 prompt 作为硬约束
+    const relevantNegatives = kg.getRelevantNegativePatterns({
+      appName: buffer.appName,
+      intent: obsParsed.intent
+    }, 10);
     const synthPrompt = buildSynthesisPrompt({
       intent: obsParsed.intent,
       summary: obsParsed.summary,
@@ -753,8 +841,13 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
       topEntities: obsParsed.entities.slice(0, 8).map((e) => ({ name: e.name, type: e.type })),
       appName: buffer.appName,
       windowTitle: buffer.windowTitle,
-      feedbackProfile: graphCtx.feedbackProfile
+      feedbackProfile: graphCtx.feedbackProfile,
+      negativePatterns: relevantNegatives.map((p) => p.pattern_text)
     });
+    // 命中计数 +1（用于后续观察哪些 pattern 真有约束力）
+    for (const p of relevantNegatives) {
+      try { kg.markNegativePatternHit(p.id); } catch { /* 命中计数失败不阻断 */ }
+    }
     const synthResponse = await agentBridge.call({ prompt: synthPrompt, outputFormat: "json", timeout: 45_000 });
 
     // Pass 2 失败兜底：保留 Pass 1 输出，actions/suggestions/offers 走默认（actions 自动 log_note 兜底）
@@ -814,8 +907,9 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     // ---- 阶段 3: schema 校验/修复 ----
     const schemaStart = Date.now();
     const schemaInput = {
+      // DATA-3: LLM raw response 不全存，只存长度 + 短 preview
       rawLength: response.raw.length,
-      rawPreview: response.raw.slice(0, 800)
+      rawPreview: response.raw.slice(0, 200)
     };
     const schemaOutput = {
       degraded: response.schemaMeta?.degraded ?? false,
@@ -906,10 +1000,11 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
         actions: pendingActions
       });
       // 问题2: pending 动作要让用户感知；走 toast 通知（即便控制台没开也能看到）
+      // 用 priority=95 升到 critical tier，跳过 active_typing defer + cooldown，保证必弹
       try {
         const pendingReceipt: AgentSuggestion = {
           id: `pending_${pipeline.id}_${Date.now().toString(36)}`,
-          type: "alert",
+          type: "risk",
           title: pendingActions.length === 1
             ? "有 1 个动作等你确认"
             : `有 ${pendingActions.length} 个动作等你确认`,
@@ -917,7 +1012,7 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
             .slice(0, 3)
             .map((a) => `· ${a.description || a.type || "动作"}`)
             .join("\n") + (pendingActions.length > 3 ? `\n…还有 ${pendingActions.length - 3} 项` : ""),
-          priority: 90
+          priority: 95
         };
         options.toastManager?.enqueueReceipts?.([pendingReceipt]);
       } catch (e) {
@@ -994,48 +1089,63 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     // 自动建 (application) -uses-> (LLM 抽到的概念) 关系
     for (const ent of response.parsed.entities) {
       if (ent.type === "application" || ent.name === buffer.appName) continue;
-      try {
-        kg.upsertRelation({
+      safeExecute(
+        () => kg.upsertRelation({
           source: buffer.appName,
           target: ent.name,
           relation: "uses",
           context: `${buffer.appName} 在 ${new Date().toISOString()} 涉及 ${ent.type} ${ent.name}`
-        });
-      } catch { /* swallow */ }
+        }),
+        "kg.auto-app-uses-relation",
+        undefined,
+        "warn"
+      );
     }
 
     // M5：被动识别 OCR 文本中的文件路径，登记为 application_file entity
     const filePaths = extractFilePaths(mergedText);
     let fileEntityCount = 0;
     for (const fp of filePaths) {
-      try {
-        kg.upsertEntity({
-          name: fp.path,
-          type: "application_file",
-          description: `${fp.ext.toUpperCase()} 文件`,
-          attributes: { path: fp.path, ext: fp.ext, name: fp.name, kind: fp.kind, lastSeenAppName: buffer.appName }
-        });
-        kg.upsertRelation({
-          source: buffer.appName,
-          target: fp.path,
-          relation: "opens",
-          context: `OCR 中识别到 ${fp.kind} 文件路径`
-        });
-        fileEntityCount += 1;
-      } catch { /* swallow */ }
+      const ok = safeExecute(
+        () => {
+          kg.upsertEntity({
+            name: fp.path,
+            type: "application_file",
+            description: `${fp.ext.toUpperCase()} 文件`,
+            attributes: { path: fp.path, ext: fp.ext, name: fp.name, kind: fp.kind, lastSeenAppName: buffer.appName }
+          });
+          kg.upsertRelation({
+            source: buffer.appName,
+            target: fp.path,
+            relation: "opens",
+            context: `OCR 中识别到 ${fp.kind} 文件路径`
+          });
+          return true;
+        },
+        "kg.file-recognizer-upsert",
+        false,
+        "warn"
+      );
+      if (ok) fileEntityCount += 1;
     }
     response.parsed.relationships.forEach((relation) => {
       kg.upsertRelation(relation);
     });
+    // DATA-11: 计算 OCR 整体置信度（buffer 多帧平均）；低于 0.5 KG 内部会拒绝入库
+    const avgConfidence = buffer.entries.length > 0
+      ? buffer.entries.reduce((s, e) => s + (e.confidence || 0), 0) / buffer.entries.length
+      : 0;
     kg.addEvent({
       appName: buffer.appName,
       windowTitle: buffer.windowTitle,
+      // NEW-4 双轨：content 保留原始 OCR（供审计/调试），summary 给用户看
       content: mergedText,
       summary: response.parsed.summary || response.parsed.prediction,
       // O1: intent 改为 LLM 给的纯自由文本（不再加 scene:: 前缀）
       intent: response.parsed.intent || "unknown",
       sourceWindowId: buffer.windowId,
-      entityIds
+      entityIds,
+      confidence: avgConfidence
     });
     const graphInput = {
       entitiesProposed: response.parsed.entities.length,
@@ -1060,7 +1170,12 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
 
     pipelineLogger.complete(pipeline.id, "completed");
     // P7: 立刻算一次 outcome_score（基于内在质量信号，反馈来了再 update）
-    try { kg.computeAndStoreOutcomeScore(pipeline.id); } catch { /* ignore */ }
+    safeExecute(
+      () => kg.computeAndStoreOutcomeScore(pipeline.id),
+      "kg.compute-outcome-score",
+      0,
+      "warn"
+    );
     logSystem("info", "pipeline", "pipeline 完成", {
       pipelineId: pipeline.id,
       windowId: buffer.windowId,
@@ -1115,7 +1230,7 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     scheduler.stopAll();
     autoCaptureService.stop();
     // 释放 OCR 引擎资源（Tesseract worker 占用约 150MB 内存）
-    void ocrEngine.terminate().catch(() => { /* swallow */ });
+    void safeExecuteAsync(() => ocrEngine.terminate(), "ocr.before-quit-terminate", undefined, "info");
   });
 
   // M6 悬浮球：拉当前状态 + 用户清零未读
@@ -1259,7 +1374,7 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
           attributes: { fromBootstrap: true }
         });
         // 钉住 + 设高质量分
-        try { kg.setPinned(id, true); } catch { /* ignore */ }
+        safeExecute(() => kg.setPinned(id, true), "kg.bootstrap-pin", undefined, "warn");
       }
       if (payload.currentProject) {
         const id = kg.upsertEntity({
@@ -1268,12 +1383,51 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
           description: `用户在 bootstrap wizard 声明的当前主项目`,
           attributes: { fromBootstrap: true }
         });
-        try { kg.setPinned(id, true); } catch { /* ignore */ }
+        safeExecute(() => kg.setPinned(id, true), "kg.bootstrap-pin", undefined, "warn");
       }
       kg.recomputeAllQualityScores();
     } catch (e) {
       logSystem("warning", "bootstrap", "写入 KG 失败", { error: e instanceof Error ? e.message : String(e) });
     }
+    return { ok: true };
+  });
+
+  // P0.3 / P0.10 / 哲学机制 1：信任分级
+  ipcMain.handle("prefs:get-trust-levels", () => preferencesStore.getAllTrustLevels());
+  ipcMain.handle("prefs:set-trust-level", (_event, payload: { type: string; level: number }) => {
+    const validLevels = [0, 1, 2, 3, 4];
+    if (!validLevels.includes(payload.level)) {
+      return { ok: false, error: "level 必须是 0-4" };
+    }
+    // payload.type 必须是有效的 ActionType；preferencesStore.setTrustLevel 内部已类型约束
+    preferencesStore.setTrustLevel(payload.type as never, payload.level as never);
+    return { ok: true };
+  });
+  ipcMain.handle("prefs:reset-trust-levels", () => {
+    preferencesStore.resetTrustLevels();
+    return { ok: true };
+  });
+
+  // P0.11: 隐私核心 — 数据保留期
+  ipcMain.handle("prefs:get-retention-days", () => preferencesStore.getRetentionDays());
+  ipcMain.handle("prefs:set-retention-days", (_event, days: number) => {
+    const allowed = [-1, 0, 7, 30, 90];
+    if (!allowed.includes(days)) {
+      return { ok: false, error: "保留期必须是 -1(不保留) / 0(永久) / 7 / 30 / 90 天" };
+    }
+    preferencesStore.setRetentionDays(days);
+    return { ok: true };
+  });
+
+  // P0.11: 隐私核心 — 脱敏强度
+  ipcMain.handle("prefs:get-redaction-level", () => preferencesStore.getRedactionLevel());
+  ipcMain.handle("prefs:set-redaction-level", (_event, level: string) => {
+    if (level !== "basic" && level !== "strict" && level !== "paranoid") {
+      return { ok: false, error: "level 必须是 basic / strict / paranoid" };
+    }
+    preferencesStore.setRedactionLevel(level);
+    // 同步到 sensitive-filter 模块级状态，下一次 redactSensitive 即生效
+    setActiveRedactionLevel(level);
     return { ok: true };
   });
 
@@ -1420,22 +1574,86 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
 
   ipcMain.handle("agent:detect-backends", async () => agentBridge.detectAvailableBackends());
 
+  // SEC-4: 启动时从 secrets-store 恢复 API 配置状态
+  void (async () => {
+    try {
+      const { secretsStore } = await import("./secrets-store.js");
+      if (secretsStore.hasApiKey()) {
+        agentBridge.markApiConfigured(true);
+        logSystem("info", "agent", "已从 safeStorage 恢复 API 配置");
+      }
+    } catch (e) {
+      logSystem("warning", "agent", "API 配置恢复失败", {
+        error: e instanceof Error ? e.message : String(e)
+      });
+    }
+  })();
+
   // Auto-detect agent backends on startup so the status page shows real data；
   // 默认优先使用 hermes（稳定性 / 没有 401/403 风险）。
-  void agentBridge.detectAvailableBackends().then((backends) => {
-    logSystem("info", "agent", "检测到 Agent 后端", { backends });
-    if (backends.includes("hermes")) {
-      agentBridge.setPreferredBackend("hermes");
-      logSystem("info", "agent", "已默认设置 preferred backend = hermes");
-    }
-  }).catch(() => { /* ignore */ });
+  void safeExecuteAsync(
+    async () => {
+      const backends = await agentBridge.detectAvailableBackends();
+      logSystem("info", "agent", "检测到 Agent 后端", { backends });
+      if (backends.includes("hermes")) {
+        agentBridge.setPreferredBackend("hermes");
+        logSystem("info", "agent", "已默认设置 preferred backend = hermes");
+      }
+    },
+    "agent.detect-backends",
+    undefined,
+    "warn"
+  );
 
   ipcMain.handle("agent:set-backend", (_event, backend: Parameters<AgentBridge["setPreferredBackend"]>[0]) => {
     agentBridge.setPreferredBackend(backend);
     return { ok: true };
   });
-  ipcMain.handle("agent:set-api-config", (_event, config: { baseUrl: string; key: string; model: string }) => {
-    agentBridge.setApiConfig(config);
+  // SEC-4: API key 走 safeStorage 加密落盘——renderer 永远拿不到明文
+  ipcMain.handle("agent:set-api-config", async (_event, config: { baseUrl: string; key: string; model: string }) => {
+    // baseUrl 白名单（防 renderer XSS 把 key 重定向到攻击者域名）
+    const ALLOWED_HOSTS = new Set([
+      "api.anthropic.com",
+      "api.openai.com",
+      "api.deepseek.com",
+      "openrouter.ai",
+      "api.groq.com"
+    ]);
+    try {
+      const u = new URL(config.baseUrl);
+      if (u.protocol !== "https:") return { ok: false, error: "baseUrl 必须是 https" };
+      if (!ALLOWED_HOSTS.has(u.host)) {
+        return { ok: false, error: `baseUrl host 不在白名单：${u.host}` };
+      }
+    } catch {
+      return { ok: false, error: "baseUrl 不是合法 URL" };
+    }
+    const { secretsStore } = await import("./secrets-store.js");
+    if (!secretsStore.isEncryptionAvailable()) {
+      return { ok: false, error: "系统未提供凭证存储（safeStorage 不可用）" };
+    }
+    if (config.key && !secretsStore.setApiKey(config.key)) {
+      return { ok: false, error: "凭证写入失败" };
+    }
+    secretsStore.setApiBaseUrl(config.baseUrl);
+    secretsStore.setApiModel(config.model);
+    agentBridge.markApiConfigured(secretsStore.hasApiKey());
+    return { ok: true };
+  });
+  ipcMain.handle("agent:get-api-config-status", async () => {
+    const { secretsStore } = await import("./secrets-store.js");
+    return {
+      hasKey: secretsStore.hasApiKey(),
+      maskedKey: secretsStore.getMaskedApiKey(),
+      baseUrl: secretsStore.getApiBaseUrl(),
+      model: secretsStore.getApiModel(),
+      encryptionAvailable: secretsStore.isEncryptionAvailable()
+    };
+  });
+  ipcMain.handle("agent:clear-api-config", async () => {
+    const { secretsStore } = await import("./secrets-store.js");
+    secretsStore.clearApiKey();
+    agentBridge.markApiConfigured(false);
     return { ok: true };
   });
   ipcMain.handle("agent:status", () => agentBridge.getStatus());
@@ -1485,6 +1703,34 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
   });
   ipcMain.handle("kg:run-gc", () => kg.runEntityGC());
 
+  // T13 / M8: 网络状态 — renderer 用 navigator.onLine 上报到主进程，业务模块从 systemEvents 读
+  ipcMain.handle("system:report-online", (_event, online: boolean) => {
+    systemEvents.reportOnlineState(!!online);
+    return { ok: true };
+  });
+  ipcMain.handle("system:is-online", () => systemEvents.isOnline());
+
+  // PHIL-1 / P0.4: 玻璃管家 negative patterns（用户教 Ovo "永远不要这样做"）
+  ipcMain.handle("kg:add-negative-pattern", (_event, payload: {
+    appName?: string;
+    intent?: string;
+    actionType?: string;
+    patternText: string;
+    contextSignature?: string;
+  }) => {
+    if (!payload.patternText || typeof payload.patternText !== "string") {
+      return { ok: false, error: "patternText 必填" };
+    }
+    const id = kg.insertNegativePattern(payload);
+    return { ok: true, id };
+  });
+  ipcMain.handle("kg:list-negative-patterns", (_event, limit?: number) =>
+    kg.listNegativePatterns(typeof limit === "number" && limit > 0 ? limit : 100));
+  ipcMain.handle("kg:delete-negative-pattern", (_event, id: string) => {
+    kg.deleteNegativePattern(id);
+    return { ok: true };
+  });
+
   // P8: prompt 自评建议
   ipcMain.handle("prompt-eval:list", (_event, limit?: number) => kg.listPromptEvalSuggestions(limit ?? 30));
   ipcMain.handle("prompt-eval:set-status", (_event, payload: { id: string; status: "applied" | "dismissed" | "pending" }) => {
@@ -1501,6 +1747,10 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
   ipcMain.handle("process:timeline", (_event, limit?: number) => kg.getProcessTimeline(limit ?? 80));
   // 问题4：人类可读的「ovo 做过什么」清单（按 action 维度而不是 pipeline 维度）
   ipcMain.handle("history:list-actions", (_event, limit?: number) => kg.getActionHistory(limit ?? 100));
+  // A: toast 弹窗历史——主控台「通知历史」面板用
+  ipcMain.handle("history:list-notifications", (_event, limit?: number) => kg.getToastHistory(limit ?? 100));
+  // C: action 详情——给 ActionDetailDrawer 用
+  ipcMain.handle("action:get-detail", (_event, actionId: string) => kg.getActionDetail(actionId));
   // F4: 流程 tab 进度条数据（按 pipeline 分组）
   ipcMain.handle("process:pipelines", (_event, limit?: number) => kg.getPipelineProgress(limit ?? 50));
 
@@ -1531,24 +1781,37 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
   ipcMain.handle("suggestion:feedback", (_event, payload: Parameters<FeedbackEngine["submitSuggestionFeedback"]>[0]) => {
     // R2 / R7: 用户 reject 后让 toast 短期屏蔽这类 type
     if (payload.action === "rejected" && payload.suggestionType) {
-      try { options.toastManager?.noteRejection?.(payload.suggestionType); } catch { /* ignore */ }
+      safeExecute(
+        () => options.toastManager?.noteRejection?.(payload.suggestionType),
+        "toast.note-rejection",
+        undefined,
+        "info"
+      );
     }
     // R2: offer accept 时立刻给一条 receipt（capability 引擎未上线，先告诉用户已记下偏好）
     if (payload.action === "accepted" && payload.suggestionType?.startsWith("offer:")) {
-      try {
-        options.toastManager?.enqueueReceipts?.([{
+      safeExecute(
+        () => options.toastManager?.enqueueReceipts?.([{
           id: `accept_${payload.suggestionId}_${Date.now().toString(36)}`,
           type: "receipt",
           title: "✓ ovo 已记下你的偏好",
           content: "ovo 会持续观察这类机会。capability 引擎下一轮上线后，会按你订的频率自动给你输出。",
           priority: 100
-        }]);
-      } catch { /* ignore */ }
+        }]),
+        "toast.enqueue-receipt",
+        undefined,
+        "info"
+      );
     }
     return feedbackEngine.submitSuggestionFeedback(payload);
   });
   ipcMain.handle("toast:set-dnd", (_event, minutes: number) => {
-    try { options.toastManager?.setDoNotDisturb?.(Math.max(1, Math.floor(minutes))); } catch { /* ignore */ }
+    safeExecute(
+      () => options.toastManager?.setDoNotDisturb?.(Math.max(1, Math.floor(minutes))),
+      "toast.set-dnd",
+      undefined,
+      "info"
+    );
     return { ok: true };
   });
 
@@ -1608,10 +1871,15 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
       });
       if (pipelineId) mergePipelineAction(pipelineId, action.id, result);
       // P4: 用户刚确认的 action 完成后也弹回执
-      try {
-        const receipts = buildActionReceipts([action], [result]);
-        if (receipts.length && options.onReceipts) options.onReceipts(receipts);
-      } catch { /* ignore */ }
+      safeExecute(
+        () => {
+          const receipts = buildActionReceipts([action], [result]);
+          if (receipts.length && options.onReceipts) options.onReceipts(receipts);
+        },
+        "ipc.action-receipt",
+        undefined,
+        "info"
+      );
       return result;
     }
   );

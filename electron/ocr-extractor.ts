@@ -132,21 +132,80 @@ export function extractStructured(text: string): StructuredSignals {
   };
 }
 
+/**
+ * EXT-1/2 二次脱敏 + 规范化。
+ *
+ * regex 抽取的 URL / 邮箱 / 文件路径 / 代码片段 在送 LLM 前必须再过一遍脱敏：
+ *   - URL host 部分识别内部域（含 internal/staging/dev/local/.internal/.lan/.corp）→ 脱敏
+ *   - 邮箱：保留 domain 部分，local-part 擦成 ***
+ *   - 文件路径：用户名 /Users/<name> → /Users/<USER>
+ *   - 代码片段：再过 redactSensitive（捞 sk-xxx / private key 这类）
+ */
+import { redactSensitive } from "./sensitive-filter.js";
+
+function sanitizeUrl(u: string): string {
+  try {
+    const url = new URL(u);
+    // 内部/隐私域名直接擦掉具体 host，保留 scheme + 占位
+    const internalLike = /(internal|staging|dev|local|preview|secret|private|admin)/i;
+    const privateTld = /\.(internal|lan|corp|home|local|test)$/i;
+    if (internalLike.test(url.host) || privateTld.test(url.host)) {
+      return `${url.protocol}//[INTERNAL]${url.pathname.length > 1 ? "/[…]" : ""}`;
+    }
+    // 保留 origin + path 第一段；query / fragment 丢弃避免 token 泄露
+    const firstPath = url.pathname.split("/").filter(Boolean)[0];
+    return `${url.protocol}//${url.host}${firstPath ? `/${firstPath}/…` : ""}`;
+  } catch {
+    return "[invalid-url]";
+  }
+}
+
+function sanitizeEmail(e: string): string {
+  const at = e.indexOf("@");
+  if (at <= 0) return "[email]";
+  const local = e.slice(0, at);
+  const domain = e.slice(at + 1);
+  const masked = local.length <= 2
+    ? "***"
+    : `${local[0]}***${local[local.length - 1]}`;
+  return `${masked}@${domain}`;
+}
+
+function sanitizePath(p: string): string {
+  // /Users/dushaobin/x → /Users/<USER>/x；C:\Users\X → C:\Users\<USER>
+  return p
+    .replace(/(\/Users\/)[^/]+/g, "$1<USER>")
+    .replace(/(\\Users\\)[^\\]+/gi, "$1<USER>");
+}
+
+function sanitizeCode(snippet: string): string {
+  // 跑一遍 redactSensitive 擦 API token / 私钥头
+  const r = redactSensitive(snippet);
+  return r.cleaned;
+}
+
 /** 把结构化信号打包成 prompt 用的简短字符串。空时返回 "" */
 export function formatStructuredForPrompt(s: Partial<StructuredSignals>): string {
   const lines: string[] = [];
-  const urls = s.urls ?? []; if (urls.length) lines.push(`URL: ${urls.join(" | ")}`);
-  const emails = s.emails ?? []; if (emails.length) lines.push(`Email: ${emails.join(" | ")}`);
+  const urls = (s.urls ?? []).map(sanitizeUrl);
+  if (urls.length) lines.push(`URL: ${urls.join(" | ")}`);
+  const emails = (s.emails ?? []).map(sanitizeEmail);
+  if (emails.length) lines.push(`Email: ${emails.join(" | ")}`);
   const prices = s.prices ?? []; if (prices.length) lines.push(`价格/金额: ${prices.join(" | ")}`);
   const headings = s.headings ?? []; if (headings.length) lines.push(`标题: ${headings.slice(0, 5).join(" | ")}`);
-  const filePaths = s.filePaths ?? []; if (filePaths.length) lines.push(`文件路径: ${filePaths.join(" | ")}`);
+  const filePaths = (s.filePaths ?? []).map(sanitizePath);
+  if (filePaths.length) lines.push(`文件路径: ${filePaths.join(" | ")}`);
   const codeSnippets = s.codeSnippets ?? [];
   if (codeSnippets.length) {
-    const preview = codeSnippets[0].split("\n").slice(0, 3).join(" / ");
+    const preview = sanitizeCode(codeSnippets[0]).split("\n").slice(0, 3).join(" / ");
     lines.push(`代码片段(${codeSnippets.length}): ${preview}`);
   }
   const dates = s.dates ?? []; if (dates.length) lines.push(`日期: ${dates.join(" | ")}`);
   const hashtags = s.hashtags ?? []; if (hashtags.length) lines.push(`话题: ${hashtags.join(" | ")}`);
-  const ipAddrs = s.ipAddrs ?? []; if (ipAddrs.length) lines.push(`IP: ${ipAddrs.join(" | ")}`);
+  // IP 不脱敏（已经是公网/内网级信息），但 192.168/10.x/172.16-31 不需要 LLM 看
+  const ipAddrs = (s.ipAddrs ?? []).filter((ip) =>
+    !/^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.|127\.)/.test(ip)
+  );
+  if (ipAddrs.length) lines.push(`IP: ${ipAddrs.join(" | ")}`);
   return lines.join("\n");
 }

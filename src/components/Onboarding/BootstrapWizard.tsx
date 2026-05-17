@@ -1,12 +1,16 @@
 /**
- * P5: Bootstrap Wizard —— 首启 4 步问卷。
+ * Bootstrap Wizard —— 首启"克制承诺"引导。
  *
- * 让 ovo 第一天就有"画像"可用，避免冷启动 KG 完全空白时的尴尬。
- * 用户填的内容立刻：
- *   - 写进 KG (interest_profile / project / concept entity，pinned=true)
- *   - 写进 preferences.json (bootstrapDone=true，避免重复弹)
+ * 修复：P0.1 / P1.1 / P1.19 / S3
+ * 哲学（PRODUCT_PHILOSOPHY.md 第六章）入场承诺：
+ *   "看着 Ovo 思考。它每一步都会告诉你为什么。"
+ *   "Ovo 默认只看不做。当我观察到某个模式重复 3 次，会问你：要不要我下次替你做？"
  *
- * 不强制——任何时候可以跳过；下次启动还会再问，除非完成。
+ * 与旧版差异：
+ *   - 首屏第一句话从"5 分钟告诉 ovo 关于你"（灌输偏好）改为克制承诺
+ *   - step 0/1 不再强制（interests/roles 可为空也能下一步）
+ *   - 每一步都有独立的"跳过这一步"按钮（不再只能一次性跳过全部）
+ *   - step 0 改成"承诺页"——用户先理解 Ovo 怎么工作，再决定填什么
  */
 import { useEffect, useMemo, useState } from "react";
 import { Sparkles, ArrowRight, ArrowLeft, X, Check } from "lucide-react";
@@ -77,27 +81,31 @@ export function BootstrapWizard({ onClose }: Props) {
     onClose();
   };
 
-  const stepTitles = ["你最关心什么？", "你的角色", "当前主项目", "完成"];
-  const canNext =
-    (step === 0 && interests.size > 0) ||
-    (step === 1 && roles.size > 0) ||
-    step === 2 || step === 3;
+  // P0.1 / P1.19：step 标题去工程化、step 0/1 不再强制选择（0 个也可下一步）
+  const stepTitles = ["关心的主题（可选）", "你的角色（可选）", "当前主项目（可选）", "完成"];
+  const canNext = true; // 任何一步都不强制填写，用户随时可以跳过
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="relative flex h-[600px] w-[640px] max-w-[92vw] flex-col rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] shadow-2xl">
-        {/* 头部 */}
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
-          <div className="flex items-center gap-2">
-            <Sparkles size={18} className="text-[var(--accent)]" />
-            <div>
-              <p className="text-base font-semibold">5 分钟告诉 ovo 关于你</p>
-              <p className="text-xs text-[var(--text-muted)]">第 {step + 1} / 4 步：{stepTitles[step]}</p>
+        {/* 头部 — 哲学第六章"入场承诺" */}
+        <div className="border-b border-[var(--border)] px-5 py-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2">
+              <Sparkles size={18} className="mt-0.5 text-[var(--accent)]" />
+              <div>
+                <p className="text-base font-semibold">看着 Ovo 思考</p>
+                <p className="text-xs text-[var(--text-secondary)]">它每一步都会告诉你为什么</p>
+              </div>
             </div>
+            <button type="button" onClick={() => void handleSkip()} className="rounded-md p-1 text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]" title="跳过全部">
+              <X size={16} />
+            </button>
           </div>
-          <button type="button" onClick={() => void handleSkip()} className="rounded-md p-1 text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]">
-            <X size={16} />
-          </button>
+          <p className="mt-2 text-xs text-[var(--text-muted)]">
+            Ovo 默认只看不做。观察到某个模式重复 3 次后，会问你：要不要替你做？
+          </p>
+          <p className="mt-1 text-[10px] text-[var(--text-muted)]">第 {step + 1} / 4 步：{stepTitles[step]} · 全部可跳过</p>
         </div>
 
         {/* 进度条 */}
@@ -110,7 +118,8 @@ export function BootstrapWizard({ onClose }: Props) {
           {step === 0 && (
             <div className="space-y-3">
               <p className="text-sm text-[var(--text-secondary)]">
-                选 3-5 个你最关心的主题——ovo 看到屏幕涉及这些内容时会更主动。
+                如果你愿意，告诉 Ovo 你关心什么——它会用这些先验更快进入状态。
+                <span className="ml-1 text-[var(--text-muted)]">不填也行，Ovo 会自己慢慢学。</span>
               </p>
               <div className="flex flex-wrap gap-2">
                 {PRESET_INTERESTS.map((it) => (
@@ -157,7 +166,8 @@ export function BootstrapWizard({ onClose }: Props) {
           {step === 1 && (
             <div className="space-y-3">
               <p className="text-sm text-[var(--text-secondary)]">
-                你扮演哪些角色？（多选）—— ovo 会根据这些先验更精准地理解你的活动。
+                你扮演哪些角色？多选。
+                <span className="ml-1 text-[var(--text-muted)]">同样可以不选。</span>
               </p>
               <div className="flex flex-wrap gap-2">
                 {PRESET_ROLES.map((r) => (
@@ -197,36 +207,42 @@ export function BootstrapWizard({ onClose }: Props) {
 
           {step === 3 && (
             <div className="space-y-4">
-              <p className="text-sm">总结一下，ovo 现在知道：</p>
+              <p className="text-sm">Ovo 现在知道：</p>
               <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-base)] p-4 text-sm">
                 <div className="mb-2">
                   <p className="text-xs text-[var(--text-muted)]">关注主题</p>
-                  <p>{interestList.length > 0 ? interestList.join(" · ") : "(空)"}</p>
+                  <p>{interestList.length > 0 ? interestList.join(" · ") : "暂未填写"}</p>
                 </div>
                 <div className="mb-2">
                   <p className="text-xs text-[var(--text-muted)]">扮演角色</p>
-                  <p>{roleList.length > 0 ? roleList.join(" · ") : "(空)"}</p>
+                  <p>{roleList.length > 0 ? roleList.join(" · ") : "暂未填写"}</p>
                 </div>
                 <div>
                   <p className="text-xs text-[var(--text-muted)]">当前主项目</p>
-                  <p>{project || "(空)"}</p>
+                  <p>{project || "暂未填写"}</p>
                 </div>
               </div>
+              <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-3 text-xs text-[var(--text-secondary)]">
+                <p className="mb-1 font-medium text-[var(--text-primary)]">接下来 Ovo 会做的事</p>
+                <p>· 默认只看不做——观察你的工作场景</p>
+                <p>· 想做事时先告诉你："看见 X · 想做 Y · 因为 Z"</p>
+                <p>· 永远显示完整推理路径，你可以随时教它"不要这样"</p>
+              </div>
               <p className="text-xs text-[var(--text-muted)]">
-                这些会立刻写进知识库（钉住）+ prompt 注入。后面在「设置 → 数据管理」可以编辑。
+                填的内容立刻写进知识库（钉住），后面在「设置 → 数据管理」可以随时改。
               </p>
             </div>
           )}
         </div>
 
-        {/* 底部按钮 */}
+        {/* 底部按钮 — P1.19: 增加"跳过这一步"，与"跳过全部"区分语义 */}
         <div className="flex items-center gap-2 border-t border-[var(--border)] px-5 py-3">
           <button
             type="button"
             onClick={() => void handleSkip()}
             className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
           >
-            跳过，以后再说
+            跳过全部
           </button>
           <div className="ml-auto flex items-center gap-2">
             {step > 0 && (
@@ -236,6 +252,15 @@ export function BootstrapWizard({ onClose }: Props) {
                 className="flex items-center gap-1 rounded-md border border-[var(--border)] px-3 py-1.5 text-xs hover:border-[var(--accent)]"
               >
                 <ArrowLeft size={12} />上一步
+              </button>
+            )}
+            {step < 3 && (
+              <button
+                type="button"
+                onClick={() => setStep(step + 1)}
+                className="rounded-md border border-dashed border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-muted)] hover:border-[var(--text-secondary)] hover:text-[var(--text-secondary)]"
+              >
+                跳过这一步
               </button>
             )}
             {step < 3 ? (
@@ -254,7 +279,7 @@ export function BootstrapWizard({ onClose }: Props) {
                 onClick={() => void handleFinish()}
                 className="flex items-center gap-1 rounded-md bg-[var(--accent)] px-4 py-1.5 text-xs font-medium text-white disabled:opacity-50"
               >
-                <Check size={12} />{saving ? "保存中..." : "完成"}
+                <Check size={12} />{saving ? "保存中..." : "好的，开始"}
               </button>
             )}
           </div>

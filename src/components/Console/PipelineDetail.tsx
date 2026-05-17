@@ -8,13 +8,15 @@ interface PipelineDetailProps {
   item: any;
 }
 
-const STAGE_ORDER: Array<{ key: string; label: string }> = [
-  { key: "aggregate", label: "聚合" },
-  { key: "agent", label: "Agent 调用" },
-  { key: "schema", label: "Schema 校验" },
-  { key: "suggestions", label: "建议生成" },
-  { key: "actions", label: "Action 执行" },
-  { key: "graphUpdate", label: "图谱更新" }
+// P0.5: 工程术语 → 用户语言。原 "聚合 / Agent 调用 / Schema 校验" 等内部叫法
+// 普通用户读不懂；改成 ovo 视角的人话
+const STAGE_ORDER: Array<{ key: string; label: string; hint: string }> = [
+  { key: "aggregate", label: "看到", hint: "ovo 从屏幕识别到的内容" },
+  { key: "agent", label: "思考", hint: "ovo 在推理你在做什么 / 想干什么" },
+  { key: "schema", label: "检查", hint: "ovo 在检查推理结果是否合理" },
+  { key: "suggestions", label: "建议", hint: "ovo 整理出可以帮你的事" },
+  { key: "actions", label: "执行", hint: "ovo 替你做了什么 / 等你确认什么" },
+  { key: "graphUpdate", label: "记住", hint: "ovo 把这次的新发现存到记忆里" }
 ];
 
 type StatusKind = "success" | "failed" | "skipped" | "pending" | "unknown";
@@ -30,10 +32,11 @@ function statusKind(stage: any): StatusKind {
 }
 
 function StageNode({
-  index, label, kind, active, onClick
+  index, label, hint, kind, active, onClick
 }: {
   index: number;
   label: string;
+  hint?: string;
   kind: StatusKind;
   active: boolean;
   onClick: () => void;
@@ -53,6 +56,7 @@ function StageNode({
     <button
       type="button"
       onClick={onClick}
+      title={hint}
       className={`group flex flex-col items-center gap-1 transition-transform hover:-translate-y-0.5 ${active ? "scale-105" : ""}`}
     >
       <div
@@ -70,18 +74,62 @@ function StageNode({
 function StageBlock({ label, value, fallback }: { label: string; value: unknown; fallback: string }) {
   const isEmpty = value === undefined || value === null
     || (typeof value === "object" && value !== null && Object.keys(value as object).length === 0);
+
+  // P1.12: 默认显示结构化摘要——不再把整段 JSON 砸给用户。
+  // 走 <details> 折叠原始数据，power user 点开能看，普通用户看到的是简洁摘要。
+  const summary = useMemo(() => summarizeStage(value), [value]);
+
   return (
     <div>
       <p className="mb-1 text-xs font-medium text-[var(--text-secondary)]">{label}</p>
       {isEmpty ? (
         <p className="text-xs text-[var(--text-muted)]">{fallback}</p>
+      ) : summary ? (
+        <div className="rounded bg-[var(--bg-card-hover)] p-2 text-[12px] leading-relaxed text-[var(--text-secondary)]">
+          {summary}
+          <details className="mt-2">
+            <summary className="cursor-pointer text-[10px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]">展开原始数据</summary>
+            <pre className="mt-1 max-h-72 overflow-auto rounded bg-[var(--bg-base)] p-2 font-mono text-[10px] text-[var(--text-muted)]">
+              {typeof value === "string" ? value : JSON.stringify(value, null, 2)}
+            </pre>
+          </details>
+        </div>
       ) : (
-        <pre className="max-h-72 overflow-auto rounded bg-black/30 p-2 font-mono text-[11px] text-[var(--text-secondary)]">
+        <pre className="max-h-72 overflow-auto rounded bg-[var(--bg-card-hover)] p-2 font-mono text-[11px] text-[var(--text-secondary)]">
           {typeof value === "string" ? value : JSON.stringify(value, null, 2)}
         </pre>
       )}
     </div>
   );
+}
+
+/**
+ * 把 stage input/output 翻译成一句人话摘要。
+ * 返回 null 时调用方降级展示原 JSON。
+ */
+function summarizeStage(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const o = value as Record<string, unknown>;
+  const parts: string[] = [];
+  if (typeof o.appName === "string" && o.appName) parts.push(`应用: ${o.appName}`);
+  if (typeof o.windowTitle === "string" && o.windowTitle) parts.push(`窗口: ${o.windowTitle}`);
+  if (typeof o.intent === "string" && o.intent) parts.push(`意图: ${o.intent}`);
+  if (typeof o.prediction === "string" && o.prediction) parts.push(`预测: ${o.prediction}`);
+  if (typeof o.role === "string" && o.role) parts.push(`角色: ${o.role}`);
+  if (typeof o.mergedTextLength === "number") parts.push(`OCR 抓到 ${o.mergedTextLength} 字`);
+  if (typeof o.frameCount === "number") parts.push(`${o.frameCount} 帧 OCR`);
+  if (typeof o.changedFrames === "number" && o.changedFrames > 0) parts.push(`其中 ${o.changedFrames} 帧有变化`);
+  if (typeof o.executed === "number") parts.push(`执行 ${o.executed} 个动作`);
+  if (typeof o.pending === "number" && o.pending > 0) parts.push(`等你确认 ${o.pending} 个`);
+  if (typeof o.entitiesProposed === "number" && o.entitiesProposed > 0) parts.push(`认识 ${o.entitiesProposed} 个新概念`);
+  if (typeof o.relationships === "number" && o.relationships > 0) parts.push(`补 ${o.relationships} 个关联`);
+  if (typeof o.degraded === "boolean" && o.degraded) parts.push("结果质量降级了");
+  if (typeof o.repaired === "boolean" && o.repaired) parts.push("ovo 自动修复了一次格式错误");
+  if (typeof o.preview === "string" && o.preview) {
+    const p = o.preview.slice(0, 200);
+    parts.push(`内容片段: "${p}${o.preview.length > 200 ? "…" : ""}"`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 export function PipelineDetail({ item }: PipelineDetailProps) {
@@ -95,9 +143,10 @@ export function PipelineDetail({ item }: PipelineDetailProps) {
     return (item?.stages ?? {}) as Record<string, any>;
   }, [item]);
 
-  const ordered = STAGE_ORDER.map(({ key, label }) => ({
+  const ordered = STAGE_ORDER.map(({ key, label, hint }) => ({
     key,
     label,
+    hint,
     data: normalized[key],
     kind: statusKind(normalized[key])
   }));
@@ -146,6 +195,7 @@ export function PipelineDetail({ item }: PipelineDetailProps) {
               <StageNode
                 index={i}
                 label={s.label}
+                hint={s.hint}
                 kind={s.kind}
                 active={s.key === activeKey}
                 onClick={() => setActiveKey(s.key)}

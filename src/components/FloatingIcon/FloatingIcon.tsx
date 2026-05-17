@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { X as XIcon } from "lucide-react";
 import type { FloatingStatePayload } from "../../types/ovo";
 
 const isElectron = typeof window !== "undefined" && !!window.ovoAPI;
@@ -254,10 +255,11 @@ export function FloatingIcon() {
             <button
               type="button"
               onClick={() => setSticky(false)}
-              className="shrink-0 text-white/40 hover:text-white"
+              className="flex h-5 w-5 shrink-0 items-center justify-center text-white/40 hover:text-white"
               title="收起"
+              aria-label="收起"
             >
-              ✕
+              <XIcon size={12} />
             </button>
           </div>
           <p className="mt-1 text-[10px] text-white/60">{summarySub}</p>

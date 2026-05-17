@@ -13,6 +13,7 @@
  */
 import { createWorker, type Worker as TesseractWorker } from "tesseract.js";
 import { errorLogger } from "./error-logger.js";
+import { safeExecuteAsync } from "./safe-execute.js";
 
 export interface OCRResult {
   text: string;
@@ -113,7 +114,7 @@ export class OCREngine {
       if (this.tesseractWorker && Date.now() - this.lastTesseractUsedAt >= TESSERACT_IDLE_RELEASE_MS) {
         const worker = this.tesseractWorker;
         this.tesseractWorker = null;
-        void worker.terminate().catch(() => { /* swallow */ });
+        void safeExecuteAsync(() => worker.terminate(), "ocr.tesseract-idle-terminate", undefined, "info");
       }
     }, TESSERACT_IDLE_RELEASE_MS + 1000);
     this.tesseractIdleTimer.unref?.();
@@ -176,7 +177,7 @@ export class OCREngine {
     if (this.tesseractWorker) {
       const worker = this.tesseractWorker;
       this.tesseractWorker = null;
-      try { await worker.terminate(); } catch { /* swallow */ }
+      await safeExecuteAsync(() => worker.terminate(), "ocr.tesseract-terminate", undefined, "info");
     }
     // Vision native module 不需要清理
   }

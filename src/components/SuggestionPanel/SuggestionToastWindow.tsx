@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { X, Volume2, ThumbsUp } from "lucide-react";
+import { X, Volume2, ThumbsUp, Pin, PinOff } from "lucide-react";
 import { useFeedback } from "../../hooks/useFeedback";
 import { useTTS } from "../../hooks/useTTS";
 import { getSuggestionSpec } from "./suggestionTypes";
 
-const AUTO_CLOSE_MS = 30_000;
+// P1.16: 按内容长度动态计算时长 — 基础 12s + 每字符 80ms，上限 60s
+//        用户点"锁定"按钮可暂停倒计时
+const AUTO_CLOSE_BASE_MS = 12_000;
+const AUTO_CLOSE_PER_CHAR_MS = 80;
+const AUTO_CLOSE_MAX_MS = 60_000;
 
 interface ToastSuggestion {
   id: string;
@@ -39,7 +43,14 @@ export function SuggestionToastWindow() {
   const { submitSuggestionFeedback } = useFeedback();
   const { speak } = useTTS();
   const item = useMemo(() => parseToastPayload(), []);
-  const [remainingMs, setRemainingMs] = useState(AUTO_CLOSE_MS);
+  // P1.16: 按内容长度计算总时长（基础 + 每字符），上限 60s
+  const totalMs = useMemo(() => {
+    if (!item) return AUTO_CLOSE_BASE_MS;
+    const len = (item.title?.length ?? 0) + (item.content?.length ?? 0) + (item.detail?.length ?? 0);
+    return Math.min(AUTO_CLOSE_MAX_MS, AUTO_CLOSE_BASE_MS + len * AUTO_CLOSE_PER_CHAR_MS);
+  }, [item]);
+  const [remainingMs, setRemainingMs] = useState(totalMs);
+  const [pinned, setPinned] = useState(false); // P1.16: 用户锁定后不关闭
 
   // R3: 强制 html/body/#root 透明 + overflow hidden，
   // 否则即使 BrowserWindow.transparent=true，HTML 默认 #fff 背景也会盖一层白色矩形
@@ -62,10 +73,13 @@ export function SuggestionToastWindow() {
   }, []);
 
   // 渲染端兜底自动关闭：即便主进程 timer 被节流，渲染端 setInterval 也保底触发。
+  // P1.16: pinned 时暂停倒计时
   useEffect(() => {
+    if (pinned) return;
     const start = Date.now();
+    const baseRemain = remainingMs;
     const timer = window.setInterval(() => {
-      const left = AUTO_CLOSE_MS - (Date.now() - start);
+      const left = baseRemain - (Date.now() - start);
       if (left <= 0) {
         window.clearInterval(timer);
         try { window.close(); } catch { /* ignore */ }
@@ -75,9 +89,9 @@ export function SuggestionToastWindow() {
       setRemainingMs(left);
     }, 100);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [pinned]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const progress = Math.max(0, Math.min(1, remainingMs / AUTO_CLOSE_MS));
+  const progress = Math.max(0, Math.min(1, remainingMs / totalMs));
   const secondsLeft = Math.ceil(remainingMs / 1000);
   // P4: receipt 是"我做完了"事实，没有采纳/忽略
   const isReceipt = item?.type === "receipt";
@@ -130,15 +144,30 @@ export function SuggestionToastWindow() {
           />
         </div>
 
-        <button
-          type="button"
-          title={`${secondsLeft}s 后自动关闭，点击立即关闭`}
-          onClick={() => window.close()}
-          className="absolute right-2 top-2 flex items-center gap-1 rounded-md px-1 py-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
-        >
-          <span className="text-[10px] tabular-nums">{secondsLeft}s</span>
-          <X size={14} />
-        </button>
+        {/* P1.16: 锁定按钮 — 点亮后暂停倒计时 */}
+        <div className="absolute right-2 top-2 flex items-center gap-1">
+          <button
+            type="button"
+            title={pinned ? "已锁定（点击恢复倒计时）" : "锁定 — 暂停自动关闭"}
+            onClick={() => setPinned((p) => !p)}
+            className={`flex items-center rounded-md px-1 py-1 transition-colors ${
+              pinned
+                ? "bg-[var(--accent)]/15 text-[var(--accent)]"
+                : "text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
+            }`}
+          >
+            {pinned ? <Pin size={13} /> : <PinOff size={13} />}
+          </button>
+          <button
+            type="button"
+            title={pinned ? "立即关闭" : `${secondsLeft}s 后自动关闭，点击立即关闭`}
+            onClick={() => window.close()}
+            className="flex items-center gap-1 rounded-md px-1 py-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
+          >
+            {!pinned && <span className="text-[10px] tabular-nums">{secondsLeft}s</span>}
+            <X size={14} />
+          </button>
+        </div>
 
         <div className="flex h-full flex-col p-3 pl-[14px]">
           {/* 头：图标 + 类型标签 + 标题 */}

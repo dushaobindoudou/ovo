@@ -1,6 +1,7 @@
 import { execa } from "execa";
 import { desktopCapturer, BrowserWindow, type NativeImage } from "electron";
 import type { WindowInfo } from "./types.js";
+import { safeExecute } from "./safe-execute.js";
 
 /**
  * desktopCapturer.getSources 成功一次就证明屏幕录制权限实际可用。
@@ -12,7 +13,7 @@ function notifyScreenGranted() {
   const now = Date.now();
   if (now - lastPermissionBroadcast < 5_000) return; // 节流：5 秒内最多 1 次
   lastPermissionBroadcast = now;
-  try {
+  safeExecute(() => {
     for (const win of BrowserWindow.getAllWindows()) {
       if (win.isDestroyed()) continue;
       win.webContents.send("permissions:status", {
@@ -21,7 +22,7 @@ function notifyScreenGranted() {
         observedVia: "desktopCapturer"
       });
     }
-  } catch { /* ignore */ }
+  }, "window-manager.broadcast-permissions", undefined, "info");
 }
 
 export interface WindowThumbnail {
