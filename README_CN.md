@@ -7,10 +7,18 @@
 ### 开源主动式 AI 桌面助手<br/>看着你的屏幕，主动给建议，所有数据 100% 在你电脑上
 
 <p>
-  <a href="https://github.com/dushaobindoudou/ovo/releases/latest"><img src="https://img.shields.io/github/v/release/dushaobindoudou/ovo?label=下载&color=007aff" alt="最新版本" /></a>
+  <a href="https://github.com/dushaobindoudou/ovo/releases/latest"><img src="https://img.shields.io/github/v/release/dushaobindoudou/ovo?label=release&color=007aff" alt="最新版本" /></a>
+  <a href="https://github.com/dushaobindoudou/ovo/releases/latest"><img src="https://img.shields.io/github/downloads/dushaobindoudou/ovo/total?color=007aff&label=downloads" alt="总下载量" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-007aff.svg" alt="MIT 协议" /></a>
   <a href="https://github.com/dushaobindoudou/ovo/actions/workflows/ci.yml"><img src="https://github.com/dushaobindoudou/ovo/actions/workflows/ci.yml/badge.svg" alt="CI 状态" /></a>
+  <a href="CODE_OF_CONDUCT.md"><img src="https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg" alt="Code of Conduct" /></a>
+</p>
+
+<p>
   <a href="https://github.com/dushaobindoudou/ovo/stargazers"><img src="https://img.shields.io/github/stars/dushaobindoudou/ovo?style=social" alt="GitHub Stars" /></a>
+  <a href="https://github.com/dushaobindoudou/ovo/network/members"><img src="https://img.shields.io/github/forks/dushaobindoudou/ovo?style=social" alt="GitHub Forks" /></a>
+  <a href="https://github.com/dushaobindoudou/ovo/discussions"><img src="https://img.shields.io/github/discussions/dushaobindoudou/ovo?label=讨论&logo=github" alt="GitHub Discussions" /></a>
+  <a href="https://github.com/dushaobindoudou/ovo/issues?q=label%3A%22good+first+issue%22"><img src="https://img.shields.io/github/issues/dushaobindoudou/ovo/good%20first%20issue?label=新手任务" alt="Good First Issues" /></a>
 </p>
 
 <p>
@@ -246,13 +254,33 @@ pnpm pack:mac     # 构建 DMG 到 out/ 目录
 
 ## 📚 文档
 
+### 先读这里
+
 | 文档 | 用途 |
 |---|---|
-| [`PRODUCT_PHILOSOPHY.md`](docs/PRODUCT_PHILOSOPHY.md) | 项目宪法 —— 想参与产品方向先读这个 |
-| [`UX_AUDIT.md`](docs/UX_AUDIT.md) | 65 个已知 UX 问题（P0 → P3） |
-| [`UI_DESIGN_AUDIT.md`](docs/UI_DESIGN_AUDIT.md) | 设计系统一致性报告 |
-| [`BUG_REPORT.md`](docs/BUG_REPORT.md) | QA 跟踪的 bug（带 file:line） |
+| [`AGENT_PHILOSOPHY.md`](docs/AGENT_PHILOSOPHY.md) | **核心思想。** 两类 agent（工具型 vs 副驾型）— 为什么 Ovo 是被低估的那一类 |
+| [`PRODUCT_PHILOSOPHY.md`](docs/PRODUCT_PHILOSOPHY.md) | 项目宪法 —— 参与产品方向先读这个 |
+| [`USE_CASES.md`](docs/USE_CASES.md) | 10 个具体场景：副驾驶在哪些时刻为你创造价值 |
+| [`PRIVACY.md`](docs/PRIVACY.md) | Ovo 收集什么（不收集什么）—— 完整数据流审计 |
+
+### 构建 / 使用
+
+| 文档 | 用途 |
+|---|---|
+| [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 深度技术架构 —— 进程拓扑 / 数据流 / KG schema / IPC 契约 |
+| [`AI_BACKENDS.md`](docs/AI_BACKENDS.md) | 4 个后端选择（Claude Code / OpenClaw / Hermes / 直接 API）配置 + 取舍 |
 | [`ELECTRON_IPC_MAPPING.md`](docs/ELECTRON_IPC_MAPPING.md) | IPC 通道与 payload 契约 |
+| [`RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md) | 发版流程 |
+
+### 项目状态
+
+| 文档 | 用途 |
+|---|---|
+| [`UX_AUDIT.md`](docs/UX_AUDIT.md) | 65 个已知 UX 问题（P0 → P3）+ KPI 度量框架 |
+| [`BUG_REPORT.md`](docs/BUG_REPORT.md) | QA 跟踪的 bug + 架构反模式 |
+| [`UI_DESIGN_AUDIT.md`](docs/UI_DESIGN_AUDIT.md) | 设计系统一致性报告 |
+| [`GITHUB_GROWTH_PLAN.md`](docs/GITHUB_GROWTH_PLAN.md) | 90 天 0 → 1k stars 路径 |
+| [`GOOD_FIRST_ISSUES.md`](docs/GOOD_FIRST_ISSUES.md) | 新手可以直接领的任务 |
 | [`STATUS.md`](docs/STATUS.md) | 各功能当前实现状态 |
 
 ---

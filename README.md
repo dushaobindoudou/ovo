@@ -7,10 +7,18 @@
 ### Open-source proactive AI desktop assistant.<br/>Watches your screen, suggests next steps, runs 100% on your machine.
 
 <p>
-  <a href="https://github.com/dushaobindoudou/ovo/releases/latest"><img src="https://img.shields.io/github/v/release/dushaobindoudou/ovo?label=download&color=007aff" alt="Latest Release" /></a>
+  <a href="https://github.com/dushaobindoudou/ovo/releases/latest"><img src="https://img.shields.io/github/v/release/dushaobindoudou/ovo?label=release&color=007aff" alt="Latest Release" /></a>
+  <a href="https://github.com/dushaobindoudou/ovo/releases/latest"><img src="https://img.shields.io/github/downloads/dushaobindoudou/ovo/total?color=007aff&label=downloads" alt="Total Downloads" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-007aff.svg" alt="MIT License" /></a>
   <a href="https://github.com/dushaobindoudou/ovo/actions/workflows/ci.yml"><img src="https://github.com/dushaobindoudou/ovo/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
+  <a href="CODE_OF_CONDUCT.md"><img src="https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg" alt="Code of Conduct" /></a>
+</p>
+
+<p>
   <a href="https://github.com/dushaobindoudou/ovo/stargazers"><img src="https://img.shields.io/github/stars/dushaobindoudou/ovo?style=social" alt="GitHub Stars" /></a>
+  <a href="https://github.com/dushaobindoudou/ovo/network/members"><img src="https://img.shields.io/github/forks/dushaobindoudou/ovo?style=social" alt="GitHub Forks" /></a>
+  <a href="https://github.com/dushaobindoudou/ovo/discussions"><img src="https://img.shields.io/github/discussions/dushaobindoudou/ovo?label=Discussions&logo=github" alt="GitHub Discussions" /></a>
+  <a href="https://github.com/dushaobindoudou/ovo/issues?q=label%3A%22good+first+issue%22"><img src="https://img.shields.io/github/issues/dushaobindoudou/ovo/good%20first%20issue?label=good%20first%20issues" alt="Good First Issues" /></a>
 </p>
 
 <p>
@@ -228,13 +236,33 @@ See [open milestones](https://github.com/dushaobindoudou/ovo/milestones) for wha
 
 ## 📚 Documentation
 
+### Start here
+
 | Doc | What it's for |
 |---|---|
-| [`PRODUCT_PHILOSOPHY.md`](docs/PRODUCT_PHILOSOPHY.md) | The project constitution — read this before contributing to product direction |
-| [`UX_AUDIT.md`](docs/UX_AUDIT.md) | 65 known UX issues with priorities (P0 → P3) |
-| [`UI_DESIGN_AUDIT.md`](docs/UI_DESIGN_AUDIT.md) | Design system consistency report |
-| [`BUG_REPORT.md`](docs/BUG_REPORT.md) | QA-tracked bugs with file:line references |
+| [`AGENT_PHILOSOPHY.md`](docs/AGENT_PHILOSOPHY.md) | **The big idea.** Two kinds of agents (tool vs copilot) and why Ovo is the underbuilt kind |
+| [`PRODUCT_PHILOSOPHY.md`](docs/PRODUCT_PHILOSOPHY.md) | The project constitution — read before contributing to product direction |
+| [`USE_CASES.md`](docs/USE_CASES.md) | 10 concrete moments where a copilot earns its keep |
+| [`PRIVACY.md`](docs/PRIVACY.md) | What Ovo collects (and doesn't) — full data flow audit |
+
+### Building / using
+
+| Doc | What it's for |
+|---|---|
+| [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Deep technical architecture — process topology, data flow, KG schema, IPC contract |
+| [`AI_BACKENDS.md`](docs/AI_BACKENDS.md) | 4 backend choices (Claude Code / OpenClaw / Hermes / Direct API) — setup + trade-offs |
 | [`ELECTRON_IPC_MAPPING.md`](docs/ELECTRON_IPC_MAPPING.md) | IPC channels and payload contracts |
+| [`RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md) | How we ship a release |
+
+### Project state
+
+| Doc | What it's for |
+|---|---|
+| [`UX_AUDIT.md`](docs/UX_AUDIT.md) | 65 known UX issues with priorities (P0 → P3) + KPI framework |
+| [`BUG_REPORT.md`](docs/BUG_REPORT.md) | QA-tracked bugs + architecture anti-patterns |
+| [`UI_DESIGN_AUDIT.md`](docs/UI_DESIGN_AUDIT.md) | Design system consistency report |
+| [`GITHUB_GROWTH_PLAN.md`](docs/GITHUB_GROWTH_PLAN.md) | 90-day path from 0 to 1k stars |
+| [`GOOD_FIRST_ISSUES.md`](docs/GOOD_FIRST_ISSUES.md) | Ready-to-grab beginner tasks |
 | [`STATUS.md`](docs/STATUS.md) | Current implementation status by feature |
 
 ---
