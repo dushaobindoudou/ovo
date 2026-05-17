@@ -1,0 +1,28 @@
+{
+  "files": ["README.md", "README_CN.md"],
+  "imageSize": 80,
+  "commit": false,
+  "commitConvention": "angular",
+  "contributors": [
+    {
+      "login": "dushaobindoudou",
+      "name": "dushaobin",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2606820?v=4",
+      "profile": "https://github.com/dushaobindoudou",
+      "contributions": [
+        "code",
+        "design",
+        "ideas",
+        "doc",
+        "maintenance",
+        "projectManagement"
+      ]
+    }
+  ],
+  "contributorsPerLine": 7,
+  "projectName": "ovo",
+  "projectOwner": "dushaobindoudou",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "skipCi": true
+}

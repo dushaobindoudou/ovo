@@ -1,0 +1,23 @@
+name: Auto-update Contributors
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  update-contributors:
+    name: Update README contributors
+    runs-on: ubuntu-latest
+    # Only run when a comment starts with @all-contributors
+    if: |
+      github.event.issue.pull_request == null &&
+      contains(github.event.comment.body, '@all-contributors')
+    steps:
+      - uses: all-contributors/app@latest
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
