@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Ask a question on Discussions
+    url: https://github.com/dushaobindoudou/ovo/discussions/categories/q-a
+    about: For usage questions, "how do I..." help, please use Discussions Q&A.
+  - name: 💡 Share an idea or feature request
+    url: https://github.com/dushaobindoudou/ovo/discussions/categories/ideas
+    about: For new feature ideas, start a Discussion so we can align direction before coding.
+  - name: 🎨 Show & Tell — share what you built
+    url: https://github.com/dushaobindoudou/ovo/discussions/categories/show-and-tell
+    about: Built something cool with Ovo? Share it here!
+  - name: 🔐 Report a security vulnerability
+    url: https://github.com/dushaobindoudou/ovo/security/advisories/new
+    about: Please do NOT use public issues for security. Open a private security advisory instead.

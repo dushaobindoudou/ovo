@@ -1,0 +1,106 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-mac:
+    name: Build macOS DMG (${{ matrix.arch }})
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app
+        run: pnpm build
+
+      - name: Package DMG (${{ matrix.arch }})
+        run: pnpm exec electron-builder --mac dmg --${{ matrix.arch }}
+        env:
+          # Code signing — set these in repo Settings → Secrets when you have an Apple Developer ID
+          # CSC_LINK: ${{ secrets.CSC_LINK }}
+          # CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ovo-mac-${{ matrix.arch }}
+          path: out/*.dmg
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: build-mac
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release-assets
+          find dist -name "*.dmg" -exec cp {} release-assets/ \;
+          ls -la release-assets/
+
+      - name: Extract release notes
+        id: notes
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          # Try to extract this version's section from CHANGELOG.md
+          if [ -f CHANGELOG.md ]; then
+            awk -v tag="$TAG" '
+              $0 ~ "^## \\[" substr(tag, 2) "\\]" { flag=1; next }
+              flag && /^## / { flag=0 }
+              flag { print }
+            ' CHANGELOG.md > release-notes.md
+            if [ ! -s release-notes.md ]; then
+              echo "See CHANGELOG.md for changes." > release-notes.md
+            fi
+          else
+            echo "See CHANGELOG.md for changes." > release-notes.md
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.notes.outputs.tag }}
+          name: Ovo ${{ steps.notes.outputs.tag }}
+          body_path: release-notes.md
+          files: release-assets/*.dmg
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,111 @@
+name: 🐛 Bug Report
+description: Something is broken or not working as expected
+title: "[Bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! A few minutes filling this in saves us hours of guessing. 🙏
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug clearly. What did you do, and what went wrong?
+      placeholder: |
+        e.g. I clicked "Accept" on a suggestion in the toast window, and Ovo crashed with a white screen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      placeholder: e.g. The action should execute and the toast should close with a confirmation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps so we can hit the same bug.
+      placeholder: |
+        1. Open Ovo
+        2. Wait for a toast suggestion to appear
+        3. Click "Accept"
+        4. Observe ...
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - macOS (Apple Silicon — M1/M2/M3/M4)
+        - macOS (Intel)
+        - Windows (not officially supported yet)
+        - Linux (not officially supported yet)
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: OS Version
+      placeholder: e.g. macOS 14.5 Sonoma
+    validations:
+      required: true
+
+  - type: input
+    id: ovo-version
+    attributes:
+      label: Ovo Version
+      description: Settings → About → Version (e.g. v0.2.0). If running from source, paste the git commit SHA.
+      placeholder: v0.2.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: backend
+    attributes:
+      label: AI Backend you're using
+      options:
+        - Claude Code
+        - OpenClaw
+        - Hermes
+        - Direct API
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Settings → Developer Tools → Error Log → copy & paste relevant lines.
+        Please remove anything sensitive (API keys, personal info) before pasting.
+      render: shell
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / Recordings
+      description: Drag-and-drop images or GIFs here. Often worth a thousand words.
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I've searched [existing issues](https://github.com/dushaobindoudou/ovo/issues) and this isn't a duplicate
+          required: true
+        - label: I've removed sensitive info (API keys, personal data) from logs / screenshots
+          required: true

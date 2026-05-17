@@ -1,0 +1,70 @@
+name: 💡 Feature Request
+description: Suggest a new capability or improvement
+title: "[Feature] "
+labels: ["enhancement", "needs-discussion"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Got an idea? Great!
+
+        For bigger ideas, please [start a Discussion](https://github.com/dushaobindoudou/ovo/discussions/categories/ideas) first so we can align on direction before coding.
+
+        Use this template for clearly-scoped feature requests where the "what" is already obvious.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the pain point — not the solution.
+      placeholder: |
+        e.g. When I dismiss a suggestion in the toast, I sometimes change my mind 30 seconds later but can't get it back.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Suggested solution
+      description: How do you imagine Ovo solving this?
+      placeholder: |
+        e.g. Keep dismissed suggestions in an "AI activity timeline" view so I can reactivate them within 5 minutes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you thought about, and why this one is better.
+
+  - type: dropdown
+    id: philosophy
+    attributes:
+      label: Which axis of the product philosophy does this serve?
+      description: See `docs/PRODUCT_PHILOSOPHY.md`
+      multiple: true
+      options:
+        - 🚀 Proactive (Ovo acts before being asked)
+        - 🪟 Transparent (Ovo's thinking is visible)
+        - 🎓 Teachable (users shape Ovo's behavior)
+        - 🔒 Privacy / local-first
+        - 🛠 Quality of life / DX
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Mockups, screenshots, links to similar features in other tools, etc.
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I've searched [issues](https://github.com/dushaobindoudou/ovo/issues) and [Discussions](https://github.com/dushaobindoudou/ovo/discussions) for duplicates
+          required: true
+        - label: I've read [PRODUCT_PHILOSOPHY.md](../blob/main/docs/PRODUCT_PHILOSOPHY.md) and this aligns with the direction
+          required: true

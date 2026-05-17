@@ -1,0 +1,33 @@
+name: ❓ Question
+description: For things that aren't quite a bug or feature request
+title: "[Question] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For most "how do I..." or "what does X mean" questions, please use [Discussions Q&A](https://github.com/dushaobindoudou/ovo/discussions/categories/q-a) instead — the answers help others find them later.
+
+        Use this issue template only for questions that are likely to need code changes or affect the project itself.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      placeholder: e.g. Is there a reason the OCR runs every 5 seconds and not longer? Could it be user-configurable?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What were you trying to do when this came up?
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I've checked [Discussions](https://github.com/dushaobindoudou/ovo/discussions) and existing issues
+          required: true
