@@ -3,7 +3,37 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "ovo - 主动式 AI 桌面助手",
+  "description": "Open-source proactive AI desktop assistant. Watches your screen, suggests next steps, runs 100% on your machine.",
+  "keywords": [
+    "ai-assistant",
+    "proactive-ai",
+    "desktop-app",
+    "electron",
+    "claude",
+    "claude-code",
+    "screen-ocr",
+    "knowledge-graph",
+    "productivity",
+    "personal-ai",
+    "local-first",
+    "privacy-first",
+    "macos",
+    "react",
+    "typescript"
+  ],
+  "homepage": "https://github.com/dushaobindoudou/ovo#readme",
+  "bugs": {
+    "url": "https://github.com/dushaobindoudou/ovo/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dushaobindoudou/ovo.git"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "dushaobin",
+    "url": "https://github.com/dushaobindoudou"
+  },
   "main": "dist-electron/electron/main.js",
   "packageManager": "pnpm@10.30.2",
   "pnpm": {
