@@ -37,14 +37,30 @@ jobs:
         run: pnpm build
 
       - name: Package DMG (${{ matrix.arch }})
-        # C6 修复脚手架：当 repo Settings → Secrets 配置了 CSC_LINK 等就会启用代码签名 + 公证。
-        # 没配置时 CSC_IDENTITY_AUTO_DISCOVERY=false 强制跳过签名，输出未签名 DMG（用户右键 → 打开 即可启动）。
+        # 智能签名：repo Secrets 里配了 CSC_LINK 就走签名 + 公证；没配就强制
+        # 通过 CLI flag 关闭 hardenedRuntime / identity / entitlements 输出未签名 DMG
+        # （否则 electron-builder 会卡在 "/path not a file" 错误）。
+        # 用户首次启动未签名 DMG 时需要右键 → 打开（README 已说明）。
         # 配置签名步骤见 docs/RELEASE_PROCESS.md
-        run: pnpm exec electron-builder --mac dmg --${{ matrix.arch }} --publish never
+        run: |
+          if [ -n "${CSC_LINK:-}" ]; then
+            echo "🔐 Apple signing certificate detected — building signed + notarized DMG"
+            pnpm exec electron-builder --mac dmg --${{ matrix.arch }} --publish never
+          else
+            echo "📦 No signing certificate configured — building unsigned DMG"
+            echo "   Users will need to right-click → Open on first launch (one-time)"
+            pnpm exec electron-builder --mac dmg --${{ matrix.arch }} \
+              -c.mac.hardenedRuntime=false \
+              -c.mac.gatekeeperAssess=false \
+              -c.mac.identity=null \
+              -c.mac.entitlements=null \
+              -c.mac.entitlementsInherit=null \
+              --publish never
+          fi
         env:
-          # 跳过自动证书发现（无 Apple Developer ID 时必须，否则 electron-builder 会卡在签名步骤）
+          # 跳过自动证书发现（无 Apple Developer ID 时必须）
           CSC_IDENTITY_AUTO_DISCOVERY: false
-          # 代码签名 — 在 repo Settings → Secrets 添加这些值即可启用
+          # 代码签名 — 在 repo Settings → Secrets 添加以下值即可启用签名/公证
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           # Notarization（公证）
