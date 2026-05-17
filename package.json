@@ -75,7 +75,7 @@
     "clsx": "^2.1.1",
     "electron-store": "^10.0.0",
     "execa": "^9.5.2",
-    "lucide-react": "^0.518.0",
+    "lucide-react": "^1.16.0",
     "msedge-tts": "^2.0.5",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
