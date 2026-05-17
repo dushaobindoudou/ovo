@@ -3,7 +3,6 @@ dist
 dist-electron
 .DS_Store
 *.log
-pnpm-lock.yaml
 out
 coverage
 *.db
