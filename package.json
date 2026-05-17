@@ -65,7 +65,7 @@
     "pack:all": "pnpm build && electron-builder -mwl",
     "smoke:postpack": "pnpm build:electron && cross-env ELECTRON_RUN_AS_NODE=1 electron dist-electron/scripts/postpack-smoke.js",
     "gen:icons": "pnpm build:electron && electron dist-electron/scripts/generate-icons.js",
-    "test:ci": "pnpm typecheck && pnpm lint && pnpm build && pnpm test:agents && pnpm test:flow",
+    "test:ci": "pnpm typecheck && pnpm lint && pnpm build && pnpm test:agents && pnpm test:flow && pnpm test:e2e:scenarios",
     "start": "electron dist-electron/electron/main.js"
   },
   "dependencies": {
@@ -81,6 +81,7 @@
     "react-dom": "^19.1.0",
     "tesseract.js": "^6.0.1",
     "three": "^0.184.0",
+    "zod": "^4.4.3",
     "zustand": "^5.0.6"
   },
   "devDependencies": {
