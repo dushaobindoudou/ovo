@@ -9,20 +9,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Next release will be 0.3.0 — focus on macOS code signing + Notarization,
+auto-update mechanism, and the trust ladder UI._
+
+---
+
+## [0.2.0] — 2026-05-17 — "Going Public"
+
+This is the first public release of Ovo. The product itself was already
+functional in 0.1.0; this release is about **shipping it to the world** —
+proper documentation, license, community infrastructure, and a clear
+identity.
+
 ### Added
-- Product philosophy document (`docs/PRODUCT_PHILOSOPHY.md`) — project constitution
-- Comprehensive UX audit (`docs/UX_AUDIT.md`) — 65 known issues across 4 priority levels
-- Bug report (`docs/BUG_REPORT.md`) — 37 tracked bugs with file:line references
-- UI design audit (`docs/UI_DESIGN_AUDIT.md`) — design system consistency report
-- GitHub growth plan (`docs/GITHUB_GROWTH_PLAN.md`) — 90-day path to 1000 stars
-- MIT License
-- README in English (main) + 简体中文
-- CONTRIBUTING / SECURITY / CHANGELOG / CODE_OF_CONDUCT
-- `.github/` issue + PR templates, FUNDING, workflows
+- 📜 **MIT License** — open source, commercial-friendly
+- 🌍 **Bilingual README** — full English (main) + 简体中文 with hero, Why Ovo,
+  vs other AI tools comparison, install guide, architecture, roadmap
+- 🏛 **Product philosophy** (`docs/PRODUCT_PHILOSOPHY.md`) — project constitution
+  defining the proactive + transparent + teachable philosophy
+- 📊 **Audit reports** from 3 expert perspectives:
+  - `docs/UX_AUDIT.md` — 65 product/UX issues + KPI framework
+  - `docs/BUG_REPORT.md` — 37 system bugs + 8 architecture anti-patterns
+  - `docs/UI_DESIGN_AUDIT.md` — 22 design consistency issues
+- 🚀 **GitHub growth plan** (`docs/GITHUB_GROWTH_PLAN.md`) — 90-day path to 1000 stars
+- 🤝 **Community infrastructure**:
+  - `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` (Covenant 2.1), `SECURITY.md`
+  - `.github/ISSUE_TEMPLATE/` (bug/feature/question YAML forms)
+  - `.github/PULL_REQUEST_TEMPLATE.md` with philosophy alignment prompt
+  - `.github/FUNDING.yml` (GitHub Sponsors + Ko-fi + 爱发电)
+- 🏗 **CI/CD workflows**:
+  - `.github/workflows/ci.yml` — typecheck + lint + build on macOS
+  - `.github/workflows/release.yml` — tag-triggered multi-arch DMG build
+- 🐣 **`docs/GOOD_FIRST_ISSUES.md`** — 10 ready-to-open issue drafts
+- 📦 **`docs/RELEASE_PROCESS.md`** — step-by-step release runbook
+- 🏷 **`.github/labels.yml`** — batch-importable GitHub label config
+- 🗂 **`docs/assets/README.md`** — guide for contributing screenshots/GIFs
 
 ### Changed
-- `package.json` now includes proper `license`, `homepage`, `bugs`, `repository`, `keywords`, `author` fields
-- Repository description updated for SEO
+- `package.json` populated with `license`, `homepage`, `bugs`, `repository`,
+  `keywords`, `author`, English-language `description`
+- README replaced from 27-line placeholder to ~370-line world-class structure
+- Version bumped from 0.1.0 → 0.2.0
+
+### Removed
+- Misplaced compile outputs `/main.js` and `/ipc-handlers.js` from repo root
+  (now `.gitignore`-d to prevent recurrence)
+
+### Security
+- Published `SECURITY.md` with responsible disclosure process and 48h SLA
 
 ---
 

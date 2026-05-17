@@ -1,6 +1,6 @@
 {
   "name": "ovo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Open-source proactive AI desktop assistant. Watches your screen, suggests next steps, runs 100% on your machine.",

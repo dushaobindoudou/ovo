@@ -12,3 +12,22 @@ coverage
 *.tmp
 *.temp
 .gstack/
+
+# Local tooling state
+.claude/
+.vscode/
+.idea/
+
+# Misplaced compile outputs (electron/*.ts compiled into repo root)
+/main.js
+/ipc-handlers.js
+
+# Test/verification outputs that should not be committed
+scripts/*.json
+!scripts/sample.json
+
+# Local environment overrides
+.env
+.env.local
+.env.*.local
+

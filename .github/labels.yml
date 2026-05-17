@@ -1,0 +1,164 @@
+# GitHub Labels for Ovo
+# Use with github-label-sync to apply: npx github-label-sync --access-token YOUR_TOKEN dushaobindoudou/ovo
+# Or import manually via Issues → Labels.
+
+# ─── Type ─────────────────────────────────────────────────────────────────────
+- name: bug
+  color: d73a4a
+  description: Something isn't working
+
+- name: enhancement
+  color: a2eeef
+  description: New feature or capability
+
+- name: documentation
+  color: 0075ca
+  description: Improvements or additions to documentation
+
+- name: question
+  color: d876e3
+  description: Further information is requested
+
+- name: chore
+  color: cfd3d7
+  description: Maintenance work, dependency bumps, repo hygiene
+
+- name: refactor
+  color: c5def5
+  description: Code restructuring without behavior change
+
+- name: performance
+  color: f9d0c4
+  description: Performance optimization
+
+- name: security
+  color: ee0701
+  description: Security-related issue or fix
+
+- name: test
+  color: bfd4f2
+  description: Adding or updating tests
+
+
+# ─── Priority ─────────────────────────────────────────────────────────────────
+- name: "priority: P0"
+  color: b60205
+  description: Blocking — must fix before next release
+
+- name: "priority: P1"
+  color: d93f0b
+  description: High — fix this sprint
+
+- name: "priority: P2"
+  color: fbca04
+  description: Medium — polish layer
+
+- name: "priority: P3"
+  color: 0e8a16
+  description: Low — nice to have
+
+
+# ─── Status ───────────────────────────────────────────────────────────────────
+- name: triage
+  color: ededed
+  description: Needs triage by a maintainer
+
+- name: needs-discussion
+  color: f9d0c4
+  description: Requires discussion before implementation
+
+- name: needs-reproduction
+  color: f9d0c4
+  description: Cannot reproduce — please provide more info
+
+- name: needs-design
+  color: fef2c0
+  description: Needs design exploration before implementation
+
+- name: blocked
+  color: 5319e7
+  description: Blocked by another issue or external dependency
+
+- name: in-progress
+  color: 1d76db
+  description: Actively being worked on
+
+- name: wontfix
+  color: ffffff
+  description: This will not be worked on
+
+- name: duplicate
+  color: cfd3d7
+  description: This issue or pull request already exists
+
+- name: stale
+  color: c5def5
+  description: No activity in 60+ days
+
+
+# ─── Community ────────────────────────────────────────────────────────────────
+- name: good first issue
+  color: 7057ff
+  description: Good for newcomers — has clear scope and acceptance criteria
+
+- name: help wanted
+  color: 008672
+  description: Extra attention is needed — maintainers welcome external help
+
+- name: hacktoberfest
+  color: ff9500
+  description: Eligible for Hacktoberfest contributions
+
+
+# ─── Philosophy axis ─────────────────────────────────────────────────────────
+# Tag issues/PRs with which axis of the product philosophy they serve
+# See docs/PRODUCT_PHILOSOPHY.md
+- name: "philosophy: proactive"
+  color: 0e8a16
+  description: Strengthens Ovo's ability to act before being asked
+
+- name: "philosophy: transparent"
+  color: 5319e7
+  description: Makes Ovo's thinking more visible to users
+
+- name: "philosophy: teachable"
+  color: c2e0c6
+  description: Lets users shape Ovo's behavior
+
+- name: "philosophy: privacy"
+  color: 006b75
+  description: Strengthens local-first / privacy commitments
+
+
+# ─── Area (which subsystem) ──────────────────────────────────────────────────
+- name: "area: electron"
+  color: 47b3da
+  description: Electron main process
+
+- name: "area: ui"
+  color: bfdadc
+  description: React renderer UI
+
+- name: "area: agent"
+  color: f3a584
+  description: AI backend integration / prompt engineering
+
+- name: "area: knowledge-graph"
+  color: c2e0c6
+  description: SQLite knowledge graph
+
+- name: "area: ocr"
+  color: fef2c0
+  description: Screen capture and OCR
+
+- name: "area: settings"
+  color: cccccc
+  description: Settings panel and preferences
+
+- name: "area: floating-icon"
+  color: e99695
+  description: Always-on-top floating widget
+
+- name: "area: build-release"
+  color: 1d76db
+  description: Build, packaging, signing, release pipeline
