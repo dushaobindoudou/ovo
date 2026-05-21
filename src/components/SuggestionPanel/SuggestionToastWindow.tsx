@@ -208,7 +208,9 @@ export function SuggestionToastWindow() {
                 {spec.label}
               </p>
               <p className="truncate text-[13px] font-semibold leading-snug">
-                {item.title || spec.label}
+                {isAction
+                  ? t("toast.actionWants", { verb: t(`toast.verb.${item.type}`, t("toast.verb.other")) })
+                  : (item.title || spec.label)}
               </p>
             </div>
           </header>

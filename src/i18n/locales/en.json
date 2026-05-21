@@ -111,7 +111,22 @@
     "ttsDisabled": "Read-aloud is off — enable it in Settings → Voice output",
     "ttsNetwork": "Network issue, can't reach Edge TTS service",
     "ttsFirstPlay": "First playback needs a click anywhere in the window to authorize",
-    "ttsFailed": "Read-aloud failed: {{reason}}"
+    "ttsFailed": "Read-aloud failed: {{reason}}",
+    "actionWants": "Ovo wants to {{verb}}",
+    "verb": {
+      "send_email": "send an email",
+      "send_imessage": "send an iMessage",
+      "open_url": "open a link",
+      "open_app": "open an app",
+      "search_web": "search the web",
+      "set_reminder": "create a reminder",
+      "add_calendar": "add to calendar",
+      "copy_to_clipboard": "copy to clipboard",
+      "index_path": "index files",
+      "create_todo": "create a to-do",
+      "log_note": "log a note",
+      "other": "run an action"
+    }
   },
   "process": {
     "tabActions": "Actions",

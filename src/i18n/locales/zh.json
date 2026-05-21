@@ -111,7 +111,22 @@
     "ttsDisabled": "朗读已关闭，请到「设置 → 语音输出」开启",
     "ttsNetwork": "网络问题，无法连接到 Edge TTS 服务",
     "ttsFirstPlay": "首次播放需要先点一下窗口任意位置授权",
-    "ttsFailed": "朗读失败：{{reason}}"
+    "ttsFailed": "朗读失败：{{reason}}",
+    "actionWants": "Ovo 想{{verb}}",
+    "verb": {
+      "send_email": "发送邮件",
+      "send_imessage": "发送 iMessage",
+      "open_url": "打开网页",
+      "open_app": "打开应用",
+      "search_web": "网页搜索",
+      "set_reminder": "创建提醒",
+      "add_calendar": "添加到日历",
+      "copy_to_clipboard": "复制到剪贴板",
+      "index_path": "索引文件",
+      "create_todo": "创建待办",
+      "log_note": "记一条笔记",
+      "other": "执行一个动作"
+    }
   },
   "process": {
     "tabActions": "动作清单",
