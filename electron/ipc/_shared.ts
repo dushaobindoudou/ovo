@@ -71,6 +71,8 @@ export interface WindowGetterOptions {
     noteRejection?: (type: string) => void;
     setDoNotDisturb?: (minutes: number) => void;
     enqueueReceipts?: (receipts: AgentSuggestion[]) => void;
+    /** 可执行动作 toast（执行/忽略） */
+    enqueueActions?: (actions: AgentAction[], pipelineId: string) => void;
   };
 }
 
@@ -109,6 +111,8 @@ export interface IpcHandlerDeps {
   ) => boolean;
   /** SEC-11 pending action registry 操作（renderer 永远不直接持有 action 对象） */
   consumePendingAction: (actionId: string) => { action: AgentAction; pipelineId?: string } | null;
+  /** 注册一条 pending action（R2-1: 草稿 promote 时把 send 类路由到确认而非直执行） */
+  registerPendingAction: (action: AgentAction, pipelineId?: string) => void;
   /** P4: 把成功执行的 action 转成回执 toast */
   buildActionReceipts: (actions: AgentAction[], results: ActionResult[]) => AgentSuggestion[];
   /** pipeline action stage merge——action:confirm / action:cancel 都要回写 pipeline */

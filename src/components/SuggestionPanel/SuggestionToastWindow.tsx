@@ -18,6 +18,11 @@ interface ToastSuggestion {
   content: string;
   detail?: string;
   priority?: number;
+  /** "action" = 可执行动作 toast（带执行/忽略按钮）；缺省 = 建议/邀约/回执 */
+  kind?: "suggestion" | "action";
+  /** kind=action 时：主进程 registry 里的 actionId（confirm/cancel 只需它）*/
+  actionId?: string;
+  pipelineId?: string;
 }
 
 function parseToastPayload(): ToastSuggestion | null {
@@ -109,6 +114,9 @@ export function SuggestionToastWindow() {
   const isReceipt = item?.type === "receipt";
   // P1: offer 是"我提议长期帮你做 X"，按钮是 要 / 不要
   const isOffer = item?.type === "offer";
+  // 可执行动作 toast：按钮是 执行 / 忽略，直接调 action.confirm/cancel
+  const isAction = item?.kind === "action";
+  const [actionBusy, setActionBusy] = useState(false);
 
   if (!item) {
     return (
@@ -208,7 +216,39 @@ export function SuggestionToastWindow() {
           </p>
 
           <div className="mt-2.5 flex items-center gap-2">
-            {isReceipt ? (
+            {isAction ? (
+              <>
+                <button
+                  type="button"
+                  disabled={actionBusy}
+                  className="inline-flex items-center gap-1 rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-60"
+                  onClick={() => {
+                    if (actionBusy || !item.actionId) return;
+                    setActionBusy(true);
+                    void window.ovoAPI.action
+                      .confirm({ actionId: item.actionId, pipelineId: item.pipelineId })
+                      .catch(() => { /* 结果由 action:result 广播处理 */ })
+                      .finally(() => window.close());
+                  }}
+                >
+                  {actionBusy ? "执行中…" : "执行"}
+                </button>
+                <button
+                  type="button"
+                  disabled={actionBusy}
+                  className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:border-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-60"
+                  onClick={() => {
+                    if (!item.actionId) { window.close(); return; }
+                    void window.ovoAPI.action
+                      .cancel({ actionId: item.actionId, pipelineId: item.pipelineId })
+                      .catch(() => { /* */ })
+                      .finally(() => window.close());
+                  }}
+                >
+                  忽略
+                </button>
+              </>
+            ) : isReceipt ? (
               <button
                 type="button"
                 className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:border-[var(--text-muted)] hover:text-[var(--text-primary)]"

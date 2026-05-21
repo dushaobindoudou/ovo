@@ -14,7 +14,7 @@ import { systemEvents } from "./system-events.js";
 import { startUpdateChecker } from "./update-check.js";
 import { inferActivityState } from "./session-tracker.js";
 import { renderAppIcon, renderTrayIcon } from "./icon-renderer.js";
-import type { AgentSuggestion } from "./types.js";
+import type { AgentSuggestion, AgentAction } from "./types.js";
 import type { AutoCaptureService } from "./auto-capture.js";
 import { safeExecute } from "./safe-execute.js";
 
@@ -162,6 +162,9 @@ const TOAST_GAP = 10;
 const TOAST_MARGIN = 20;
 const TOAST_MAX_ACTIVE = 1;
 const TOAST_AUTO_CLOSE_MS = 18_000;
+// R5-1: 动作 toast 专用 —— 最多纵向叠 4 行（避免互相重叠 + 不溢出屏幕）；同一动作 2 分钟内不重复弹
+const MAX_ACTION_TOAST_ROWS = 4;
+const ACTION_DEDUP_TTL = 2 * 60_000;
 const TOAST_STAGGER_MS = 400;
 // F1: dedup 30min（之前 1h 太长，用户反复看不到同主题）
 const RECENT_TITLE_TTL_NEW = 30 * 60_000;
@@ -205,6 +208,36 @@ function classifyTier(s: AgentSuggestion): ToastTier {
   return "soft";
 }
 
+// action type → 人话动词，用于动作 toast 标题（"Ovo 想 发送邮件"）
+const ACTION_VERB: Record<string, string> = {
+  send_email: "发送邮件",
+  send_imessage: "发送 iMessage",
+  open_url: "打开网页",
+  open_app: "打开应用",
+  search_web: "网页搜索",
+  set_reminder: "创建提醒",
+  add_calendar: "添加到日历",
+  copy_to_clipboard: "复制到剪贴板",
+  index_path: "索引文件",
+  create_todo: "创建待办",
+  log_note: "记一条笔记"
+};
+
+function encodeActionToastPayload(action: AgentAction, pipelineId: string) {
+  const verb = ACTION_VERB[action.type ?? "other"] ?? "执行一个动作";
+  const payload = {
+    kind: "action" as const,
+    id: action.id,
+    actionId: action.id,
+    pipelineId,
+    type: action.type ?? "other",
+    title: `Ovo 想${verb}`,
+    content: action.description || verb,
+    priority: 95
+  };
+  return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+}
+
 class SuggestionToastManager {
   private readonly queue: AgentSuggestion[] = [];
   private readonly active: ActiveToast[] = [];
@@ -213,6 +246,7 @@ class SuggestionToastManager {
   // R2: 智能限流相关
   private lastToastByTier: Record<ToastTier, number> = { critical: 0, important: 0, soft: 0 };
   private recentTitles = new Map<string, number>(); // titleHash → lastShownAt
+  private recentActionKeys = new Map<string, number>(); // R5-1: 动作 toast 去重 (type:desc) → lastShownAt
   private rejectedTypes = new Map<string, number>(); // type → 最近拒绝时间
   private dndUntil = 0;          // do-not-disturb（用户主动设的勿扰直到时间戳）
   // F1: defer 次数计数；同一 toast 最多延后 N 次后强弹
@@ -250,6 +284,38 @@ class SuggestionToastManager {
     if (Date.now() < this.dndUntil) return;
     this.queue.push(...receipts);
     this.flush();
+  }
+
+  /**
+   * 可执行动作 toast：待确认的 action 直接弹浮窗，带"执行 / 忽略"按钮。
+   * 不走 suggestion 队列的 dedup/cooldown（这是需要用户决策的事，必须可见），
+   * 但尊重 silent / 勿扰。每条 action 一张 toast，超时更长（需要决策时间）。
+   */
+  enqueueActions(actions: AgentAction[], pipelineId: string) {
+    if (!actions.length) return;
+    if (this.verbosity === "silent") return;
+    if (Date.now() < this.dndUntil) return;
+    const now = Date.now();
+    // R5-1 去重：清理过老的 key，避免无界增长
+    if (this.recentActionKeys.size > 100) {
+      for (const [k, t] of this.recentActionKeys) {
+        if (now - t > ACTION_DEDUP_TTL) this.recentActionKeys.delete(k);
+      }
+    }
+    let opened = 0;
+    for (const action of actions) {
+      if (opened >= 3) break; // 单次最多 3 张，避免一次 pipeline 铺满屏幕
+      // R5-1 去重：同一动作（类型+描述）近 ACTION_DEDUP_TTL 内已弹过 → 跳过，
+      // 否则 pipeline 每周期重生成同一 pending 会刷屏。
+      const key = `${action.type ?? "other"}:${(action.description ?? "").trim().slice(0, 60)}`;
+      const last = this.recentActionKeys.get(key);
+      if (last && now - last < ACTION_DEDUP_TTL) continue;
+      // 该动作已有一张 toast 在显示 → 不重复弹
+      if (this.active.some((t) => t.id === action.id)) continue;
+      this.recentActionKeys.set(key, now);
+      this.openActionToast(action, pipelineId);
+      opened++;
+    }
   }
 
   destroyAll() {
@@ -433,6 +499,54 @@ class SuggestionToastManager {
     });
   }
 
+  /**
+   * 打开一张「可执行动作」toast（执行 / 忽略）。
+   * 与 openToast 的区别：① 携带 action payload；② 超时更长（90s，给用户决策时间）；
+   * ③ 不写 toast.shown 历史（动作的执行/取消会另有 business_log）。
+   */
+  private openActionToast(action: AgentAction, pipelineId: string) {
+    const slot = this.getNextActionSlot();
+    const position = this.computeToastPosition(slot);
+    const payload = encodeActionToastPayload(action, pipelineId);
+    const hash = `#toast?payload=${encodeURIComponent(payload)}`;
+    const win = createWindow(hash, {
+      width: TOAST_WIDTH,
+      height: TOAST_HEIGHT,
+      minWidth: TOAST_WIDTH,
+      minHeight: TOAST_HEIGHT,
+      maxWidth: TOAST_WIDTH,
+      maxHeight: TOAST_HEIGHT,
+      x: position.x,
+      y: position.y,
+      alwaysOnTop: true,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      skipTaskbar: true,
+      hasShadow: true,
+      focusable: false,
+      backgroundColor: "#00000000",
+      title: "ovo 待执行动作",
+      ...(process.platform === "darwin" ? { type: "panel" as const } : {})
+    }, { inactive: true });
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+    // 动作 toast 超时更长：90s 内没决策才自动收起（action 仍在 registry，可去面板处理）
+    const timer = setTimeout(() => {
+      if (!win.isDestroyed()) win.close();
+    }, 90_000);
+
+    const activeToast: ActiveToast = { id: action.id, slot, window: win, timer };
+    this.active.push(activeToast);
+
+    win.on("closed", () => {
+      clearTimeout(timer);
+      const idx = this.active.findIndex((item) => item.window === win);
+      if (idx >= 0) this.active.splice(idx, 1);
+      this.flush();
+    });
+  }
+
   // 屏幕左侧单列纵向堆叠：slot 0 在最上，slot N 在下方，互不覆盖。
   // 用户原话：「卡片之间别画像覆盖」「同时最多 5 个出现」「从左侧看不见然后滑出来」。
   // 滑入动画在渲染端 CSS 完成（card 从 translateX(-100%) → 0）。
@@ -450,6 +564,15 @@ class SuggestionToastManager {
       if (!used.has(i)) return i;
     }
     return TOAST_MAX_ACTIVE - 1;
+  }
+
+  // R5-1: 动作 toast 的 slot 在更大范围里找空位，使多张纵向堆叠而不是全叠在 slot 0。
+  private getNextActionSlot() {
+    const used = new Set(this.active.map((item) => item.slot));
+    for (let i = 0; i < MAX_ACTION_TOAST_ROWS; i++) {
+      if (!used.has(i)) return i;
+    }
+    return MAX_ACTION_TOAST_ROWS - 1;
   }
 }
 
@@ -644,7 +767,8 @@ async function bootstrap() {
       setVerbosity: (v) => suggestionToastManager?.setVerbosity(v),
       noteRejection: (type) => suggestionToastManager?.noteRejection(type),
       setDoNotDisturb: (minutes) => suggestionToastManager?.setDoNotDisturb(minutes),
-      enqueueReceipts: (receipts) => suggestionToastManager?.enqueueReceipts(receipts)
+      enqueueReceipts: (receipts) => suggestionToastManager?.enqueueReceipts(receipts),
+      enqueueActions: (actions, pipelineId) => suggestionToastManager?.enqueueActions(actions, pipelineId)
     }
   });
 

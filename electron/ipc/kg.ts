@@ -14,6 +14,8 @@ import {
   withConfirmHandshake
 } from "../ipc-schema.js";
 import type { IpcHandlerDeps } from "./_shared.js";
+import { REQUIRE_CONFIRM_TYPES } from "../agent-response-normalize.js";
+import type { ActionType, AgentAction } from "../types.js";
 
 type BusinessLogStatus = "pending" | "running" | "success" | "failed" | "skipped" | "cancelled";
 
@@ -145,17 +147,29 @@ export function registerKgHandlers(deps: IpcHandlerDeps) {
       return { ok: false, error: "草稿不存在或已被处理" };
     }
     const d = promoted.draft;
-    // 重组 action 对象 — 用户主动 promote = 视作 direct，绕过 evidence gate
-    const action = {
+    const actionType = d.actionType as ActionType;
+    const action: AgentAction = {
       id: d.actionId,
-      type: d.actionType as never,
+      type: actionType,
       description: d.description,
       params: d.params,
       requireConfirm: false,
       priority: 50,
-      evidence_level: "direct" as const,
+      evidence_level: "direct",
       evidence: ["user-promoted-draft"]
     };
+
+    // R2-1: 不可逆 / 抢屏类（REQUIRE_CONFIRM_TYPES）即便用户 promote 也不直接执行——
+    // 草稿可能搁置很久、params 已陈旧（如一封旧邮件正文），直发风险高。改为注册成 pending
+    // 并弹"执行"浮窗，让用户对着最终参数再确认一次。其余可逆动作保持直接执行。
+    if (REQUIRE_CONFIRM_TYPES.has(actionType)) {
+      const pendingId = `${d.actionId}_promote_${Date.now().toString(36)}`;
+      const pendingAction: AgentAction = { ...action, id: pendingId, requireConfirm: true };
+      deps.registerPendingAction(pendingAction, d.pipelineId);
+      deps.broadcast("action:pending", { pipelineId: d.pipelineId ?? "draft-promote", actions: [pendingAction] });
+      return { ok: true, pending: true, message: "已转为待确认（不可逆动作需最终确认）" };
+    }
+
     try {
       const result = await deps.actionExecutor.execute(action, {
         appName: d.appName,

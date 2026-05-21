@@ -209,8 +209,23 @@ contextBridge.exposeInMainWorld("ovoAPI", {
     getGraph: (limit) => ipcRenderer.invoke("kg:get-graph", limit),
     triggerSummarize: () => ipcRenderer.invoke("kg:trigger-summarize"),
     analyzePersonality: () => ipcRenderer.invoke("kg:analyze-personality"),
-    clear: () => ipcRenderer.invoke("kg:clear"),
-    export: () => ipcRenderer.invoke("kg:export"),
+    // SEC-16 二次握手：第一次调用拿 confirmToken，带 token 再调一次才真执行。
+    // 之前 UI 只调一次 → 永远停在 requiresConfirm → 「清理数据不生效」。这里在
+    // 包装层自动完成两步。人工闸门是调用方的 window.confirm 对话框。
+    clear: async () => {
+      const first = await ipcRenderer.invoke("kg:clear");
+      if (first && first.requiresConfirm && first.confirmToken) {
+        return ipcRenderer.invoke("kg:clear", { confirmToken: first.confirmToken });
+      }
+      return first;
+    },
+    export: async () => {
+      const first = await ipcRenderer.invoke("kg:export");
+      if (first && first.requiresConfirm && first.confirmToken) {
+        return ipcRenderer.invoke("kg:export", { confirmToken: first.confirmToken });
+      }
+      return first;
+    },
     setPinned: (payload) => ipcRenderer.invoke("kg:set-pinned", payload),
     deleteEntity: (entityId) => ipcRenderer.invoke("kg:delete-entity", entityId),
     getEntityDetail: (entityId) => ipcRenderer.invoke("kg:get-entity-detail", entityId),

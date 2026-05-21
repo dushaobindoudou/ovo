@@ -546,6 +546,14 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
       appName: buffer.appName,
       intent: obsParsed.intent
     }, 10);
+    // T8 反向校准：取出当前场景下用户反复拒绝过的 action 类型（衰减后仍 >= 阈值），软约束 LLM 保守
+    const inflations = kg.getInflationWarnings({
+      appName: buffer.appName,
+      intent: obsParsed.intent
+    });
+    const inflationWarnings = inflations.map(
+      (w) => `${w.actionType || "(未分类)"}${w.appName ? ` @ ${w.appName}` : ""}（已累计被拒 ${w.effectiveScore.toFixed(1)} 次）`
+    );
     const synthPrompt = buildSynthesisPrompt({
       intent: obsParsed.intent,
       summary: obsParsed.summary,
@@ -557,7 +565,8 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
       appName: buffer.appName,
       windowTitle: buffer.windowTitle,
       feedbackProfile: graphCtx.feedbackProfile,
-      negativePatterns: relevantNegatives.map((p) => p.pattern_text)
+      negativePatterns: relevantNegatives.map((p) => p.pattern_text),
+      inflationWarnings
     });
     // 命中计数 +1（用于后续观察哪些 pattern 真有约束力）
     for (const p of relevantNegatives) {
@@ -718,22 +727,23 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
         pipelineId: pipeline.id,
         actions: pendingActions
       });
-      // 问题2: pending 动作要让用户感知；走 toast 通知（即便控制台没开也能看到）
-      // 用 priority=95 升到 critical tier，跳过 active_typing defer + cooldown，保证必弹
+      // 问题2 + 用户反馈（2026-05-21）：pending 动作不再只弹"有 N 个动作等你确认"的
+      // 软提示（用户得自己去面板点），而是**每个动作直接弹一张可执行 toast（执行/忽略）**，
+      // 用户在浮窗里就能拍板。即便控制台没开也能用。
       try {
-        const pendingReceipt: AgentSuggestion = {
-          id: `pending_${pipeline.id}_${Date.now().toString(36)}`,
-          type: "risk",
-          title: pendingActions.length === 1
-            ? "有 1 个动作等你确认"
-            : `有 ${pendingActions.length} 个动作等你确认`,
-          content: pendingActions
-            .slice(0, 3)
-            .map((a) => `· ${a.description || a.type || "动作"}`)
-            .join("\n") + (pendingActions.length > 3 ? `\n…还有 ${pendingActions.length - 3} 项` : ""),
-          priority: 95
-        };
-        options.toastManager?.enqueueReceipts?.([pendingReceipt]);
+        if (options.toastManager?.enqueueActions) {
+          options.toastManager.enqueueActions(pendingActions, pipeline.id);
+        } else {
+          // 兜底：老结构没有 enqueueActions 时退回软提示
+          const pendingReceipt: AgentSuggestion = {
+            id: `pending_${pipeline.id}_${Date.now().toString(36)}`,
+            type: "risk",
+            title: pendingActions.length === 1 ? "有 1 个动作等你确认" : `有 ${pendingActions.length} 个动作等你确认`,
+            content: pendingActions.slice(0, 3).map((a) => `· ${a.description || a.type || "动作"}`).join("\n"),
+            priority: 95
+          };
+          options.toastManager?.enqueueReceipts?.([pendingReceipt]);
+        }
       } catch (e) {
         systemLogger?.warn?.("toast.pending", "pending toast 生成失败", {
           error: e instanceof Error ? e.message : String(e)
@@ -1025,6 +1035,7 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     startBizNode,
     finishBizNode,
     consumePendingAction,
+    registerPendingAction,
     buildActionReceipts,
     mergePipelineAction,
     pushFloatingState,
