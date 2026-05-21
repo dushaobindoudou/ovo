@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pin, PinOff, Trash2, Maximize2, Minimize2, Sparkles, X, Search, MoreHorizontal, Download } from "lucide-react";
+import { Pin, PinOff, Trash2, Maximize2, Minimize2, Sparkles, X, Search, MoreHorizontal, Download, UserCircle } from "lucide-react";
 import { Card } from "../shared/Card";
+import { Empty } from "../shared/Empty";
 import { Input } from "../shared/Input";
 import { GlowButton } from "../shared/GlowButton";
 import { useKnowledgeGraph } from "../../hooks/useKnowledgeGraph";
 import { KnowledgeGraphCanvas, type GraphNode, type GraphEdge } from "./KnowledgeGraphCanvas";
+import { MemoryTimelineView } from "./MemoryTimelineView";
+import { BootstrapWizard } from "../Onboarding/BootstrapWizard";
 
 interface EntityRow {
   id: string;
@@ -63,6 +66,8 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("");
   const [entities, setEntities] = useState<EntityRow[]>([]);
+  // F3: 画像页"告诉 Ovo 我是谁"手动触发的 wizard
+  const [showWizardManual, setShowWizardManual] = useState(false);
   const [personality, setPersonality] = useState<{ summary?: string; traits?: PersonalityTraitDTO[] } | null>(null);
   const [stats, setStats] = useState<{ entities: number; relationships: number; events: number; pipelines: number } | null>(null);
   const [graph, setGraph] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] }>({ nodes: [], edges: [] });
@@ -247,21 +252,39 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
 
   // R10: 「我的画像」聚合 —— 角色 / 兴趣 / 项目，给非技术用户一眼能看懂的概览
   // hooks 必须在所有 early return 之前
+  // 用户反馈："感兴趣的话题"出现 activity:xxx 这种内部聚合实体——必须排除
+  // 排除规则：
+  //   1. name 含 :: 分隔符（如 activity::keyword）—— 这是系统聚合实体
+  //   2. attributes.isActivityRoot === true（kg.scene-role 自动建的）
+  //   3. attributes.fromBootstrap 反向加分（用户主动声明的优先展示）
   const myProfile = useMemo(() => {
-    const roles = entities.filter((e) => e.type === "interest_profile")
+    const isAggregateEntity = (e: typeof entities[number]): boolean => {
+      if (e.name && e.name.includes("::")) return true;
+      const attrs = (e as { attributes?: Record<string, unknown> }).attributes;
+      if (attrs && attrs.isActivityRoot === true) return true;
+      return false;
+    };
+    const roles = entities
+      .filter((e) => e.type === "interest_profile" && !isAggregateEntity(e))
       .sort((a, b) => (b.qualityScore ?? 0) - (a.qualityScore ?? 0))
       .slice(0, 5);
-    const interests = entities.filter((e) => e.type === "concept" && (e.pinned || (e.qualityScore ?? 0) >= 0.6))
+    const interests = entities
+      .filter((e) => e.type === "concept" && !isAggregateEntity(e) && (e.pinned || (e.qualityScore ?? 0) >= 0.6))
       .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.qualityScore ?? 0) - (a.qualityScore ?? 0))
       .slice(0, 8);
-    const projects = entities.filter((e) => e.type === "project")
+    const projects = entities
+      .filter((e) => e.type === "project" && !isAggregateEntity(e))
       .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.qualityScore ?? 0) - (a.qualityScore ?? 0))
       .slice(0, 5);
     return { roles, interests, projects };
   }, [entities]);
 
   // UI-S3: 显式 mode 切换 [图谱 | 列表]，默认 列表
-  const [mode, setMode] = useState<"graph" | "list">("list");
+  // U2 / 5W 产品改造：记忆主入口改为"时间线"（事件流），实体清单合并到"图谱"
+  // - timeline: 默认 — 5W 事件流（什么时候·在什么应用·谁·做了什么）
+  // - profile:  Ovo 对你的理解（角色 / 兴趣 / 项目 画像卡）
+  // - graph:    图谱 + 实体清单（power user 用）
+  const [mode, setMode] = useState<"timeline" | "profile" | "graph">("timeline");
   const showFullGraph = mode === "graph"; // 兼容下面已写好的代码
 
   // 高级工具菜单（导出/清空/清理/隐藏孤立/全屏 都收进去，避免吓退普通用户）
@@ -298,6 +321,8 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
 
   return (
     <div className={containerCls}>
+      {/* F3: 用户在画像 tab 主动点"告诉 Ovo 我是谁" → 重开 BootstrapWizard */}
+      {showWizardManual && <BootstrapWizard onClose={() => setShowWizardManual(false)} />}
       {/* 顶部条 —— 干净，主操作（搜索/模式）显眼，工程师按钮进 ⋯ 菜单 */}
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--border)] px-4 py-3">
         <div className="flex items-baseline gap-2">
@@ -309,30 +334,27 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
           )}
         </div>
 
-        {/* mode 切换：用人话「概览 / 图谱」 */}
+        {/* U2 改造：3 视图 — 时间线（默认）/ 画像 / 图谱 */}
         <div className="ml-2 inline-flex rounded-lg border border-[var(--border)] bg-[var(--bg-base)] p-0.5">
-          <button
-            type="button"
-            onClick={() => setMode("list")}
-            className={`rounded-md px-3 py-1 text-xs transition-colors ${
-              mode === "list"
-                ? "bg-[var(--accent)] text-white"
-                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-            }`}
-          >
-            列表
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("graph")}
-            className={`rounded-md px-3 py-1 text-xs transition-colors ${
-              mode === "graph"
-                ? "bg-[var(--accent)] text-white"
-                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-            }`}
-          >
-            图谱
-          </button>
+          {(["timeline", "profile", "graph"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={`rounded-md px-3 py-1 text-xs transition-colors ${
+                mode === m
+                  ? "bg-[var(--accent)] text-white"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              }`}
+              title={
+                m === "timeline" ? "Ovo 按时间帮你记录的事 — 我做过什么 / 别人说了什么" :
+                m === "profile" ? "Ovo 对你的理解 — 角色 / 关心的话题 / 项目" :
+                "实体关系图谱（高级）— 概念之间怎么关联"
+              }
+            >
+              {m === "timeline" ? "时间线" : m === "profile" ? "画像" : "图谱"}
+            </button>
+          ))}
         </div>
 
         <div className="ml-auto flex items-center gap-2">
@@ -390,8 +412,9 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
         </div>
       </div>
 
-      {/* 类型筛选 chips */}
-      {allTypes.length > 0 && (
+      {/* 类型筛选 chips —— 用户反馈："下面的筛选只对图谱有用"
+          只在图谱视图渲染。时间线有自己的 actor/app/搜索 filter，画像视图根本不需要筛选。 */}
+      {mode === "graph" && allTypes.length > 0 && (
         <div className="flex shrink-0 flex-wrap gap-1.5 border-b border-[var(--border)] px-4 py-2">
           <button
             type="button"
@@ -431,9 +454,15 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
         </div>
       )}
 
-      {/* UI-S3: 列表 mode 时显示「我的画像」概览卡 + 完整实体列表
-          R10+: 空状态也展示，引导用户耐心 + 解释机制 */}
-      {mode === "list" && !fullscreen && (
+      {/* U2 新增：时间线视图 — 用户产品诉求 "记忆 = 我做过什么事" */}
+      {mode === "timeline" && !fullscreen && (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <MemoryTimelineView />
+        </div>
+      )}
+
+      {/* 画像视图：从原"列表 mode"拆出来 — 单独展示 Ovo 对你的理解 */}
+      {mode === "profile" && !fullscreen && (
         <div className="shrink-0 px-4 pt-3">
           <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <div className="mb-3 flex items-start gap-2">
@@ -445,103 +474,61 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
                 <p className="text-[11px] text-[var(--text-muted)]">点任何一项告诉 ovo 这条对不对，会越来越准</p>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3 text-xs">
-              <div>
-                <p className="mb-1.5 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">扮演的角色</p>
-                {myProfile.roles.length === 0 ? (
-                  <p className="text-[var(--text-muted)]">还在学习中…</p>
-                ) : (
-                  <div className="space-y-1">
-                    {myProfile.roles.map((r) => (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onClick={() => setSelectedId(r.id)}
-                        className="flex w-full items-center gap-1 rounded bg-[var(--bg-base)] px-2 py-1 text-left hover:bg-[var(--bg-card-hover)]"
-                      >
-                        {r.pinned && <Pin size={10} className="shrink-0 text-[var(--accent)]" />}
-                        <span className="truncate font-medium">{r.name}</span>
-                        {typeof r.qualityScore === "number" && (
-                          <span className="ml-auto shrink-0 text-[10px] text-[var(--text-muted)]">{(r.qualityScore * 100).toFixed(0)}%</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div>
-                <p className="mb-1.5 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">关心的主题</p>
-                {myProfile.interests.length === 0 ? (
-                  <p className="text-[var(--text-muted)]">还在学习中…</p>
-                ) : (
-                  <div className="flex flex-wrap gap-1">
-                    {myProfile.interests.map((i) => (
-                      <button
-                        key={i.id}
-                        type="button"
-                        onClick={() => setSelectedId(i.id)}
-                        className={`rounded-full border px-2 py-0.5 text-[11px] transition-colors ${
-                          i.pinned
-                            ? "border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]"
-                            : "border-[var(--border)] hover:border-[var(--accent)]"
-                        }`}
-                      >
-                        {i.pinned && "★ "}{i.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div>
-                <p className="mb-1.5 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">在做的项目</p>
-                {myProfile.projects.length === 0 ? (
-                  <p className="text-[var(--text-muted)]">还没识别到项目</p>
-                ) : (
-                  <div className="space-y-1">
-                    {myProfile.projects.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => setSelectedId(p.id)}
-                        className="flex w-full items-center gap-1 rounded bg-[var(--bg-base)] px-2 py-1 text-left hover:bg-[var(--bg-card-hover)]"
-                      >
-                        {p.pinned && <Pin size={10} className="shrink-0 text-[var(--accent)]" />}
-                        <span className="truncate font-medium">{p.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+            {/* P1.18 / P0.6 修复：3 列网格 → 单列纵向"故事卡"（Granola 风格）
+                每项显示：质量进度条 + 提及次数 + 钉住标记 + 第一人称叙事开头 */}
+            <div className="space-y-3 text-xs">
+              {/* 角色 — 通常 1-3 个，单卡显示，避免堆叠 */}
+              {myProfile.roles.length > 0 && (
+                <StorySection
+                  title="Ovo 觉得你扮演这些角色"
+                  emptyHint="还在学习中…"
+                  items={myProfile.roles}
+                  onSelect={setSelectedId}
+                />
+              )}
+              {/* 兴趣 — 数量多，用 chip + 单列 */}
+              {myProfile.interests.length > 0 && (
+                <StorySection
+                  title="你最常关心的话题"
+                  emptyHint="还在学习中…"
+                  items={myProfile.interests}
+                  onSelect={setSelectedId}
+                />
+              )}
+              {/* 项目 */}
+              {myProfile.projects.length > 0 && (
+                <StorySection
+                  title="你正在投入的项目"
+                  emptyHint="还没识别到项目"
+                  items={myProfile.projects}
+                  onSelect={setSelectedId}
+                />
+              )}
+              {/* F3: 角色为空时单独引导填"我是谁"（不要等 3 项全空才提示） */}
+              {myProfile.roles.length === 0 && (
+                <div className="rounded-lg border border-dashed border-[var(--border)] bg-[var(--bg-base)] p-3 text-center">
+                  <p className="text-[12px] font-medium text-[var(--text-primary)]">Ovo 还不知道你是谁</p>
+                  <p className="mt-1 text-[11px] text-[var(--text-muted)]">告诉它你的角色 / 当前主项目 / 感兴趣的领域，它能更准</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowWizardManual(true)}
+                    className="mt-2 inline-flex items-center gap-1 rounded-md bg-[var(--accent)] px-3 py-1 text-[11px] font-medium text-white hover:bg-[var(--accent-hover)]"
+                  >
+                    告诉 Ovo 我是谁
+                  </button>
+                </div>
+              )}
+              {myProfile.roles.length === 0 && myProfile.interests.length === 0 && myProfile.projects.length === 0 && (
+                <p className="text-center text-[var(--text-muted)]">Ovo 还在学习中——再用一会儿，它会更懂你。</p>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* UI-S3: 列表 mode = 显示完整实体列表（用 EntityListView，可选中查看详情） */}
-      {mode === "list" && !fullscreen && (
-        <div className="flex min-h-0 flex-1 gap-3 p-3">
-          <aside className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-card)]">
-            <EntityListView
-              entities={filteredEntities}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-            />
-          </aside>
-          {selectedId && detail?.entity && (
-            <aside className="flex w-[380px] shrink-0 flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-card)]">
-              <EntityDetailView
-                detail={detail}
-                events={entityEvents}
-                busy={busy}
-                onClose={() => setSelectedId(null)}
-                onPinToggle={() => void handlePinToggle()}
-                onDelete={() => void handleDelete()}
-                onJump={(id) => setSelectedId(id)}
-              />
-            </aside>
-          )}
-        </div>
-      )}
+      {/* U2 重构：实体清单不再是独立"列表"主入口。
+          - 时间线（timeline）已展示用户做过的事
+          - 实体清单作为图谱视图的辅助 list（power user 用） — 见下面 graph mode */}
 
       {/* 图谱 mode */}
       {(showFullGraph || fullscreen) && (
@@ -707,6 +694,13 @@ function EntityDetailView({
       {/* 内容区滚动（钉住操作只刷数据，不会让外面冒滚动条） */}
       <div className="min-h-0 flex-1 overflow-y-auto p-3 text-xs">
         <div className="space-y-3">
+          {/* P0.6 / P2.9: Ovo 的主观表述 — 让用户感受到 Ovo 在"理解你"，不是数据库查询 */}
+          <div className="rounded-lg border border-[var(--accent)]/20 bg-[var(--accent)]/5 p-2.5">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-[var(--accent)]">Ovo 认为</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-primary)]">
+              {buildOvoSubjectiveLine(e)}
+            </p>
+          </div>
           {/* 描述 */}
           {e.description && (
             <Section title="描述">
@@ -762,19 +756,23 @@ function EntityDetailView({
             </Section>
           )}
 
-          {/* 自定义 attributes */}
-          {Object.keys(e.attributes).length > 0 && (
-            <Section title="属性">
-              <div className="space-y-0.5 font-mono text-[10px]">
-                {Object.entries(e.attributes).map(([k, v]) => (
-                  <div key={k} className="flex gap-2">
-                    <span className="shrink-0 text-[var(--text-muted)]">{k}</span>
-                    <span className="truncate text-[var(--text-secondary)]">{typeof v === "string" ? v : JSON.stringify(v)}</span>
-                  </div>
-                ))}
-              </div>
-            </Section>
-          )}
+          {/* 自定义 attributes — 用户语言翻译 key + value，避免技术 "active:" "activity:" 文本 */}
+          {(() => {
+            const friendly = renderEntityAttributes(e.attributes);
+            if (!friendly.length) return null;
+            return (
+              <Section title="特征">
+                <div className="space-y-1 text-[11px]">
+                  {friendly.map(({ label, value }, idx) => (
+                    <div key={idx} className="flex items-baseline gap-2">
+                      <span className="shrink-0 text-[var(--text-muted)]">{label}</span>
+                      <span className="min-w-0 flex-1 break-words text-[var(--text-secondary)]">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            );
+          })()}
 
           {/* 近期证据 */}
           {events.length > 0 && (
@@ -813,6 +811,176 @@ function EntityDetailView({
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * Bug 3 修复：entity.attributes 是 LLM 输出 + 内部 metadata 的混合，原始 key 像
+ * "active" / "activity" / "fromBootstrap" 用户看不懂。翻译表 + 过滤无意义 key。
+ */
+const ATTR_KEY_LABELS: Record<string, string> = {
+  active: "是否活跃",
+  activity: "活动",
+  activeTime: "活跃时段",
+  inactive: "是否闲置",
+  role: "角色",
+  source: "来源",
+  topic: "主题",
+  project: "项目",
+  status: "状态",
+  fromBootstrap: "首次填写",
+  importance: "重要度",
+  category: "分类",
+  level: "等级",
+  lastSeenAppName: "最近出现在",
+  path: "文件路径",
+  ext: "文件类型",
+  size: "大小",
+  mtime: "修改时间",
+  url: "链接",
+  email: "邮箱"
+};
+
+const ATTR_VALUE_FORMATTERS: Record<string, (v: unknown) => string> = {
+  active: (v) => (v ? "活跃" : "暂停"),
+  inactive: (v) => (v ? "闲置" : "活跃"),
+  fromBootstrap: (v) => (v ? "首次启动时填写" : "Ovo 观察推断"),
+  size: (v) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return String(v);
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  },
+  mtime: (v) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return String(v);
+    return new Date(n).toLocaleString("zh-CN", { hour12: false });
+  }
+};
+
+const ATTR_HIDDEN_KEYS = new Set([
+  "noKgWrite", "auto", "reason"  // 内部 metadata，用户不需要看到
+]);
+
+function renderEntityAttributes(attrs: Record<string, unknown>): Array<{ label: string; value: string }> {
+  const out: Array<{ label: string; value: string }> = [];
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined || v === "") continue;
+    if (ATTR_HIDDEN_KEYS.has(k)) continue;
+    const label = ATTR_KEY_LABELS[k] ?? k;
+    const formatter = ATTR_VALUE_FORMATTERS[k];
+    let value: string;
+    if (formatter) {
+      value = formatter(v);
+    } else if (typeof v === "string") {
+      value = v;
+    } else if (typeof v === "boolean") {
+      value = v ? "是" : "否";
+    } else if (typeof v === "number") {
+      value = String(v);
+    } else if (Array.isArray(v)) {
+      value = v.map(String).join("、");
+    } else {
+      // 其他类型（object）保留 JSON 但限长
+      try { value = JSON.stringify(v).slice(0, 200); } catch { value = String(v); }
+    }
+    if (value.length > 240) value = value.slice(0, 240) + "…";
+    out.push({ label, value });
+  }
+  return out;
+}
+
+/**
+ * P0.6 / P2.9: 把客观字段（type/mentionCount/qualityScore/lastSeen）翻成"Ovo 的视角"。
+ * 让用户感受到 Ovo 在理解他，而不是被当成 SQL 行查询。
+ */
+function buildOvoSubjectiveLine(e: EntityDetail["entity"]): string {
+  if (!e) return "";
+  const TYPE_PERSPECTIVE: Record<string, string> = {
+    person: "这是一个对你重要的人",
+    project: "这是你正在投入的项目",
+    concept: "你经常思考这个话题",
+    application: "你经常使用的应用",
+    company: "你关注的一家公司",
+    place: "你关注的一个地方",
+    event: "你提到过的一个事件",
+    interest_profile: "这是你长期关注的兴趣方向",
+    role_hypothesis: "Ovo 推测你正在扮演这个角色",
+    application_file: "你最近接触的一份文件"
+  };
+  const head = TYPE_PERSPECTIVE[e.type] ?? "Ovo 在你工作里看到过这个";
+  const quality = e.qualityScore >= 0.7 ? "印象很深"
+    : e.qualityScore >= 0.4 ? "已经熟悉了"
+    : "还在观察中";
+  const mention = e.mentionCount >= 20 ? "（出现过非常多次）"
+    : e.mentionCount >= 5 ? "（出现过几次）"
+    : "（最近才注意到）";
+  const pinned = e.pinned ? " · 你主动钉住了它" : "";
+  return `${head}，${quality}${mention}${pinned}。`;
+}
+
+/**
+ * P1.18 / P0.6: 单列故事卡（替代旧 3 列网格）
+ * 每项显示 — 名字 + 提及次数 / 质量进度条 + 钉住 + 点击展开详情
+ */
+interface ProfileItem {
+  id: string;
+  name: string;
+  pinned?: boolean;
+  qualityScore?: number;
+  mentionCount?: number;
+  lastSeen?: number;
+}
+function StorySection({ title, items, onSelect }: {
+  title: string;
+  emptyHint?: string;  // 当前不用，调用方已过滤空数组
+  items: ProfileItem[];
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-base)] p-2.5">
+      <p className="mb-2 text-[11px] font-medium text-[var(--text-primary)]">{title}</p>
+      <div className="space-y-1.5">
+        {items.map((it) => {
+          const quality = typeof it.qualityScore === "number" ? Math.round(it.qualityScore * 100) : null;
+          return (
+            <button
+              key={it.id}
+              type="button"
+              onClick={() => onSelect(it.id)}
+              className="group flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-[var(--bg-card-hover)]"
+            >
+              {it.pinned && <Pin size={10} className="shrink-0 text-[var(--accent)]" />}
+              <span className="min-w-0 flex-1 truncate text-[12px] font-medium">
+                {/* 兜底：剥离 `activity::` / `app::` 等内部前缀，只显示纯名字 */}
+                {(() => {
+                  const idx = it.name.indexOf("::");
+                  return idx > 0 ? it.name.slice(idx + 2) : it.name;
+                })()}
+              </span>
+              {typeof it.mentionCount === "number" && it.mentionCount > 0 && (
+                <span className="shrink-0 text-[10px] text-[var(--text-muted)]">{it.mentionCount} 次</span>
+              )}
+              {quality !== null && (
+                <span className="flex shrink-0 items-center gap-1">
+                  <span className="h-1 w-12 overflow-hidden rounded-full bg-[var(--border)]">
+                    <span
+                      className="block h-full"
+                      style={{
+                        width: `${quality}%`,
+                        background: quality >= 70 ? "var(--success)" : quality >= 40 ? "var(--warning)" : "var(--danger)"
+                      }}
+                    />
+                  </span>
+                  <span className="w-7 text-right text-[10px] tabular-nums text-[var(--text-muted)]">{quality}%</span>
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -904,7 +1072,11 @@ function PersonalityDetail({
   if (!personality) {
     return (
       <Card title="人格画像详情">
-        <p className="text-sm text-[var(--text-secondary)]">暂无人格画像数据</p>
+        <Empty
+          icon={UserCircle}
+          title="还没有人格画像"
+          hint="ovo 需要更多观察来理解你的偏好"
+        />
       </Card>
     );
   }

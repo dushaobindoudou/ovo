@@ -454,6 +454,29 @@ export function KnowledgeGraphCanvas({ nodes, edges, selectedId, onSelect, class
       <div className="pointer-events-none absolute right-2 top-2 rounded bg-black/40 px-2 py-1 text-[10px] text-white/70">
         滚轮缩放 · 拖拽平移 · 点击节点查看详情
       </div>
+      {/* P0.6: 图例 — 7 种节点类型 + 边粗度含义 */}
+      <div className="pointer-events-none absolute left-2 top-2 rounded-md bg-black/60 px-2.5 py-2 text-[10px] text-white/85 backdrop-blur-sm">
+        <p className="mb-1 font-medium text-white/95">节点颜色</p>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+          <LegendDot color="#3ec5ff" label="人物" />
+          <LegendDot color="#a78bfa" label="项目" />
+          <LegendDot color="#34d399" label="话题/概念" />
+          <LegendDot color="#fbbf24" label="文档" />
+          <LegendDot color="#f472b6" label="组织" />
+          <LegendDot color="#fb923c" label="地点" />
+          <LegendDot color="#60a5fa" label="应用" />
+        </div>
+        <p className="mt-1.5 text-white/60">线条越粗 = 关系越强</p>
+      </div>
+    </div>
+  );
+}
+
+function LegendDot({ color, label }: { color: string; label: string }) {
+  return (
+    <div className="flex items-center gap-1">
+      <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+      <span>{label}</span>
     </div>
   );
 }

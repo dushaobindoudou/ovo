@@ -107,7 +107,7 @@ export function buildAdaptivePrompt(buffer: WindowBuffer, graphContext: GraphCon
 - **suggestions**：此刻给用户看的小建议（如回复草稿、风险提示）。不是长期服务
 
 # 反例 vs 正例（看 BTC 行情时）
-❌ action: copy_to_clipboard 当前价格（用户不需要）
+❌ action: copy_to_clipboard 当前价格（用户不需要，且会污染剪贴板）
 ❌ suggestion: "建议关注比特币"（说了等于没说）
 ❌ offer: "我可以监控 BTC 价格变化"（太空，没具体好处，没频率）
 ✅ offer: { title: "每天给你一份 BTC 行情简报", value_prop: "20 秒读完：价格走势 + 24h 关键新闻 + 巨鲸异动", first_action_preview: "今晚 9 点先发一份样本看是否你想要的方向", frequency: "daily", needs_capability: "scheduled_digest", confidence: 0.78 }
@@ -327,6 +327,13 @@ ${personality}
   },
   "latent_intent": "string  // ≤120 字",
   "content": ["string  // 1-3 条关键内容片段"],
+  // 5W 关键：分辨"这一帧屏幕上谁是主角"
+  //   self    用户自己在做事（写文档 / 写邮件 / 写代码 / 浏览查找）
+  //   other   屏幕上主要是别人的输出（看群消息别人在发言 / 看别人写的文章 / 看视频）
+  //   mixed   既有用户操作也有别人内容（开会 / 协作编辑 / 聊天双向）
+  //   system  系统通知 / 静态 UI 占主导（启动屏 / 错误对话框）
+  "actor": "self | other | mixed | system",
+  "actor_name": "string  // 当 actor=other 时识别对方名字（如群成员名 / 邮件发件人 / 视频博主）；其他情况留空",
   "entities": [
     { "name": "string", "type": "person|project|document|concept|organization|location|application|application_file|behavior_pattern|watchlist|interest_profile|learning_graph|action_type|insight_summary", "description": "string", "attributes": {} }
   ],
@@ -416,15 +423,48 @@ ${feedbackBlock}${negativeBlock}
 - **重要**：如果同角色 confidence ≥ 0.85 且 KG 里已经有相关 entity，offers 可以为空——不要骚扰
 
 ## actions (此刻可执行的具体操作，至少 1 条)
+
+### ⭐⭐⭐ 信号强度（每条 action 必填 evidence_level + evidence[]）
+
+每条 action 必须自报"我有多确定用户想要这个"：
+
+- **direct**：用户在屏幕上**明确表达了这个意图**
+  - 例：输入框打了"帮我写"、选中了一段文字、点了某个 UI 按钮
+  - evidence 必须引用屏幕上的具体文字 / 行为
+- **inferred**：用户**行为模式强暗示**这个意图
+  - 例：在 Mail 写邮件 + 收件人栏有客户邮箱 + 段落不完整 → 帮拟草稿
+  - evidence 必须列出 2-3 个具体屏幕信号
+- **speculative**：你只是觉得用户"可能"想要，没有具体屏幕证据
+  - ⛔ **不要进 actions 数组**，转成 suggestion 写到 suggestions 数组里
+  - 例：看到 IDE 里一堆代码 → 你觉得"用户想 audit code" → 这是空想，不许进 actions
+
+**evidence 必须是屏幕上真实出现的字符串/状态**，不能编造。主进程会用你 evidence 数组里的字符串在 OCR 结果里做子串匹配。匹配不到 → 你这条 action 会被降级为草稿，不执行。
+
+⛔ **底线**：写不出 2 条具体 evidence → 这件事就该是 suggestion，不是 action。
+
+❌ 反例: action=create_todo, evidence_level=inferred, evidence=["用户可能需要做这个"] ← 空话，不是屏幕证据
+✅ 正例: action=create_todo, evidence_level=inferred, evidence=["微信窗口可见消息 '明天 3 点开会记得带文件'", "当前 active app 是 WeChat"]
+
+### 各 type 说明
 - log_note: 归档当前事实，priority 5-30（默认兜底）
-- copy_to_clipboard: 帮用户复制内容（如回复草稿）
+- copy_to_clipboard: 帮用户复制内容
+  - ⭐ **必须填 params.source** = "user_screen" 或 "ovo_generated"
+  - **"user_screen"**：复制屏幕上看到的内容（用户选中的代码、屏幕里的链接等）。**这种几乎不应该使用**——剪贴板是用户私有空间，除非用户在屏幕上明确表达"我想复制 X"（选中了文本、点了复制按钮、写了"帮我复制"），否则不要主动 copy 屏幕内容。
+  - **"ovo_generated"**：复制 ovo 自己生成的内容（回复草稿、总结、整理好的文案）。**这种应该积极主动**——用户看到回复草稿就该自动到剪贴板里，按 Cmd+V 直接就用。
+  - 例：用户在写邮件 → 生成 3 条回复草稿 → 输出 copy_to_clipboard(source="ovo_generated", text="<最佳那一条草稿>") 是好的；同时把另外 2 条放在 suggestions[].content 里供切换
 - create_todo / search / summarize 等
 - ❗ 任何"抢屏 / 外发"动作必须 requireConfirm: true: send_email / send_imessage / open_url / search_web / open_app / set_reminder / add_calendar / index_path
 
 ## suggestions (轻量提示，可以为空)
 - 类型: tip | reply | risk | insight | next_step
-- 例: 给客户邮件场景 → 3 条不同语气的回复草稿
-- 例: 看合同 → risk 类型预警条款
+- ⭐ **必须是成品，不是元话**
+  - ❌ 反例: type=reply, title="帮你拟几条回复草稿", content="..." ← title 是元话，"帮你拟"等于没拟
+  - ✅ 正例: type=reply, title="正式语气回复", content="王总您好，关于您提到的方案..." ← title 是版本名，content 是真草稿
+- type=reply：content **必须**是完整的可发送话术（含称呼/敬称/落款），不是"我建议..."
+- type=next_step：content **必须**是用户立刻能照做的一句话（例如"在终端跑 git rebase -i HEAD~3"），不是"建议你考虑..."
+- type=risk：content 必须明说哪一条/哪个数字/哪个时间点有问题
+- 例: 给客户邮件场景 → 3 条不同语气的回复草稿（**每条 suggestion 自带成品 content**）
+- 例: 看合同 → risk 类型预警条款（**指明第几条**）
 - risk = high|critical 时至少 1 条 priority ≥ 80
 
 # 输出 JSON schema（严格遵守，仅输出此 JSON 对象）
@@ -447,7 +487,9 @@ ${feedbackBlock}${negativeBlock}
       "description": "string",
       "params": {},
       "requireConfirm": false,
-      "priority": 0
+      "priority": 0,
+      "evidence_level": "direct | inferred  // ⛔ 不要用 speculative，那种东西转成 suggestion",
+      "evidence": ["屏幕上真实出现的具体字符串/状态 1", "屏幕上真实出现的具体字符串/状态 2"]
     }
   ],
   "suggestions": [

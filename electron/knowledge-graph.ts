@@ -33,6 +33,26 @@ export function normalizeEntityName(name: string): string {
   return ENTITY_SYNONYMS[trimmed] ?? trimmed;
 }
 
+/**
+ * DATA-5 / DATA-13: 实体入库前脱敏 — name / description / attributes 都过一遍
+ * 防止 LLM 抽出的 entity 含 sk-xxx / user@host.com / 卡号等敏感字面量被永久持久化
+ */
+function sanitizeEntityForKg<T extends { name: string; description?: string; attributes?: Record<string, unknown> }>(entity: T): T {
+  const name = redactSensitive(entity.name).cleaned;
+  const description = entity.description ? redactSensitive(entity.description).cleaned : entity.description;
+  let attributes = entity.attributes;
+  if (attributes && typeof attributes === "object") {
+    try {
+      const json = JSON.stringify(attributes);
+      const cleaned = redactSensitive(json).cleaned;
+      attributes = JSON.parse(cleaned);
+    } catch {
+      // attributes 反序列化失败保留原值
+    }
+  }
+  return { ...entity, name, description, attributes };
+}
+
 const STOP_WORDS = new Set([
   "the", "and", "for", "are", "was", "with", "from", "this", "that", "you", "your",
   "用户", "正在", "进行", "目前", "屏幕", "当前", "需要", "可以", "应该", "尝试", "查看",
@@ -97,7 +117,38 @@ export class KnowledgeGraphEngine {
     return getUserDataPath();
   }
 
+  /**
+   * T15 / C9 / A7: schema_version 追踪 — 当前 schema 期望版本
+   * 升级时只需 ++ 这个数字 + 在 applyMigration() 加 case
+   */
+  private readonly CURRENT_SCHEMA_VERSION = 3;  // v3: drafts 表（Ovo 准备好但没出手的 inferred-unverified action）
+
+  private getSchemaVersion(): number {
+    try {
+      const row = this.db.prepare("SELECT version FROM schema_version WHERE id = 1").get() as { version?: number } | undefined;
+      return typeof row?.version === "number" ? row.version : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private setSchemaVersion(v: number): void {
+    this.db.prepare("INSERT OR REPLACE INTO schema_version (id, version, updated_at) VALUES (1, ?, ?)")
+      .run(v, Date.now());
+  }
+
   private bootstrap() {
+    // schema_version 表本身先建（如果不存在）
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS schema_version (
+        id INTEGER PRIMARY KEY,
+        version INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `);
+    // 老库（之前没有 schema_version 表）当作 v0，bootstrap 跑完后写入当前版本
+    const startedFromVersion = this.getSchemaVersion();
+
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS entities (
         id TEXT PRIMARY KEY,
@@ -348,6 +399,89 @@ export class KnowledgeGraphEngine {
         }
       } catch { /* */ }
     }
+
+    // 5W 改造（2026-05-17）：memory_events 加 actor / actor_name 字段
+    // 让记忆能回答用户的关键问题："什么时候 + 在什么应用 + 谁 + 做了什么"
+    //   actor: "self" 用户自己做的 / "other" 别人（如群成员发消息、邮件发件人）/
+    //          "system" 系统自动 / "ovo" Ovo 自身行为 / "unknown" 无法判定
+    //   actor_name: 当 actor=other 时存对方名字（如"张三" / "user@example.com"）
+    try {
+      const meCols = this.db.prepare("PRAGMA table_info(memory_events)").all() as Array<{ name: string }>;
+      const meNames = new Set(meCols.map((c) => c.name));
+      if (!meNames.has("actor")) {
+        this.db.exec("ALTER TABLE memory_events ADD COLUMN actor TEXT DEFAULT 'unknown'");
+      }
+      if (!meNames.has("actor_name")) {
+        this.db.exec("ALTER TABLE memory_events ADD COLUMN actor_name TEXT");
+      }
+      this.db.exec("CREATE INDEX IF NOT EXISTS idx_memory_events_actor ON memory_events(actor, timestamp DESC)");
+    } catch (err) {
+      try {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!/already exists|duplicate column/i.test(msg)) {
+          void import("./error-logger.js").then(({ errorLogger }) => {
+            errorLogger.alert("error", "kg.migration", "memory_events actor 字段迁移失败", { error: msg });
+          }).catch(() => { /* */ });
+        }
+      } catch { /* */ }
+    }
+
+    // v3 迁移：drafts 表 —— inferred-unverified 级别 action 的"准备区"
+    //   evidence_level 为 inferred 但 grounding-validator 没验证通过的 action 落这里，
+    //   不直接执行；用户在主面板"草稿台"里手动 promote 才真执行。
+    //   参考 docs/REFLECTION_LOG.md 反思 #2。
+    try {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS drafts (
+          id TEXT PRIMARY KEY,
+          created_at INTEGER NOT NULL,
+          pipeline_id TEXT,
+          action_id TEXT NOT NULL,
+          action_type TEXT NOT NULL,
+          description TEXT NOT NULL,
+          params TEXT NOT NULL,
+          evidence_level TEXT NOT NULL,
+          evidence TEXT NOT NULL,
+          grounding_status TEXT NOT NULL,
+          grounding_reason TEXT,
+          app_name TEXT,
+          window_title TEXT,
+          status TEXT NOT NULL DEFAULT 'pending'  -- pending | promoted | dismissed | expired
+        );
+        CREATE INDEX IF NOT EXISTS idx_drafts_status_created ON drafts(status, created_at DESC);
+      `);
+    } catch (err) {
+      try {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!/already exists/i.test(msg)) {
+          void import("./error-logger.js").then(({ errorLogger }) => {
+            errorLogger.alert("error", "kg.migration", "drafts 表迁移失败", { error: msg });
+          }).catch(() => { /* */ });
+        }
+      } catch { /* */ }
+    }
+
+    // T15 / C9 / A7: bootstrap 全部走完，写入当前 schema 版本号
+    // 升级路径：CURRENT_SCHEMA_VERSION ++ 后，运维通过 SELECT version FROM schema_version 一眼看到当前版本
+    try {
+      const finalVersion = this.CURRENT_SCHEMA_VERSION;
+      if (startedFromVersion !== finalVersion) {
+        void import("./error-logger.js").then(({ errorLogger }) => {
+          errorLogger.alert(
+            "info",
+            "kg.migration",
+            startedFromVersion === 0 ? "KG schema 初始化" : "KG schema 升级",
+            { from: startedFromVersion, to: finalVersion }
+          );
+        }).catch(() => { /* */ });
+        this.setSchemaVersion(finalVersion);
+      }
+    } catch { /* schema_version 写入失败不阻断启动 */ }
+  }
+
+  /** T15: 暴露当前 schema 版本（用于诊断 / 设置面板显示） */
+  getSchemaVersionInfo(): { current: number; expected: number } {
+    return { current: this.getSchemaVersion(), expected: this.CURRENT_SCHEMA_VERSION };
   }
 
   /**
@@ -1086,9 +1220,33 @@ export class KnowledgeGraphEngine {
       }
     }
 
+    // Bug 6 修复：同一 actionId 可能在 business_logs 里有多条（先 "actions.execute" 写 pending，
+    // 后 "action.confirm.execute" 写 success/failed）。按 actionId dedupe，保留最新 status。
+    // 排序优先级：success/failed/cancelled/timeout > pending（已确认结果覆盖等待中）。
+    const STATUS_PRIO: Record<string, number> = {
+      success: 4, failed: 4, cancelled: 4, timeout: 4, pending: 1
+    };
+    const byActionId = new Map<string, typeof flat[number]>();
+    for (const f of flat) {
+      const existing = byActionId.get(f.actionId);
+      if (!existing) {
+        byActionId.set(f.actionId, f);
+        continue;
+      }
+      // 偏好 confirmedByUser=true（明确用户操作的结果）
+      // 偏好高优先级 status
+      // 偏好更新的 timestamp
+      const existingPrio = (existing.confirmedByUser ? 10 : 0) + (STATUS_PRIO[existing.status] ?? 0);
+      const newPrio = (f.confirmedByUser ? 10 : 0) + (STATUS_PRIO[f.status] ?? 0);
+      if (newPrio > existingPrio || (newPrio === existingPrio && f.timestamp > existing.timestamp)) {
+        byActionId.set(f.actionId, f);
+      }
+    }
+    const deduped = Array.from(byActionId.values()).sort((a, b) => b.timestamp - a.timestamp);
+
     // pipeline_logs 表没有 app_name / window_title 列（schema 见 bootstrap）；
     // 这些信息在 stages JSON 的 aggregate.input 里。一次批量查 + 解析。
-    const pipelineIds = Array.from(new Set(flat.map((f) => f.pipelineId).filter(Boolean))) as string[];
+    const pipelineIds = Array.from(new Set(deduped.map((f) => f.pipelineId).filter(Boolean))) as string[];
     if (pipelineIds.length) {
       const placeholders = pipelineIds.map(() => "?").join(",");
       const ctxRows = this.db
@@ -1107,7 +1265,7 @@ export class KnowledgeGraphEngine {
         } catch { /* legitimate: 历史脏数据 row */ }
         ctxMap.set(c.id, { appName, windowTitle });
       }
-      for (const f of flat) {
+      for (const f of deduped) {
         if (f.pipelineId) {
           const c = ctxMap.get(f.pipelineId);
           if (c) {
@@ -1118,7 +1276,7 @@ export class KnowledgeGraphEngine {
       }
     }
 
-    return flat.slice(0, limit);
+    return deduped.slice(0, limit);
   }
 
   /**
@@ -1689,14 +1847,17 @@ export class KnowledgeGraphEngine {
    */
   getRecentEvents(limit = 50, opts: { includeLegacy?: boolean } = {}) {
     const includeLegacy = opts.includeLegacy ?? false;
+    // 5W: 加 actor / actor_name 字段，让 UI 时间线展示"谁做了什么"
     const sql = includeLegacy
       ? `SELECT id, timestamp, app_name as appName, window_title as windowTitle,
-                content, summary, intent, importance, source_window_id as sourceWindowId
+                content, summary, intent, importance, source_window_id as sourceWindowId,
+                actor, actor_name as actorName
            FROM memory_events
            ORDER BY timestamp DESC
            LIMIT ?`
       : `SELECT id, timestamp, app_name as appName, window_title as windowTitle,
-                content, summary, intent, importance, source_window_id as sourceWindowId
+                content, summary, intent, importance, source_window_id as sourceWindowId,
+                actor, actor_name as actorName
            FROM memory_events
            WHERE source_window_id != '__legacy__'
            ORDER BY timestamp DESC
@@ -1712,6 +1873,8 @@ export class KnowledgeGraphEngine {
       intent: string;
       importance: number;
       sourceWindowId: string;
+      actor?: string | null;
+      actorName?: string | null;
     }>;
     return rows.map((r) => this.decryptEventRow(r));
   }
@@ -1749,6 +1912,13 @@ export class KnowledgeGraphEngine {
   }
 
   upsertEntity(entity: ExtractedEntity) {
+    // DATA-5 / DATA-13: 入库前对 name / description / attributes 跑 redactSensitive
+    // 避免 LLM 把"user@host.com"或代码片段当 entity 抽出 + 持久化为明文
+    try {
+      entity = sanitizeEntityForKg(entity);
+    } catch {
+      /* 脱敏失败 → 用原值入库（保命） */
+    }
     const now = Date.now();
     const normalized = normalizeEntityName(entity.name);
     // 先按 normalized 名精确匹配；再检查 aliases 数组中是否已有该 normalized 值。
@@ -1809,6 +1979,8 @@ export class KnowledgeGraphEngine {
       | undefined;
     if (!source || !target) return null;
     const id = this.id("rel");
+    // DATA-6: relationship 的 context 可能含 LLM 引用的原文片段，入库前过脱敏
+    const safeContext = relation.context ? redactSensitive(relation.context).cleaned.slice(0, 500) : "";
     this.db
       .prepare(
         `INSERT INTO relationships (id,source_id,target_id,relation,context,valid_from)
@@ -1818,7 +1990,7 @@ export class KnowledgeGraphEngine {
           strength=MIN(10, relationships.strength + 1),
           updated_at=strftime('%s','now')`
       )
-      .run(id, source.id, target.id, relation.relation, relation.context ?? "", Date.now());
+      .run(id, source.id, target.id, relation.relation, safeContext, Date.now());
     return id;
   }
 
@@ -1832,31 +2004,37 @@ export class KnowledgeGraphEngine {
     entityIds?: string[];
     /** OCR 整体置信度 0-1，低于 0.5 直接拒绝入库（DATA-11） */
     confidence?: number;
+    /** 5W: 谁做的 — self（用户）/ other（别人）/ system（系统）/ ovo（Ovo 自身）/ unknown */
+    actor?: "self" | "other" | "system" | "ovo" | "unknown";
+    /** 5W: 当 actor=other 时存对方名字（如群成员 / 邮件发件人） */
+    actorName?: string;
   }) {
     // DATA-11: OCR confidence < 0.5 当作乱码丢弃，不污染 KG
     if (typeof payload.confidence === "number" && payload.confidence > 0 && payload.confidence < 0.5) {
       return "";
     }
     // NEW-1 + DATA-7: 入库前二次脱敏 + 截断
-    // 二次脱敏防 auto-capture 那一道漏过的（多重防御）
-    // 截断保证单事件不会无界膨胀（长 PDF OCR 几万字会让 memory_events 表爆）
     const contentRedacted = redactSensitive(payload.content || "").cleaned;
     const summaryRedacted = redactSensitive(payload.summary || "").cleaned;
     const titleRedacted = redactSensitive(payload.windowTitle || "").cleaned;
     const appRedacted = redactSensitive(payload.appName || "").cleaned;
     // SEC-8: 高敏感字段（OCR 正文 + LLM 总结）走 safeStorage 字段级加密。
-    // 即便 ovo.sqlite 被偷走，攻击者也只能拿到 enc:v1:... 密文，没有 Keychain 解不开。
-    // app_name / window_title / intent 保持明文以便索引和 UI 展示
     const content = secretsStore.encryptField(contentRedacted.slice(0, MEMORY_CONTENT_MAX_CHARS));
     const summary = secretsStore.encryptField(summaryRedacted.slice(0, MEMORY_SUMMARY_MAX_CHARS));
     const windowTitle = titleRedacted.slice(0, MEMORY_TITLE_MAX_CHARS);
     const appName = appRedacted.slice(0, MEMORY_TITLE_MAX_CHARS);
+    // 5W: actor 默认 "unknown"，actor_name 脱敏限长
+    const actor = payload.actor ?? "unknown";
+    const actorName = payload.actorName
+      ? redactSensitive(payload.actorName).cleaned.slice(0, 120)
+      : null;
 
     const id = this.id("evt");
     this.db
       .prepare(
-        `INSERT INTO memory_events (id,timestamp,app_name,window_title,content,summary,intent,entity_ids,source_window_id)
-         VALUES (?,?,?,?,?,?,?,?,?)`
+        `INSERT INTO memory_events
+           (id,timestamp,app_name,window_title,content,summary,intent,entity_ids,source_window_id,actor,actor_name)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`
       )
       .run(
         id,
@@ -1867,7 +2045,9 @@ export class KnowledgeGraphEngine {
         summary,
         payload.intent ?? "",
         JSON.stringify(payload.entityIds ?? []),
-        payload.sourceWindowId ?? ""
+        payload.sourceWindowId ?? "",
+        actor,
+        actorName
       );
     return id;
   }
@@ -2285,10 +2465,25 @@ export class KnowledgeGraphEngine {
     };
   }
 
+  /**
+   * CODE-15: 用户点"删除所有数据"应该清光，不能有任何残留。
+   * 用 transaction 保证原子性 — 中途失败不留半截脏数据。
+   */
   clearAll() {
-    this.db.exec(
-      "DELETE FROM entities; DELETE FROM relationships; DELETE FROM memory_events; DELETE FROM pipeline_logs; DELETE FROM business_logs; DELETE FROM system_logs;"
-    );
+    const tx = this.db.transaction(() => {
+      this.db.exec(`
+        DELETE FROM entities;
+        DELETE FROM relationships;
+        DELETE FROM memory_events;
+        DELETE FROM pipeline_logs;
+        DELETE FROM business_logs;
+        DELETE FROM system_logs;
+        DELETE FROM user_feedback;
+        DELETE FROM prompt_eval_suggestions;
+        DELETE FROM negative_patterns;
+      `);
+    });
+    tx();
   }
 
   savePipelineLog(id: string, duration: number, status: string, stages: unknown, overallRating?: string) {
@@ -2437,6 +2632,17 @@ export class KnowledgeGraphEngine {
     intent?: string;
     /** LLM 给出的总结 */
     summary?: string;
+    /** LLM 给出的"接下来你可能..."预测，区别于 summary */
+    prediction?: string;
+    /** 同次 pipeline 里 LLM 提出的其他 action（不含当前这条） */
+    siblingActions?: Array<{
+      id: string;
+      type: string;
+      description: string;
+      status: string;
+    }>;
+    /** 同次 pipeline 里 LLM 给出的 suggestion 标题（限 5 条） */
+    siblingSuggestions?: Array<{ title: string }>;
     /** 该 action 在 pipeline 中的所有 business_logs 节点 */
     timeline: Array<{
       node: string;
@@ -2478,6 +2684,7 @@ export class KnowledgeGraphEngine {
     let foundStartedAt = 0;
     let foundDurationMs = 0;
     let foundPipelineId: string | undefined;
+    let foundSiblingActions: Array<{ id: string; type: string; description: string; status: string }> = [];
 
     for (const c of candidates) {
       try {
@@ -2507,6 +2714,21 @@ export class KnowledgeGraphEngine {
         foundConfirmed = isConfirm || foundConfirmed;
         foundStartedAt = c.start_time;
         foundPipelineId = c.pipeline_id;
+        // sibling actions — 同 batch 里除了自己之外的 action（只在 actions.execute 路径有）
+        if (inputActions.length > 1) {
+          foundSiblingActions = inputActions
+            .filter((other) => other.id && other.id !== actionId)
+            .map((other) => {
+              const rid = String(other.id);
+              const r = results.find((rr) => rr.actionId === rid);
+              return {
+                id: rid,
+                type: String(other.type ?? ""),
+                description: String(other.description ?? ""),
+                status: String(r?.status ?? "pending")
+              };
+            });
+        }
         break;
       } catch { /* skip malformed row */ }
     }
@@ -2518,6 +2740,8 @@ export class KnowledgeGraphEngine {
     let intent: string | undefined;
     let summary: string | undefined;
     let pipelineStartedAt: number | undefined;
+    let prediction: string | undefined;
+    let siblingSuggestions: Array<{ title: string }> = [];
     if (foundPipelineId) {
       const plRow = this.db
         .prepare(`SELECT timestamp, stages FROM pipeline_logs WHERE id = ?`)
@@ -2525,15 +2749,25 @@ export class KnowledgeGraphEngine {
       if (plRow) {
         pipelineStartedAt = plRow.timestamp;
         try {
-          const stages = JSON.parse(plRow.stages ?? "{}") as Record<string, { input?: Record<string, unknown>; output?: Record<string, unknown> }>;
+          const stages = JSON.parse(plRow.stages ?? "{}") as Record<string, { input?: Record<string, unknown>; output?: Record<string, unknown>; data?: Record<string, unknown> }>;
           const aggIn = stages.aggregate?.input ?? {};
           const aggOut = stages.aggregate?.output ?? {};
-          const agentOut = stages.agent?.output ?? {};
+          const agentOut = (stages.agent?.output ?? {}) as Record<string, unknown>;
           appName = String((aggIn as Record<string, unknown>).appName ?? "");
           windowTitle = String((aggIn as Record<string, unknown>).windowTitle ?? "");
           ocrPreview = String((aggOut as Record<string, unknown>).preview ?? "").slice(0, 500);
-          intent = String((agentOut as Record<string, unknown>).intent ?? "");
-          summary = String((agentOut as Record<string, unknown>).summary ?? (agentOut as Record<string, unknown>).prediction ?? "");
+          intent = String(agentOut.intent ?? "");
+          // summary 和 prediction 分开存（C: 因果链增强）
+          const rawSummary = String(agentOut.summary ?? "");
+          const rawPrediction = String(agentOut.prediction ?? "");
+          summary = rawSummary || rawPrediction; // 兼容老数据
+          prediction = rawPrediction && rawPrediction !== rawSummary ? rawPrediction : undefined;
+          // sibling suggestions — 从 stages.suggestions.data.suggestions 拿（限 5 条）
+          const suggData = (stages.suggestions?.data ?? {}) as Record<string, unknown>;
+          const suggList = (suggData.suggestions as Array<Record<string, unknown>> | undefined) ?? [];
+          siblingSuggestions = suggList.slice(0, 5)
+            .map((s) => ({ title: String(s.title ?? "").trim() }))
+            .filter((s) => s.title);
         } catch { /* */ }
       }
     }
@@ -2584,6 +2818,9 @@ export class KnowledgeGraphEngine {
       ocrPreview,
       intent,
       summary,
+      prediction,
+      siblingActions: foundSiblingActions.length ? foundSiblingActions : undefined,
+      siblingSuggestions: siblingSuggestions.length ? siblingSuggestions : undefined,
       timeline
     };
   }
@@ -2627,6 +2864,256 @@ export class KnowledgeGraphEngine {
 
   getSystemLogs(limit = 200) {
     return this.db.prepare("SELECT * FROM system_logs ORDER BY timestamp DESC LIMIT ?").all(limit);
+  }
+
+  // ============================================================================
+  // 产出物看板 —— 用户反馈："Ovo 替我做的事我在哪看？"
+  // 聚合各种 ovo 产出物：笔记 / 已复制 / 已发邮件 / 已设提醒等
+  // ============================================================================
+
+  /**
+   * 拉最近 N 条"已发生"的产出物（不含 drafts，drafts 单独走 listDrafts）。
+   * 数据源：business_logs 中 node=actions.execute 或 action.confirm.execute 的 success 结果。
+   * 每条产出物按 actionId 去重，保留最新 status。
+   */
+  getRecentOutputs(limit = 50): Array<{
+    actionId: string;
+    type: string;
+    description: string;
+    status: string;
+    timestamp: number;
+    pipelineId?: string;
+    params?: Record<string, unknown>;
+    output?: string;
+  }> {
+    // 拉最近的 actions.execute / action.confirm.execute business_log
+    const rows = this.db.prepare(
+      `SELECT id, pipeline_id, node, input, output, status, start_time
+         FROM business_logs
+        WHERE node IN ('actions.execute','action.confirm.execute')
+        ORDER BY start_time DESC
+        LIMIT ?`
+    ).all(limit * 3) as Array<{
+      id: string; pipeline_id: string | null; node: string;
+      input: string; output: string; status: string; start_time: number;
+    }>;
+
+    const seen = new Set<string>();
+    const out: Array<{
+      actionId: string; type: string; description: string; status: string;
+      timestamp: number; pipelineId?: string; params?: Record<string, unknown>; output?: string;
+    }> = [];
+
+    for (const r of rows) {
+      if (out.length >= limit) break;
+      try {
+        const inp = JSON.parse(r.input ?? "{}") as Record<string, unknown>;
+        const outp = JSON.parse(r.output ?? "{}") as Record<string, unknown>;
+        const inputActions = (inp.actions as Array<Record<string, unknown>> | undefined) ?? [];
+        const results = (outp.results as Array<Record<string, unknown>> | undefined) ?? [];
+        // confirm 路径 input 直接是 {actionId, description}
+        const isConfirm = r.node === "action.confirm.execute";
+        if (isConfirm) {
+          const actionId = String(inp.actionId ?? "");
+          if (!actionId || seen.has(actionId)) continue;
+          // 从 results[0] 取实际结果（confirm 路径的格式）
+          const firstResult = results[0] ?? {};
+          const status = String(firstResult.status ?? r.status ?? "");
+          if (status !== "success") continue;
+          seen.add(actionId);
+          out.push({
+            actionId,
+            type: String(firstResult.type ?? "other"),
+            description: String(inp.description ?? ""),
+            status,
+            timestamp: r.start_time,
+            pipelineId: r.pipeline_id ?? undefined,
+            output: typeof firstResult.output === "string" ? firstResult.output : undefined
+          });
+          continue;
+        }
+        // actions.execute 路径：input.actions[] 跟 output.results[] 一一对应
+        for (const a of inputActions) {
+          const actionId = String(a.id ?? "");
+          if (!actionId || seen.has(actionId)) continue;
+          const result = results.find((rr) => rr.actionId === actionId);
+          if (!result) continue;
+          const status = String(result.status ?? "");
+          if (status !== "success") continue;
+          seen.add(actionId);
+          out.push({
+            actionId,
+            type: String(a.type ?? "other"),
+            description: String(a.description ?? ""),
+            status,
+            timestamp: r.start_time,
+            pipelineId: r.pipeline_id ?? undefined,
+            params: (a.params as Record<string, unknown>) ?? {},
+            output: typeof result.output === "string" ? result.output : undefined
+          });
+          if (out.length >= limit) break;
+        }
+      } catch { /* skip malformed row */ }
+    }
+    return out;
+  }
+
+  // ============================================================================
+  // 草稿台 (drafts) CRUD —— 反思 #2 第三种状态：Ovo 准备好但没出手的 action
+  // ============================================================================
+
+  /**
+   * 添加一条草稿（inferred 但 evidence 验证未通过的 action 落这里）
+   */
+  addDraft(payload: {
+    id: string;
+    actionId: string;
+    actionType: string;
+    description: string;
+    params: Record<string, unknown>;
+    evidenceLevel: string;
+    evidence: string[];
+    groundingStatus: string;
+    groundingReason: string;
+    appName?: string;
+    windowTitle?: string;
+    pipelineId?: string;
+  }): void {
+    this.db.prepare(
+      `INSERT OR REPLACE INTO drafts
+       (id, created_at, pipeline_id, action_id, action_type, description, params,
+        evidence_level, evidence, grounding_status, grounding_reason,
+        app_name, window_title, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`
+    ).run(
+      payload.id,
+      Date.now(),
+      payload.pipelineId ?? null,
+      payload.actionId,
+      payload.actionType,
+      payload.description,
+      JSON.stringify(payload.params ?? {}),
+      payload.evidenceLevel,
+      JSON.stringify(payload.evidence ?? []),
+      payload.groundingStatus,
+      payload.groundingReason,
+      payload.appName ?? null,
+      payload.windowTitle ?? null
+    );
+  }
+
+  /**
+   * 列出最近 N 条仍 pending 的草稿（用于主面板"草稿台"展示）
+   */
+  listDrafts(limit = 20): Array<{
+    id: string;
+    createdAt: number;
+    actionId: string;
+    actionType: string;
+    description: string;
+    params: Record<string, unknown>;
+    evidenceLevel: string;
+    evidence: string[];
+    groundingStatus: string;
+    groundingReason: string;
+    appName?: string;
+    windowTitle?: string;
+    pipelineId?: string;
+  }> {
+    const rows = this.db.prepare(
+      `SELECT id, created_at, pipeline_id, action_id, action_type, description, params,
+              evidence_level, evidence, grounding_status, grounding_reason,
+              app_name, window_title
+         FROM drafts
+        WHERE status = 'pending'
+        ORDER BY created_at DESC
+        LIMIT ?`
+    ).all(limit) as Array<{
+      id: string; created_at: number; pipeline_id: string | null;
+      action_id: string; action_type: string; description: string;
+      params: string; evidence_level: string; evidence: string;
+      grounding_status: string; grounding_reason: string;
+      app_name: string | null; window_title: string | null;
+    }>;
+    return rows.map((r) => ({
+      id: r.id,
+      createdAt: r.created_at,
+      actionId: r.action_id,
+      actionType: r.action_type,
+      description: r.description,
+      params: ((): Record<string, unknown> => {
+        try { return JSON.parse(r.params ?? "{}") as Record<string, unknown>; } catch { return {}; }
+      })(),
+      evidenceLevel: r.evidence_level,
+      evidence: ((): string[] => {
+        try { return JSON.parse(r.evidence ?? "[]") as string[]; } catch { return []; }
+      })(),
+      groundingStatus: r.grounding_status,
+      groundingReason: r.grounding_reason,
+      appName: r.app_name ?? undefined,
+      windowTitle: r.window_title ?? undefined,
+      pipelineId: r.pipeline_id ?? undefined
+    }));
+  }
+
+  /**
+   * 用户点"采用"：把草稿读出来后，调用方应再走 action-executor 真执行。
+   * 这里只负责把 status 标 promoted，不执行 action 本身。
+   */
+  promoteDraft(id: string): { ok: boolean; draft?: ReturnType<KnowledgeGraphEngine["listDrafts"]>[number] } {
+    const all = this.db.prepare(
+      `SELECT id, created_at, pipeline_id, action_id, action_type, description, params,
+              evidence_level, evidence, grounding_status, grounding_reason,
+              app_name, window_title
+         FROM drafts WHERE id = ? AND status = 'pending'`
+    ).get(id) as undefined | {
+      id: string; created_at: number; pipeline_id: string | null;
+      action_id: string; action_type: string; description: string;
+      params: string; evidence_level: string; evidence: string;
+      grounding_status: string; grounding_reason: string;
+      app_name: string | null; window_title: string | null;
+    };
+    if (!all) return { ok: false };
+    this.db.prepare("UPDATE drafts SET status = 'promoted' WHERE id = ?").run(id);
+    return {
+      ok: true,
+      draft: {
+        id: all.id,
+        createdAt: all.created_at,
+        actionId: all.action_id,
+        actionType: all.action_type,
+        description: all.description,
+        params: ((): Record<string, unknown> => {
+          try { return JSON.parse(all.params ?? "{}") as Record<string, unknown>; } catch { return {}; }
+        })(),
+        evidenceLevel: all.evidence_level,
+        evidence: ((): string[] => {
+          try { return JSON.parse(all.evidence ?? "[]") as string[]; } catch { return []; }
+        })(),
+        groundingStatus: all.grounding_status,
+        groundingReason: all.grounding_reason,
+        appName: all.app_name ?? undefined,
+        windowTitle: all.window_title ?? undefined,
+        pipelineId: all.pipeline_id ?? undefined
+      }
+    };
+  }
+
+  /** 用户点"忽略"：标 dismissed */
+  dismissDraft(id: string): { ok: boolean } {
+    const r = this.db.prepare("UPDATE drafts SET status = 'dismissed' WHERE id = ? AND status = 'pending'").run(id);
+    return { ok: r.changes > 0 };
+  }
+
+  /**
+   * 清理过期草稿（默认 7 天）—— 自动化运维，避免无限增长
+   */
+  expireOldDrafts(olderThanMs = 7 * 24 * 3600 * 1000): { expired: number } {
+    const cutoff = Date.now() - olderThanMs;
+    const r = this.db.prepare(
+      "UPDATE drafts SET status = 'expired' WHERE status = 'pending' AND created_at < ?"
+    ).run(cutoff);
+    return { expired: r.changes };
   }
 
   /** Close the database connection - should be called on app quit */
