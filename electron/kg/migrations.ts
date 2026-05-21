@@ -11,7 +11,7 @@
  */
 import type Database from "better-sqlite3";
 
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 4;  // v4: evidence_inflation；v3: drafts；v2: memory_events actor
 
 /** 单条 migration 失败的统一处理：良性错误 swallow，真错误告警 */
 function reportMigrationError(err: unknown, label: string) {
@@ -242,6 +242,59 @@ export function bootstrap(db: Database.Database): void {
   } catch (err) {
     reportMigrationError(err, "memory_events.source_window_id");
   }
+
+  // v2 迁移：memory_events 加 5W 模型的 actor / actor_name（区分"我"做的 vs "别人"做的）
+  try {
+    const meCols = db.prepare("PRAGMA table_info(memory_events)").all() as Array<{ name: string }>;
+    const meNames = new Set(meCols.map((c) => c.name));
+    if (!meNames.has("actor")) {
+      db.exec("ALTER TABLE memory_events ADD COLUMN actor TEXT DEFAULT 'unknown'");
+    }
+    if (!meNames.has("actor_name")) {
+      db.exec("ALTER TABLE memory_events ADD COLUMN actor_name TEXT");
+    }
+    db.exec("CREATE INDEX IF NOT EXISTS idx_memory_events_actor ON memory_events(actor, timestamp DESC)");
+  } catch (err) {
+    reportMigrationError(err, "memory_events.actor+actor_name");
+  }
+
+  // v3 迁移：drafts 表 —— inferred-unverified 级别 action 的"准备区"（反思 #2 草稿台）
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS drafts (
+      id TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL,
+      pipeline_id TEXT,
+      action_id TEXT NOT NULL,
+      action_type TEXT NOT NULL,
+      description TEXT NOT NULL,
+      params TEXT NOT NULL,
+      evidence_level TEXT NOT NULL,
+      evidence TEXT NOT NULL,
+      grounding_status TEXT NOT NULL,
+      grounding_reason TEXT,
+      app_name TEXT,
+      window_title TEXT,
+      status TEXT NOT NULL DEFAULT 'pending'  -- pending | promoted | dismissed | expired
+    );
+    CREATE INDEX IF NOT EXISTS idx_drafts_status_created ON drafts(status, created_at DESC);
+  `);
+
+  // v4 迁移：evidence_inflation 表 —— 反向校准（反思 #2 / T8）
+  //   用户反复弃用某 (app, intent, action_type) 的草稿 / 取消其 action 时 score += 1，
+  //   合成 prompt 在该场景注入"请保守"软约束。score 读取时按时间衰减，自我纠正。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS evidence_inflation (
+      id TEXT PRIMARY KEY,
+      app_name TEXT,
+      action_type TEXT,
+      intent TEXT,
+      score REAL NOT NULL DEFAULT 0,
+      last_at INTEGER NOT NULL,
+      UNIQUE(app_name, action_type, intent)
+    );
+    CREATE INDEX IF NOT EXISTS idx_inflation_lookup
+      ON evidence_inflation(app_name, action_type, intent);
+  `);
 
   // T15 / C9 / A7: bootstrap 全部走完，写入当前 schema 版本号
   // 升级路径：CURRENT_SCHEMA_VERSION ++ 后，运维通过 SELECT version FROM schema_version 一眼看到当前版本

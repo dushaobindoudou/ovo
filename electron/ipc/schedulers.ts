@@ -164,6 +164,10 @@ export function registerSchedulers(deps: SchedulerDeps): { startupGcTimer: NodeJ
           const ret = kg.runRetentionGC(effective);
           logSystem("info", "kg.retention", "数据保留期 GC 完成", { ...ret, retentionDays });
         }
+        // R2-2: 草稿过期清理。expireOldDrafts 之前是死代码（无调度方），导致 drafts
+        // 表 pending 行无限增长。接进每日 GC，默认 7 天未处理的草稿标 expired。
+        const draftRet = kg.expireOldDrafts();
+        if (draftRet.expired > 0) logSystem("info", "kg.drafts-gc", "过期草稿清理", draftRet);
       } catch (e) {
         logSystem("error", "kg.gc", "KG GC 失败", {
           error: e instanceof Error ? e.message : String(e)

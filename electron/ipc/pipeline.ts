@@ -182,7 +182,11 @@ export function registerPipelineHandlers(deps: IpcHandlerDeps) {
     "action:cancel",
     (_event, payload: { actionId: string; pipelineId?: string }) => {
       // SEC-11: 取消时也从 registry 移除，避免后续 confirm 误判
-      consumePendingAction(payload.actionId);
+      const cancelled = consumePendingAction(payload.actionId);
+      // T8 反向校准：用户主动取消 pending action = "这个场景你太激进了"的强信号 → bump
+      if (cancelled?.action?.type) {
+        try { kg.bumpInflation({ actionType: cancelled.action.type }); } catch { /* 不阻断取消 */ }
+      }
       const result: ActionResult = {
         actionId: payload.actionId,
         status: "cancelled",

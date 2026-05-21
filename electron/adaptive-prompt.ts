@@ -36,185 +36,6 @@ export interface GraphContext {
   activityState?: string;
 }
 
-export function buildAdaptivePrompt(buffer: WindowBuffer, graphContext: GraphContext, personality: string): string {
-  const activity = `### 窗口: ${buffer.appName} - ${buffer.windowTitle}\n` +
-    buffer.entries
-      .map((entry) => `[${new Date(entry.timestamp).toISOString()}] ${entry.text.slice(0, 800)}`)
-      .join("\n");
-
-  const entities = graphContext.relevantEntities
-    .map((e) => `- ${e.name} (${e.type}): ${e.description ?? ""}`)
-    .join("\n");
-  const relations = graphContext.relevantRelations
-    .map((r) => `- ${r.source} --[${r.relation}]--> ${r.target}`)
-    .join("\n");
-  const summaries = (graphContext.insightSummaries ?? [])
-    .map((s) => `- [importance=${s.importance}] ${s.name}: ${s.description}`)
-    .join("\n");
-
-  const knownRolesText = (graphContext.knownRoles ?? [])
-    .slice(0, 5)
-    .map((r) => `- ${r.role} (置信 ${(r.confidence * 100).toFixed(0)}%)`)
-    .join("\n");
-
-  const feedbackBlock = graphContext.feedbackProfile && graphContext.feedbackProfile.trim()
-    ? `\n## 用户反馈画像（基于历史接受/忽略行为）\n${graphContext.feedbackProfile}`
-    : "";
-
-  // P2: 用户过去 5 分钟的活动轨迹，给 LLM 看跨窗口序列
-  const trajectoryBlock = graphContext.sessionTrajectory && graphContext.sessionTrajectory.trim()
-    ? `\n## 用户最近 5 分钟轨迹（按时间正序，看用户在追踪什么）\n${graphContext.sessionTrajectory}`
-    : "";
-  const activityBlock = graphContext.activityState && graphContext.activityState.trim()
-    ? `\n## 用户当前活动状态\n${graphContext.activityState}`
-    : "";
-
-  const appNames = Array.from(new Set([buffer.appName])).filter(Boolean);
-
-  return `你是 ovo——用户的长期副驾驶。**不要把自己当作屏幕动作快捷键执行器**。用户是有长期身份、兴趣、目标的人，你的核心价值是**识别他作为某种"角色"的持续需求**，然后**邀请他让你长期为他做事**。
-
-# 你必须按这个思维链回答
-看到屏幕后，按顺序在脑子里走 4 步（不要写出过程，只输出最终 JSON）：
-
-1) **直接观察**：屏幕上事实出现了什么？(intent / summary 字段)
-2) **角色推断**：这个活动暗示用户**当下扮演什么角色**？(user_role_hypothesis 字段)
-   - 不是问"他职业是什么"，是问"此刻屏幕活动里他是谁"
-   - 例：看 BTC K线 → 角色「加密资产持有者 / HODLer」
-   - 例：看孩子学校群聊 → 角色「家长」
-   - 例：在 Figma 调海报 → 角色「视觉设计师 / 自媒体作者」
-   - 例：刷招聘网站 → 角色「正在找工作的求职者」
-   - 拿 evidence: 屏幕证据 + KG 历史活动 至少 2 条
-   - confidence: 第一次见此角色 0.4-0.6；KG 已有此角色 0.7+；多次稳定出现 0.85+
-3) **长期意图**：这个角色这个月/这一年想解决什么？(latent_intent 字段)
-   - **不是这一秒**：不要写"他想知道当前 BTC 价格"
-   - 是长期：写"他想长期跟踪 BTC 行情、不错过重大事件、辅助买卖决策"
-4) **副驾驶能持续帮什么**：你能**周期或事件触发地**为这个角色做什么？(offers 字段)
-   - 这是产品最核心的一步
-   - 输出"邀请用户订阅长期服务"，不是输出"这一秒的快捷动作"
-   - 每屏最多 2 个 offer，宁缺毋滥
-
-# offers 写法规范（重要）
-- 第二人称、邀请式："你看起来在 X，要不要我每天 Y？"
-- value_prop 必须给具体好处："20 秒读完：价格 + 关键事件 + 你关心的几个链上指标"，**不要**写"帮你跟踪 BTC"这种空话
-- first_action_preview：用户接受后 ovo 立刻能给的样本（比如"今晚 9 点先给你出一份样本"）
-- frequency: daily | weekly | event-driven | one-shot
-- needs_capability 从这几个里选：scheduled_digest | threshold_monitor | comparison_report | topic_followup | progress_tracker
-- confidence: 0-1，结合角色置信 + offer 契合度
-
-# offers vs actions vs suggestions 的边界
-- **offers**：长期服务，让 ovo 持续地为用户做某事。频率词 + 邀请语气
-- **actions**：此刻可执行的具体操作（log_note 归档、copy_to_clipboard 复制、send_email 发邮件等）
-- **suggestions**：此刻给用户看的小建议（如回复草稿、风险提示）。不是长期服务
-
-# 反例 vs 正例（看 BTC 行情时）
-❌ action: copy_to_clipboard 当前价格（用户不需要，且会污染剪贴板）
-❌ suggestion: "建议关注比特币"（说了等于没说）
-❌ offer: "我可以监控 BTC 价格变化"（太空，没具体好处，没频率）
-✅ offer: { title: "每天给你一份 BTC 行情简报", value_prop: "20 秒读完：价格走势 + 24h 关键新闻 + 巨鲸异动", first_action_preview: "今晚 9 点先发一份样本看是否你想要的方向", frequency: "daily", needs_capability: "scheduled_digest", confidence: 0.78 }
-
-## 当前屏幕活动
-${activity}
-${trajectoryBlock}${activityBlock}
-
-## 图谱上下文（用户的"长期记忆"）
-### 相关实体
-${entities || "- 无"}
-### 相关关系
-${relations || "- 无"}
-### 高密度记忆摘要
-${summaries || "- 无"}
-### 用户已建立的角色画像（重要！优先复用，不要重新发明）
-${knownRolesText || "- 暂无（如果当前活动暗示某角色，本次推断后会写入）"}${feedbackBlock}
-
-## 用户人格摘要
-${personality}
-
-# 输出 JSON schema（必须严格遵守）
-{
-  "intent": "string  // ≤80 字描述用户当前活动",
-  "summary": "string  // ≤30 字卡片标题，悬浮球 tooltip 用",
-  "prediction": "string  // 用户下一步行为的具体预测",
-  "risk": "none | low | medium | high | critical",
-
-  "user_role_hypothesis": {
-    "role": "string  // 当下角色，例 'BTC HODLer' / '家长' / '视觉设计师'",
-    "evidence": ["string  // 屏幕证据 + KG 支撑，2-4 条"],
-    "confidence": 0.0
-  },
-
-  "latent_intent": "string  // 这个角色长期想解决什么，≤120 字",
-
-  "offers": [
-    {
-      "id": "string  // snake_case，例 btc_daily_digest",
-      "title": "string  // 邀请式标题，例 '每天给你一份 BTC 行情简报'",
-      "value_prop": "string  // 用户能得到的具体好处，必须具体不空泛",
-      "first_action_preview": "string  // 接受后立刻能给的样本预览",
-      "frequency": "daily | weekly | event-driven | one-shot",
-      "needs_capability": "scheduled_digest | threshold_monitor | comparison_report | topic_followup | progress_tracker",
-      "confidence": 0.0
-    }
-  ],
-
-  "actions": [
-    {
-      "id": "string",
-      "type": "log_note | create_todo | send_email | send_imessage | copy_to_clipboard | search | search_web | open_url | open_app | summarize | set_reminder | add_calendar | index_path | other",
-      "description": "string",
-      "params": {},
-      "requireConfirm": false,
-      "priority": 0
-    }
-  ],
-
-  "suggestions": [
-    { "id": "string", "type": "tip|reply|risk|insight|next_step", "title": "string", "content": "string", "detail": "string", "priority": 0 }
-  ],
-
-  "content": ["string"],
-  "entities": [
-    { "name": "string", "type": "person|project|document|concept|organization|location|application|application_file|behavior_pattern|watchlist|interest_profile|learning_graph|action_type|insight_summary", "description": "string", "attributes": {} }
-  ],
-  "relationships": [
-    { "source": "string", "target": "string", "relation": "string", "context": "string" }
-  ]
-}
-
-# 关系类型枚举
-uses | depends_on | references | solves | relates_to | precedes | belongs_to | part_of
-
-# 强制规则
-1. 仅输出**一个** JSON 对象，无 markdown 围栏，无解释。
-2. **actions ≥ 1 条**（即使没明显意图，也至少 log_note 归档当前活动事实）。
-3. **entities 必须包含一个 application 类型**。当前应用: ${appNames.length > 0 ? appNames.join(", ") : "(未识别)"}。
-4. **任何抢屏/外发动作必须 requireConfirm: true**：send_email / send_imessage / open_url / search_web / open_app / set_reminder / add_calendar / index_path。
-5. risk=high|critical 时至少一条 suggestion priority ≥ 80。
-6. priority 0-100；confidence 0-1。
-7. content 必须是字符串数组。
-8. intent / summary / prediction / latent_intent / role / offers 必须中文（除非屏幕主体非中文）。
-9. **不要把 ovo 自己的 UI 错误（如权限提示、控制台报错）当作用户的活动来分析或归档**——那是 ovo 自身问题，不是用户的事。
-10. **重复抑制**：同样的 offer 不要每次都出。如果"用户已建立的角色画像"里此角色 confidence 已 ≥ 0.85，且 KG 里已有相关 entity，offers 可以不出，把名额让给更有意义的小动作（如归档、回复草稿）。
-
-# entities 抽取严格规则（KG 是用户长期记忆，宁缺勿滥）
-**只抽这些**（高密度、有持续意义）：
-✅ 专有名词：BTC / Three.js / Qwen-plus / Anthropic / GPT-4
-✅ 用户的真实项目：「ovo小程序」「家庭法律咨询小程序」
-✅ 持续兴趣主题：「AI Agent 自进化」「视觉设计」「育儿」
-✅ 真实人物：「张三（产品同事）」「Andrej Karpathy」
-✅ 真实组织：「Anthropic」「阿里云」「YC」
-✅ 用户提到的具体文档/链接（带完整 URL 或文件路径）
-
-**绝对不要抽**（这些都是噪音）：
-❌ UI 标签：'New chat' / 'Send' / 'Reply' / 'Submit' / 'Cancel' / '提交' / '取消' / '发送'
-❌ 通用动词：'browsing' / 'looking' / 'scrolling' / '浏览' / '查看' / '打开'
-❌ 应用本身（已经被 application 类型独立管，不要在 concept 里重复抽 'Chrome' / 'Slack'）
-❌ 一次性短语：'测试一下' / '看看' / '哦' / '好的'
-❌ 时间戳 / 数字 / 单位（'2026 年 4 月' / '100%' / '$95k'——除非这是项目里程碑）
-❌ 太宽泛的概念：'技术' / '软件' / '产品'——必须更具体
-
-**质量优先**：每屏 entities ≤ 5 个；宁缺勿滥；如果不确定一个东西算不算 UI 标签，**默认不抽**。
-**每个 entity 必须 description 说清楚"为什么对这个用户值得记住"**——如果你写不出"为什么"就别抽。`;
-}
 
 /* ──────────────────────────────────────────────────────────────────────
  * P3: 拆两段。
@@ -375,6 +196,8 @@ export interface ObservationContext {
   feedbackProfile?: string;
   /** PHIL-1 / P0.4: 用户教过的禁忌（pattern_text 列表），注入到 prompt 硬性约束 LLM */
   negativePatterns?: string[];
+  /** T8 反向校准：当前场景下用户过去反复拒绝的 action 类型（软约束，提示 LLM 保守） */
+  inflationWarnings?: string[];
 }
 
 /**
@@ -397,6 +220,12 @@ export function buildSynthesisPrompt(observation: ObservationContext): string {
     ? `\n## ⛔ 用户教过的禁忌（必须遵守，不可违反）\n${observation.negativePatterns.map((p) => `- ${p}`).join("\n")}\n
 任何 action / suggestion / offer 都不能违反上述任一条。如果当前场景明显触发某条禁忌，宁可 actions 只剩 log_note。\n`
     : "";
+  // T8 反向校准：当前场景下用户过去反复拒绝过这些 action → 软约束，提示保守。
+  // 区别于禁忌（硬约束）：这里是"倾向"，不是"禁止"——除非证据非常充分，否则别再主动出这些 action。
+  const inflationBlock = observation.inflationWarnings && observation.inflationWarnings.length > 0
+    ? `\n## ⚠️ 你在这个场景过去夸大过 evidence（请保守）\n${observation.inflationWarnings.map((w) => `- ${w}`).join("\n")}\n
+对上述类型的 action：除非屏幕上有非常明确的证据，否则不要主动生成；拿不准就降级为 suggestion 或只 log_note。\n`
+    : "";
 
   return `你是 ovo——用户的长期副驾驶。
 
@@ -410,7 +239,7 @@ export function buildSynthesisPrompt(observation: ObservationContext): string {
 - 长期意图: ${observation.latentIntent ?? "(未推断)"}
 - 相关 entity:
 ${entityList || "- 无"}
-${feedbackBlock}${negativeBlock}
+${feedbackBlock}${negativeBlock}${inflationBlock}
 # 你要做的 3 类输出
 
 ## offers (长期服务，最多 2 条；可以为空)
@@ -453,7 +282,8 @@ ${feedbackBlock}${negativeBlock}
   - **"ovo_generated"**：复制 ovo 自己生成的内容（回复草稿、总结、整理好的文案）。**这种应该积极主动**——用户看到回复草稿就该自动到剪贴板里，按 Cmd+V 直接就用。
   - 例：用户在写邮件 → 生成 3 条回复草稿 → 输出 copy_to_clipboard(source="ovo_generated", text="<最佳那一条草稿>") 是好的；同时把另外 2 条放在 suggestions[].content 里供切换
 - create_todo / search / summarize 等
-- ❗ 任何"抢屏 / 外发"动作必须 requireConfirm: true: send_email / send_imessage / open_url / search_web / open_app / set_reminder / add_calendar / index_path
+- ❗ 不可逆 / 外发动作必须 requireConfirm: true: send_email / send_imessage / index_path（发出去/扫文件收不回）。
+  其余动作的"自动执行 vs 等确认"由主进程信任等级决定，不要给 set_reminder / add_calendar / copy 等可逆动作标 requireConfirm（会害它们无谓地卡在等确认）。
 
 ## suggestions (轻量提示，可以为空)
 - 类型: tip | reply | risk | insight | next_step
