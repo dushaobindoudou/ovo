@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, screen, systemPreferences } from "electron";
+import { app, BrowserWindow, Tray, Menu, screen, systemPreferences, ipcMain } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { registerIpcHandlers } from "./ipc-handlers.js";
@@ -14,6 +14,7 @@ import { systemEvents } from "./system-events.js";
 import { startUpdateChecker } from "./update-check.js";
 import { inferActivityState } from "./session-tracker.js";
 import { renderAppIcon, renderTrayIcon } from "./icon-renderer.js";
+import { mt, setMainLanguage } from "./i18n-main.js";
 import type { AgentSuggestion, AgentAction } from "./types.js";
 import type { AutoCaptureService } from "./auto-capture.js";
 import { safeExecute } from "./safe-execute.js";
@@ -40,30 +41,34 @@ function resolvePreloadPath() {
   return path.join(app.getAppPath(), "electron", "preload.cjs");
 }
 
+/** 用当前语言（i18n-main）重建托盘菜单 + tooltip。语言切换时也调它。 */
+function refreshTrayMenu() {
+  if (!tray) return;
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: mt("tray.openConsole"),
+      click: () => {
+        if (consoleWindow) {
+          consoleWindow.show();
+          consoleWindow.focus();
+        }
+      }
+    },
+    { type: "separator" },
+    {
+      label: mt("tray.quit"),
+      click: () => app.quit()
+    }
+  ]);
+  tray.setToolTip(mt("tray.tooltip"));
+  tray.setContextMenu(contextMenu);
+}
+
 function createTray() {
   try {
     const trayIcon = renderTrayIcon();
     tray = new Tray(trayIcon);
-
-    const contextMenu = Menu.buildFromTemplate([
-      {
-        label: "打开控制台",
-        click: () => {
-          if (consoleWindow) {
-            consoleWindow.show();
-            consoleWindow.focus();
-          }
-        }
-      },
-      { type: "separator" },
-      {
-        label: "退出 ovo",
-        click: () => app.quit()
-      }
-    ]);
-
-    tray.setToolTip("ovo - AI 桌面助手");
-    tray.setContextMenu(contextMenu);
+    refreshTrayMenu();
     tray.on("click", () => {
       if (consoleWindow) {
         consoleWindow.show();
@@ -790,6 +795,16 @@ async function bootstrap() {
       });
     return;
   }
+
+  // i18n P3：主进程语言初始化（托盘菜单 + 回执 toast 据此翻译）
+  setMainLanguage(preferencesStore.getUiLanguage());
+  // renderer 切换语言时同步过来：更新偏好 + 主进程语言 + 重建托盘菜单
+  ipcMain.handle("prefs:set-ui-language", (_e, lang: "zh" | "en" | "system") => {
+    preferencesStore.setUiLanguage(lang);
+    setMainLanguage(lang);
+    refreshTrayMenu();
+    return { ok: true };
+  });
 
   setupDockIcon();
   createAllWindows();

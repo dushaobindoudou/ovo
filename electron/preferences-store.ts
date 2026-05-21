@@ -75,6 +75,8 @@ export interface UserPreferences {
   redactionLevel?: "basic" | "strict" | "paranoid";
   /** TTS 是否启用（SEC-12 默认 false — 用户必须显式开启才会把 LLM 输出发给 Edge TTS） */
   ttsEnabled?: boolean;
+  /** 界面语言（i18n P3）：zh / en / system。主进程托盘菜单 + 回执 toast 据此翻译 */
+  uiLanguage?: "zh" | "en" | "system";
 }
 
 // T2: 默认黑名单——开箱即保护敏感场景
@@ -220,6 +222,13 @@ class PreferencesStore {
   }
   getTtsEnabled(): boolean {
     return !!this.cache.ttsEnabled;
+  }
+  getUiLanguage(): "zh" | "en" | "system" {
+    return this.cache.uiLanguage ?? "system";
+  }
+  setUiLanguage(lang: "zh" | "en" | "system") {
+    this.cache = { ...this.cache, uiLanguage: lang };
+    this.persist();
   }
 
   private persist() {

@@ -783,6 +783,7 @@ export interface OvoAPI {
     openApp: (payload: { app?: string; bundleId?: string }) => Promise<{ ok: boolean; error?: string }>;
   };
   prefs: {
+    setUiLanguage: (lang: "zh" | "en" | "system") => Promise<{ ok: boolean }>;
     getPersonalityOverrides: () => Promise<Record<string, number>>;
     setPersonalityOverrides: (overrides: Record<string, number>) => Promise<{ ok: boolean }>;
     getBootstrapStatus: () => Promise<{

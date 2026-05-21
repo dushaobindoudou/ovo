@@ -5,6 +5,7 @@
  * 这里只放 stateless 函数 / Proxy 工厂；任何依赖闭包状态的逻辑
  * 仍留在 ipc-handlers.ts 主文件。
  */
+import { mt } from "../i18n-main.js";
 import { BrowserWindow } from "electron";
 import type { ZodType } from "zod";
 import { errorLogger } from "../error-logger.js";
@@ -144,17 +145,17 @@ export function buildActionReceipts(actions: AgentAction[], results: ActionResul
       let content: string;
       if (looksLikeCode(text)) {
         const lines = text.split(/\r?\n/).length;
-        content = `已复制 ${text.length} 字符（约 ${lines} 行，看起来是代码）`;
+        content = mt("receipt.copiedCode", { len: text.length, lines });
       } else if (text.length > 80) {
         // 长文本也只显示开头 60 字 + 长度，避免噪音
-        content = `已复制：${text.slice(0, 60)}…（共 ${text.length} 字符）`;
+        content = mt("receipt.copiedLong", { preview: text.slice(0, 60), len: text.length });
       } else {
         content = text || action.description;
       }
       out.push({
         id: `receipt_${r.actionId}_${Date.now().toString(36)}`,
         type: "receipt",
-        title: "ovo 已帮你复制",
+        title: mt("receipt.copied"),
         content,
         priority: 100
       });
@@ -166,8 +167,8 @@ export function buildActionReceipts(actions: AgentAction[], results: ActionResul
       out.push({
         id: `receipt_${r.actionId}_${Date.now().toString(36)}`,
         type: "receipt",
-        title: "ovo 已发送邮件",
-        content: `${to ? `收件人: ${to}\n` : ""}主题: ${subject}`.trim(),
+        title: mt("receipt.emailSent"),
+        content: `${to ? mt("receipt.to", { to }) + "\n" : ""}${mt("receipt.subject", { subject })}`.trim(),
         priority: 100
       });
       continue;
@@ -178,8 +179,8 @@ export function buildActionReceipts(actions: AgentAction[], results: ActionResul
       out.push({
         id: `receipt_${r.actionId}_${Date.now().toString(36)}`,
         type: "receipt",
-        title: "ovo 已发送 iMessage",
-        content: `${to ? `收件人: ${to}\n` : ""}${body}`.slice(0, 240),
+        title: mt("receipt.imessageSent"),
+        content: `${to ? mt("receipt.to", { to }) + "\n" : ""}${body}`.slice(0, 240),
         priority: 100
       });
       continue;
@@ -188,7 +189,7 @@ export function buildActionReceipts(actions: AgentAction[], results: ActionResul
       out.push({
         id: `receipt_${r.actionId}_${Date.now().toString(36)}`,
         type: "receipt",
-        title: action.type === "set_reminder" ? "ovo 已设置提醒" : "ovo 已加入日历",
+        title: action.type === "set_reminder" ? mt("receipt.reminderSet") : mt("receipt.calendarAdded"),
         content: action.description,
         priority: 100
       });
@@ -199,7 +200,7 @@ export function buildActionReceipts(actions: AgentAction[], results: ActionResul
       out.push({
         id: `receipt_${r.actionId}_${Date.now().toString(36)}`,
         type: "receipt",
-        title: "ovo 已记录提醒",
+        title: mt("receipt.noteLogged"),
         content: action.description,
         priority: 100
       });

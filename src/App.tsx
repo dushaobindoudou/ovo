@@ -67,9 +67,12 @@ function App() {
     setMounted(true);
   }, [theme]);
 
-  // i18n：同步语言到 i18next（含 system 解析）
+  // i18n：同步语言到 i18next（含 system 解析）+ 同步到主进程（托盘菜单/回执 toast）
   useEffect(() => {
     applyLanguage(language);
+    if (isElectron) {
+      try { void window.ovoAPI.prefs.setUiLanguage?.(language); } catch { /* */ }
+    }
   }, [language]);
 
   // 监听系统语言变化（仅 language=system 时）

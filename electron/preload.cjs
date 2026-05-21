@@ -89,6 +89,7 @@ const ALLOWED_CHANNELS = new Set([
   "toast:set-verbosity",
   "alert:get-recent",
   // 用户偏好
+  "prefs:set-ui-language",
   "prefs:get-personality-overrides",
   "prefs:set-personality-overrides",
   "prefs:get-bootstrap-status",
@@ -342,6 +343,7 @@ contextBridge.exposeInMainWorld("ovoAPI", {
     openApp: (payload) => ipcRenderer.invoke("system:open-app", payload)
   },
   prefs: {
+    setUiLanguage: (lang) => ipcRenderer.invoke("prefs:set-ui-language", lang),
     getPersonalityOverrides: () => ipcRenderer.invoke("prefs:get-personality-overrides"),
     setPersonalityOverrides: (overrides) => ipcRenderer.invoke("prefs:set-personality-overrides", overrides),
     getBootstrapStatus: () => ipcRenderer.invoke("prefs:get-bootstrap-status"),
