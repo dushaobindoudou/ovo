@@ -1,5 +1,4 @@
-import { app, BrowserWindow, ipcMain as rawIpcMain, systemPreferences, shell, screen } from "electron";
-import { execFile } from "node:child_process";
+import { app, BrowserWindow, ipcMain as rawIpcMain } from "electron";
 import { WindowManager } from "./window-manager.js";
 import { ScreenshotManager } from "./screenshot.js";
 import { OCREngine } from "./ocr-engine.js";
@@ -19,160 +18,39 @@ import { buildRelationInferencePrompt, parseInferredRelations } from "./relation
 import { buildSelfEvalPrompt, parseSelfEvalSuggestions } from "./prompt-self-eval.js";
 import { extractFilePaths } from "./file-recognizer.js";
 import { buildAggregatedText, summarizeAggregation } from "./text-diff.js";
-import { Logger } from "./logger.js";
 import { errorLogger } from "./error-logger.js";
 import { scheduler } from "./scheduler.js";
 import { sessionTracker, inferActivityState } from "./session-tracker.js";
-import { preferencesStore } from "./preferences-store.js";
 import { safeExecute, safeExecuteAsync } from "./safe-execute.js";
-import { setActiveRedactionLevel } from "./sensitive-filter.js";
-import { systemEvents } from "./system-events.js";
-import type { AgentAction, AgentSuggestion } from "./types.js";
+import { preferencesStore } from "./preferences-store.js";
+import { sanitizeParsedPayload } from "./text-sanitize.js";
+import type { AgentSuggestion } from "./types.js";
 import type { ActionResult } from "./action-executor.js";
 
-interface WindowGetterOptions {
-  getConsoleWindow: () => BrowserWindow | null;
-  getFloatingWindow: () => BrowserWindow | null;
-  getSuggestionWindow: () => BrowserWindow | null;
-  sharedKG?: KnowledgeGraphEngine;
-  logger?: Logger;
-  systemLogger?: {
-    info: (source: string, message: string, context?: Record<string, unknown>) => void;
-    warn: (source: string, message: string, context?: Record<string, unknown>) => void;
-    error: (source: string, message: string, context?: Record<string, unknown>) => void;
-  };
-  onSuggestions?: (suggestions: AgentSuggestion[]) => void;
-  onReceipts?: (receipts: AgentSuggestion[]) => void;
-  toastManager?: {
-    setVerbosity: (v: "silent" | "alerts" | "all") => void;
-    noteRejection?: (type: string) => void;
-    setDoNotDisturb?: (minutes: number) => void;
-    enqueueReceipts?: (receipts: AgentSuggestion[]) => void;
-  };
-}
+import {
+  broadcastToRendererWindows,
+  buildActionReceipts,
+  makeSafeHandle,
+  makeSafeIpcMain
+} from "./ipc/_utils.js";
+import { registerSchedulers } from "./ipc/schedulers.js";
+import { createPendingActionRegistry } from "./ipc/pending-actions.js";
+import { registerPrivacyHandlers } from "./ipc/privacy.js";
+import { registerKgHandlers } from "./ipc/kg.js";
+import { registerCaptureHandlers } from "./ipc/capture.js";
+import { registerAgentHandlers } from "./ipc/agent.js";
+import { registerPipelineHandlers } from "./ipc/pipeline.js";
+import { registerSystemHandlers } from "./ipc/system.js";
+import { registerDevHandlers } from "./ipc/dev.js";
+import type { IpcHandlerDeps, WindowGetterOptions } from "./ipc/_shared.js";
 
-type BusinessLogStatus = "pending" | "running" | "success" | "failed" | "skipped" | "cancelled";
-
-/**
- * P4: 把 action 执行结果转成"回执"提示，让用户知道 ovo 默默做了什么。
- * 只在 status="success" 且类型确实对外可感知时生成（剪贴板写入、邮件/iMessage 已发等）。
- * 静默类型（log_note / summarize / search / create_todo 等）不生成回执，避免噪音。
- */
-function buildActionReceipts(actions: AgentAction[], results: ActionResult[]): AgentSuggestion[] {
-  const byId = new Map<string, AgentAction>();
-  for (const a of actions) byId.set(a.id, a);
-  const out: AgentSuggestion[] = [];
-  for (const r of results) {
-    if (r.status !== "success") continue;
-    const action = byId.get(r.actionId);
-    if (!action) continue;
-    if (action.type === "copy_to_clipboard") {
-      const text = String(action.params?.text ?? "");
-      const preview = text.length > 200 ? `${text.slice(0, 200)}…` : text;
-      out.push({
-        id: `receipt_${r.actionId}_${Date.now().toString(36)}`,
-        type: "receipt",
-        title: "ovo 已帮你复制",
-        content: preview || action.description,
-        priority: 100
-      });
-      continue;
-    }
-    if (action.type === "send_email") {
-      const to = String(action.params?.to ?? "");
-      const subject = String(action.params?.subject ?? action.description ?? "");
-      out.push({
-        id: `receipt_${r.actionId}_${Date.now().toString(36)}`,
-        type: "receipt",
-        title: "ovo 已发送邮件",
-        content: `${to ? `收件人: ${to}\n` : ""}主题: ${subject}`.trim(),
-        priority: 100
-      });
-      continue;
-    }
-    if (action.type === "send_imessage") {
-      const to = String(action.params?.to ?? "");
-      const body = String(action.params?.body ?? action.description ?? "");
-      out.push({
-        id: `receipt_${r.actionId}_${Date.now().toString(36)}`,
-        type: "receipt",
-        title: "ovo 已发送 iMessage",
-        content: `${to ? `收件人: ${to}\n` : ""}${body}`.slice(0, 240),
-        priority: 100
-      });
-      continue;
-    }
-    if (action.type === "set_reminder" || action.type === "add_calendar") {
-      out.push({
-        id: `receipt_${r.actionId}_${Date.now().toString(36)}`,
-        type: "receipt",
-        title: action.type === "set_reminder" ? "ovo 已设置提醒" : "ovo 已加入日历",
-        content: action.description,
-        priority: 100
-      });
-      continue;
-    }
-    // log_note: 仅在用户标记 priority>=80（高风险归档）才出回执
-    if (action.type === "log_note" && action.priority >= 80) {
-      out.push({
-        id: `receipt_${r.actionId}_${Date.now().toString(36)}`,
-        type: "receipt",
-        title: "ovo 已记录提醒",
-        content: action.description,
-        priority: 100
-      });
-    }
-  }
-  return out;
-}
-
-function broadcastToRendererWindows(channel: string, payload: unknown) {
-  for (const win of BrowserWindow.getAllWindows()) {
-    if (win.isDestroyed()) continue;
-    safeExecute(
-      () => win.webContents.send(channel, payload),
-      `ipc.broadcast.${channel}`,
-      undefined,
-      "info"
-    );
-  }
-}
-
-/**
- * CODE-3: safeHandle 包装——先 removeHandler 再 handle，幂等且防 dev reload "second handler" 错误。
- * 直接替换 ipcMain.handle 调用点最稳妥，但全文件 92 处批改成本高，
- * 这里用 Proxy 在 registerIpcHandlers 内拦截 .handle 调用，对外接口不变。
- */
-function makeSafeIpcMain(target: typeof import("electron").ipcMain) {
-  const registered = new Set<string>();
-  return new Proxy(target, {
-    get(t, prop, recv) {
-      if (prop === "handle") {
-        return (channel: string, listener: (...args: unknown[]) => unknown) => {
-          if (registered.has(channel)) {
-            // 合理 silent：removeHandler 在 channel 未注册时 throw 是预期行为，
-            // 这里就是"删了如果存在"的语义，throw 等价于"已经不在"——继续往下走
-            try { t.removeHandler(channel); } catch { /* legitimate: remove-if-exists */ }
-          }
-          registered.add(channel);
-          return t.handle(channel, listener as Parameters<typeof t.handle>[1]);
-        };
-      }
-      if (prop === "on") {
-        return (channel: string, listener: (...args: unknown[]) => void) => {
-          // on 没有 once-only 限制，但 dev reload 时会累积；先 removeAllListeners 防累积
-          t.removeAllListeners(channel);
-          return t.on(channel, listener as Parameters<typeof t.on>[1]);
-        };
-      }
-      return Reflect.get(t, prop, recv);
-    }
-  });
-}
+export type { WindowGetterOptions };
 
 export function registerIpcHandlers(options: WindowGetterOptions) {
   // CODE-3: 用 safeIpcMain 替换 rawIpcMain，幂等注册——dev reload 不再抛 "second handler"
   const ipcMain = makeSafeIpcMain(rawIpcMain);
+  const safeHandle = makeSafeHandle(ipcMain);
+
   const windowManager = new WindowManager();
   const screenshotManager = new ScreenshotManager();
   const ocrEngine = new OCREngine();
@@ -186,38 +64,16 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
   const feedbackEngine = new FeedbackEngine(kg);
   const personalityAnalyzer = new PersonalityAnalyzer(kg);
   const ttsEngine = new TTSEngine();
+  // Bug: TTS 没声音 — 之前依赖 SettingsPanel 启动同步，但用户从来不打开 SettingsPanel
+  // 主进程 ttsEngine.enabled 永远是 false → speak 拒绝。
+  // 修复: 直接从 preferences-store 读初值（持久化），不依赖 renderer 同步。
+  ttsEngine.setEnabled(preferencesStore.getTtsEnabled());
   const claudeTester = new ClaudeCodeTester(agentBridge);
 
-  // SEC-11: pending action 注册表——主进程持有真值，renderer 只传 actionId。
+  // SEC-11 + N7: pending action registry——主进程持有真值，renderer 只传 actionId。
   // 防止 renderer 被 XSS 注入后伪造任意 AgentAction 调用 action:confirm。
-  // 10 分钟 TTL，过期自动清理。
-  const pendingActionsRegistry = new Map<string, {
-    action: AgentAction;
-    pipelineId?: string;
-    expiresAt: number;
-  }>();
-  const PENDING_ACTION_TTL_MS = 10 * 60_000;
-  function registerPendingAction(action: AgentAction, pipelineId?: string) {
-    pendingActionsRegistry.set(action.id, {
-      action,
-      pipelineId,
-      expiresAt: Date.now() + PENDING_ACTION_TTL_MS
-    });
-  }
-  function consumePendingAction(actionId: string): { action: AgentAction; pipelineId?: string } | null {
-    const entry = pendingActionsRegistry.get(actionId);
-    if (!entry) return null;
-    pendingActionsRegistry.delete(actionId);
-    if (entry.expiresAt < Date.now()) return null;
-    return { action: entry.action, pipelineId: entry.pipelineId };
-  }
-  // GC 过期项（每 5 分钟）
-  setInterval(() => {
-    const now = Date.now();
-    for (const [id, entry] of pendingActionsRegistry) {
-      if (entry.expiresAt < now) pendingActionsRegistry.delete(id);
-    }
-  }, 5 * 60_000).unref?.();
+  // 10 分钟 TTL，过期自动清理；before-quit 时落盘；启动时恢复未决项。
+  const { register: registerPendingAction, consume: consumePendingAction } = createPendingActionRegistry();
 
   // O2 悬浮球状态：去掉 scene 枚举，改用 LLM 给的 summary 自由文本
   const floatingState: {
@@ -289,9 +145,6 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     }
   );
 
-  // 返回 autoCaptureService 引用，供 main.ts 自动启动
-  // 注意: return 放在函数末尾，所有 IPC handler 注册代码在其前执行
-
   const logSystem = (
     level: "info" | "warning" | "error",
     source: string,
@@ -337,40 +190,15 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     enabled: true,
     intervalSeconds: 60
   };
-  let latestHealth = {
+  let latestHealth: unknown = {
     ok: true,
     timestamp: Date.now(),
     mode: "real" as const,
     sinceLastCaptureMs: -1
   };
 
-  // Run initial health check immediately so the status page shows real data
-  void safeExecuteAsync(
-    async () => {
-      const report = await autoCaptureService.runHealthCheck();
-      latestHealth = report;
-      broadcastToRendererWindows("health:update", report);
-    },
-    "ipc.initial-health-check",
-    undefined,
-    "warn"
-  );
-
-  // 关系强度每日衰减：scheduler 兜底，每 24h 运行一次。
-  scheduler.register({
-    id: "kg-decay",
-    intervalMs: 24 * 60 * 60 * 1000,
-    task: () => {
-      kg.decayRelationships();
-    },
-    onError: (error) => {
-      errorLogger.alert("warn", "kg-decay", "关系强度衰减异常", {
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  });
-
-  // H10(E) 事件聚合摘要：每 10 分钟扫一次，同 intent 累积 ≥ 5 条则触发 LLM 总结
+  // H10(E) 事件聚合摘要：每 10 分钟扫一次（注册在 registerSchedulers）
+  // 本函数定义在主入口因为引用了 kg / agentBridge 闭包
   const runSummarizeOnce = async () => {
     const events = kg.getRecentEvents(50);
     const byIntent = new Map<string, typeof events>();
@@ -422,128 +250,10 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
       });
     }
   };
-  scheduler.register({
-    id: "kg-summarize",
-    intervalMs: 10 * 60 * 1000,
-    task: runSummarizeOnce,
-    onError: (error) => {
-      errorLogger.alert("warn", "kg-summarize", "事件聚合摘要异常", {
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  });
   ipcMain.handle("kg:trigger-summarize", async () => {
     await runSummarizeOnce();
     return { ok: true };
   });
-
-  // H10(F) 反馈驱动偏好：每 30 分钟根据用户对各 intent_type 的赞踩动态调整 personalityOverrides
-  scheduler.register({
-    id: "prefs-update",
-    intervalMs: 30 * 60 * 1000,
-    task: () => {
-      const stats = kg.getFeedbackStatsByIntent();
-      const overrides = { ...preferencesStore.get().personalityOverrides };
-      let changed = false;
-      for (const s of stats) {
-        if (s.total < 3) continue; // 样本太少不动
-        const key = `intent_${s.intentType}`;
-        const prev = typeof overrides[key] === "number" ? (overrides[key] as number) : 0.5;
-        let next = prev;
-        if (s.ratio >= 0.7) next = Math.min(1, prev + 0.05);
-        else if (s.ratio <= 0.3) next = Math.max(0, prev - 0.05);
-        if (Math.abs(next - prev) > 0.001) {
-          overrides[key] = Number(next.toFixed(3));
-          changed = true;
-        }
-      }
-      if (changed) {
-        preferencesStore.setPersonalityOverrides(overrides);
-        logSystem("info", "prefs-update", "反馈驱动 personalityOverrides 已更新", { overrides });
-      }
-    },
-    onError: (error) => {
-      errorLogger.alert("warn", "prefs-update", "反馈学习异常", {
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  });
-
-  const MEMORY_WARN_MB = 1024;
-  const MEMORY_CRITICAL_MB = 1536;
-  scheduler.register({
-    id: "memory-monitor",
-    intervalMs: 60_000,
-    task: () => {
-      const heapUsedMb = process.memoryUsage().heapUsed / 1024 / 1024;
-      if (heapUsedMb >= MEMORY_CRITICAL_MB) {
-        errorLogger.alert("critical", "memory-monitor", "主进程内存临界", { heapUsedMb: Math.round(heapUsedMb) });
-      } else if (heapUsedMb >= MEMORY_WARN_MB) {
-        errorLogger.alert("warn", "memory-monitor", "主进程内存偏高", { heapUsedMb: Math.round(heapUsedMb) });
-      }
-    }
-  });
-
-  scheduler.register({
-    id: "health-check",
-    intervalMs: healthConfig.intervalSeconds * 1000,
-    task: async () => {
-      if (!healthConfig.enabled) return;
-      const report = await autoCaptureService.runHealthCheck();
-      latestHealth = report;
-      broadcastToRendererWindows("health:update", report);
-    },
-    onError: (error) => {
-      errorLogger.alert("warn", "health-check", "自检任务异常", {
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  });
-
-  // KG-C: 每日 KG GC，清噪音 entity（黑名单 + 一次性低质量孤儿 + 极低质量过期）
-  // 启动后立即跑一次（清掉历史污染），之后每 24h 跑一次
-  // 也会顺手 recompute 所有 quality_score
-  scheduler.register({
-    id: "kg-daily-gc",
-    intervalMs: 24 * 3600 * 1000,
-    task: async () => {
-      try {
-        const result = kg.runEntityGC();
-        logSystem("info", "kg.gc", "KG 每日 GC 完成", result);
-        // P0.11: 数据保留期改为读用户配置；默认 30 天
-        // -1 = 不保留（每次 GC 都清光，等于关 Ovo 立刻删）
-        //  0 = 永久（跳过 GC）
-        const retentionDays = preferencesStore.getRetentionDays();
-        if (retentionDays === 0) {
-          logSystem("info", "kg.retention", "数据保留期=永久，跳过 GC", { retentionDays });
-        } else {
-          const effective = retentionDays === -1 ? 0 : retentionDays;
-          const ret = kg.runRetentionGC(effective);
-          logSystem("info", "kg.retention", "数据保留期 GC 完成", { ...ret, retentionDays });
-        }
-      } catch (e) {
-        logSystem("error", "kg.gc", "KG GC 失败", {
-          error: e instanceof Error ? e.message : String(e)
-        });
-      }
-    },
-    onError: (error) => {
-      errorLogger.alert("warn", "kg-daily-gc", "KG GC 任务异常", {
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  });
-  // 启动时立即跑一次（异步），不阻塞 IPC 注册
-  setTimeout(() => {
-    try {
-      const result = kg.runEntityGC();
-      logSystem("info", "kg.gc", "KG 启动 GC 完成", result);
-    } catch (e) {
-      logSystem("warning", "kg.gc", "KG 启动 GC 跳过", {
-        error: e instanceof Error ? e.message : String(e)
-      });
-    }
-  }, 5_000);
 
   // P8: 每日 prompt 自评（GEPA 简化版）
   // 每 24h 跑一次：拉低分 pipeline → LLM 看 → 写 prompt_eval_suggestions（待用户 review）
@@ -583,16 +293,21 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
       });
     }
   };
-  scheduler.register({
-    id: "prompt-self-eval",
-    intervalMs: 24 * 3600 * 1000,
-    task: runPromptSelfEval,
-    onError: (error) => {
-      errorLogger.alert("warn", "prompt-self-eval", "自评任务异常", {
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
+  // === 把所有定期任务一次性注册到 scheduler（拆分到 ipc/schedulers.ts）===
+  // kg-decay / kg-summarize / prefs-update / memory-monitor / health-check /
+  // kg-daily-gc / prompt-self-eval + 初始 health check + startup GC
+  const { startupGcTimer } = registerSchedulers({
+    kg,
+    agentBridge,
+    autoCaptureService,
+    logSystem,
+    broadcast: broadcastToRendererWindows,
+    healthConfig,
+    setLatestHealth: (v) => { latestHealth = v; },
+    runSummarizeOnce,
+    runPromptSelfEval
   });
+  void startupGcTimer; // before-quit cleanup 已在 registerSchedulers 内部 app.on
 
   /**
    * KG-G: 关系推断二次 pass。
@@ -860,6 +575,10 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
       suggestions: synthParsed?.suggestions ?? obsParsed.suggestions,
       offers: synthParsed?.offers ?? obsParsed.offers
     };
+    // 用户反馈："浮窗有时显示一段前端代码（CSS/JS）"
+    // 根因：LLM 偶尔把屏幕 OCR 看到的代码原文当 prediction/summary/suggestion.content 写回来。
+    // 在 merged 落地为下游可见字段前**集中清洗**，避免 N 个 UI 各自再防御。
+    sanitizeParsedPayload(merged as unknown as Record<string, unknown>);
     // 重写 response.parsed，让下游代码原封不动复用
     (obsResponse as { parsed: typeof merged }).parsed = merged;
 
@@ -1030,7 +749,10 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
       appName: buffer.appName,
       windowTitle: buffer.windowTitle,
       windowId: buffer.windowId,
-      intent: response.parsed.intent
+      intent: response.parsed.intent,
+      // 反思 #2: 把 OCR 摘录传进去，让 evidence-grounder 验证 LLM 自报的证据
+      ocrPreview: mergedText,
+      pipelineId: pipeline.id
     });
     const actionsOutput = {
       executed: actionResults.length,
@@ -1135,6 +857,21 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     const avgConfidence = buffer.entries.length > 0
       ? buffer.entries.reduce((s, e) => s + (e.confidence || 0), 0) / buffer.entries.length
       : 0;
+    // 5W 改造：LLM observation 输出的 actor / actor_name 透传给 addEvent
+    // observation parsed 是 unknown 类型，安全地读 actor / actor_name 字段
+    const parsedRaw = response.parsed as unknown as {
+      actor?: string;
+      actor_name?: string;
+      summary?: string;
+      prediction?: string;
+      intent?: string;
+    };
+    const rawActor = String(parsedRaw.actor ?? "").toLowerCase();
+    const actor: "self" | "other" | "system" | "ovo" | "unknown" =
+      rawActor === "self" || rawActor === "other" || rawActor === "system" ? rawActor :
+      rawActor === "mixed" ? "self" :  // 混合时归为 self（用户为主）
+      "unknown";
+    const actorName = typeof parsedRaw.actor_name === "string" ? parsedRaw.actor_name : undefined;
     kg.addEvent({
       appName: buffer.appName,
       windowTitle: buffer.windowTitle,
@@ -1145,7 +882,9 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
       intent: response.parsed.intent || "unknown",
       sourceWindowId: buffer.windowId,
       entityIds,
-      confidence: avgConfidence
+      confidence: avgConfidence,
+      actor,
+      actorName
     });
     const graphInput = {
       entitiesProposed: response.parsed.entities.length,
@@ -1189,7 +928,9 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     const newRealEntities = response.parsed.entities.filter((e) => e.type !== "application");
     if (newRealEntities.length >= 2) {
       void runRelationInference(pipeline.id, newRealEntities, buffer.appName).catch((err) => {
-        logSystem("warning", "kg.relation-inference", "关系推断失败（不影响主流程）", {
+        // 用户反馈：claude CLI 失败导致这条 warning 一直刷。
+        // 这是后台 enrichment，主流程不靠它 → 降级为 info，不再打 warning alert。
+        logSystem("info", "kg.relation-inference", "关系推断失败（不影响主流程）", {
           pipelineId: pipeline.id,
           error: err instanceof Error ? err.message : String(err)
         });
@@ -1233,7 +974,7 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     void safeExecuteAsync(() => ocrEngine.terminate(), "ocr.before-quit-terminate", undefined, "info");
   });
 
-  // M6 悬浮球：拉当前状态 + 用户清零未读
+  // M6 悬浮球：拉当前状态 + 用户清零未读（floatingState 闭包在此，留主入口 handle）
   ipcMain.handle("floating:get-state", () => ({ ...floatingState }));
   ipcMain.handle("floating:clear-unread", () => {
     floatingState.unreadCount = 0;
@@ -1242,579 +983,7 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     return { ok: true };
   });
 
-  // 悬浮球拖动：用 JS 实现球本身可拖。webkit-app-region:drag 只能拖空白，球被 button no-drag 屏蔽。
-  // 渲染端 mousedown 时调 drag-start 记起点；mousemove 时传全局 delta；mouseup 调 drag-end。
-  // 不在 mousemove 累计，避免浮点误差与丢事件。
-  let floatingDragStart: { x: number; y: number } | null = null;
-  ipcMain.handle("floating:drag-start", () => {
-    const win = options.getFloatingWindow();
-    if (!win || win.isDestroyed()) return { ok: false };
-    const [x, y] = win.getPosition();
-    floatingDragStart = { x, y };
-    return { ok: true };
-  });
-  ipcMain.handle("floating:drag-move", (_event, payload: { dx: number; dy: number }) => {
-    const win = options.getFloatingWindow();
-    if (!win || win.isDestroyed() || !floatingDragStart) return { ok: false };
-    const dx = Number.isFinite(payload?.dx) ? payload.dx : 0;
-    const dy = Number.isFinite(payload?.dy) ? payload.dy : 0;
-    win.setPosition(Math.round(floatingDragStart.x + dx), Math.round(floatingDragStart.y + dy));
-    return { ok: true };
-  });
-  ipcMain.handle("floating:drag-end", () => {
-    floatingDragStart = null;
-    return { ok: true };
-  });
-
-  // 悬浮球高度切换：默认仅球(108)，sticky 展开时撑到 260；消除大片幽灵拖动区
-  ipcMain.handle("floating:set-expanded", (_event, expanded: boolean) => {
-    const win = options.getFloatingWindow();
-    if (!win || win.isDestroyed()) return { ok: false };
-    // 96×96 (折叠) ↔ 300×288 (展开)。展开方向：保持球的屏幕位置不变，卡片向左下延伸。
-    // 若球离屏幕左边太近导致无法向左展开，退化为以球为中心的可行位置。
-    const COLLAPSED = { w: 96, h: 96 };
-    const EXPANDED = { w: 300, h: 288 };
-    const [curX, curY] = win.getPosition();
-    const [curW] = win.getSize();
-    // 球目前的屏幕 X（球永远贴当前窗口右侧 96px 区域）
-    const orbScreenX = curX + (curW - COLLAPSED.w);
-    const target = expanded ? EXPANDED : COLLAPSED;
-    // 默认让球保持在 (orbScreenX, curY)，窗口右上角对齐球
-    let newX = orbScreenX + COLLAPSED.w - target.w;
-    let newY = curY;
-    // 边界保护：避免溢出屏幕
-    const display = screen.getDisplayNearestPoint({ x: orbScreenX, y: curY });
-    const wa = display.workArea;
-    if (newX < wa.x) newX = wa.x;
-    if (newX + target.w > wa.x + wa.width) newX = wa.x + wa.width - target.w;
-    if (newY + target.h > wa.y + wa.height) newY = wa.y + wa.height - target.h;
-    if (newY < wa.y) newY = wa.y;
-    win.setBounds({ x: newX, y: newY, width: target.w, height: target.h }, false);
-    return { ok: true, width: target.w, height: target.h };
-  });
-  ipcMain.handle("toast:set-verbosity", (_event, v: "silent" | "alerts" | "all") => {
-    options.toastManager?.setVerbosity?.(v);
-    logSystem("info", "toast", "弹窗激进度更新", { verbosity: v });
-    return { ok: true, verbosity: v };
-  });
-
-  ipcMain.handle("scheduler:get-status", () => scheduler.getStatus());
-  ipcMain.handle("alert:get-recent", (_event, limit?: number) => errorLogger.getAlerts(limit ?? 50));
-
-  // 调试入口：注入 3 段假 OCR 后立即跑一次 agent-pipeline，
-  // 用户可以在不依赖屏幕录制权限的情况下立刻看到 KG / 建议 / 日志填充。
-  ipcMain.handle("dev:run-sample-pipeline", async () => {
-    const FIXTURES = [
-      {
-        windowId: "sample_wechat",
-        appName: "WeChat",
-        windowTitle: "工作群 - 项目排期",
-        text: "产品: 这周需求要发布吗？\n开发: 周三可以提测\n产品: 帮我把 Jira 状态改成 in-progress"
-      },
-      {
-        windowId: "sample_chrome",
-        appName: "Chrome",
-        windowTitle: "React useEffect best practices",
-        text: "useEffect 必须返回清理函数避免内存泄漏\n依赖数组留空只在首次渲染执行\n避免在 effect 里直接 setState 进入死循环"
-      },
-      {
-        windowId: "sample_vscode",
-        appName: "VSCode",
-        windowTitle: "TS2345 error",
-        text: "Type 'string | null' is not assignable to type 'string'\n建议使用 ?? 'unknown' 或可选链 userName?.toUpperCase()"
-      }
-    ];
-    for (const f of FIXTURES) {
-      eventProcessor.append(f.windowId, f.appName, f.windowTitle, {
-        timestamp: Date.now(),
-        text: f.text,
-        confidence: 0.92
-      });
-    }
-    options.logger?.info("dev:run-sample-pipeline", "注入 3 段假 OCR 并触发 pipeline", {
-      windows: FIXTURES.length
-    });
-    const beforePipelines = kg.getStats().pipelines;
-    const beforeEntities = kg.getStats().entities;
-    await runAgentPipelineOnce();
-    const afterPipelines = kg.getStats().pipelines;
-    const afterEntities = kg.getStats().entities;
-    return {
-      ok: true,
-      pipelinesAdded: afterPipelines - beforePipelines,
-      entitiesAdded: afterEntities - beforeEntities
-    };
-  });
-
-  ipcMain.handle("prefs:get-personality-overrides", () => preferencesStore.get().personalityOverrides ?? {});
-  ipcMain.handle("prefs:set-personality-overrides", (_event, overrides: Record<string, number>) => {
-    preferencesStore.setPersonalityOverrides(overrides);
-    return { ok: true };
-  });
-
-  // P5: Bootstrap wizard
-  ipcMain.handle("prefs:get-bootstrap-status", () => ({
-    done: preferencesStore.get().bootstrapDone ?? false,
-    interests: preferencesStore.get().bootstrapInterests ?? [],
-    currentProject: preferencesStore.get().bootstrapCurrentProject ?? "",
-    roles: preferencesStore.get().bootstrapRoles ?? []
-  }));
-  ipcMain.handle("prefs:save-bootstrap", (_event, payload: { interests: string[]; currentProject: string; roles: string[] }) => {
-    preferencesStore.setBootstrap(payload);
-    // 把兴趣 + 角色写进 KG 作为高质量 interest_profile
-    try {
-      for (const role of payload.roles) {
-        kg.recordRoleHypothesis(role, 0.75); // 用户主动声明的角色给较高初始置信
-      }
-      for (const interest of payload.interests) {
-        const id = kg.upsertEntity({
-          name: interest,
-          type: "concept",
-          description: `用户在 bootstrap wizard 主动声明的关注主题`,
-          attributes: { fromBootstrap: true }
-        });
-        // 钉住 + 设高质量分
-        safeExecute(() => kg.setPinned(id, true), "kg.bootstrap-pin", undefined, "warn");
-      }
-      if (payload.currentProject) {
-        const id = kg.upsertEntity({
-          name: payload.currentProject,
-          type: "project",
-          description: `用户在 bootstrap wizard 声明的当前主项目`,
-          attributes: { fromBootstrap: true }
-        });
-        safeExecute(() => kg.setPinned(id, true), "kg.bootstrap-pin", undefined, "warn");
-      }
-      kg.recomputeAllQualityScores();
-    } catch (e) {
-      logSystem("warning", "bootstrap", "写入 KG 失败", { error: e instanceof Error ? e.message : String(e) });
-    }
-    return { ok: true };
-  });
-
-  // P0.3 / P0.10 / 哲学机制 1：信任分级
-  ipcMain.handle("prefs:get-trust-levels", () => preferencesStore.getAllTrustLevels());
-  ipcMain.handle("prefs:set-trust-level", (_event, payload: { type: string; level: number }) => {
-    const validLevels = [0, 1, 2, 3, 4];
-    if (!validLevels.includes(payload.level)) {
-      return { ok: false, error: "level 必须是 0-4" };
-    }
-    // payload.type 必须是有效的 ActionType；preferencesStore.setTrustLevel 内部已类型约束
-    preferencesStore.setTrustLevel(payload.type as never, payload.level as never);
-    return { ok: true };
-  });
-  ipcMain.handle("prefs:reset-trust-levels", () => {
-    preferencesStore.resetTrustLevels();
-    return { ok: true };
-  });
-
-  // P0.11: 隐私核心 — 数据保留期
-  ipcMain.handle("prefs:get-retention-days", () => preferencesStore.getRetentionDays());
-  ipcMain.handle("prefs:set-retention-days", (_event, days: number) => {
-    const allowed = [-1, 0, 7, 30, 90];
-    if (!allowed.includes(days)) {
-      return { ok: false, error: "保留期必须是 -1(不保留) / 0(永久) / 7 / 30 / 90 天" };
-    }
-    preferencesStore.setRetentionDays(days);
-    return { ok: true };
-  });
-
-  // P0.11: 隐私核心 — 脱敏强度
-  ipcMain.handle("prefs:get-redaction-level", () => preferencesStore.getRedactionLevel());
-  ipcMain.handle("prefs:set-redaction-level", (_event, level: string) => {
-    if (level !== "basic" && level !== "strict" && level !== "paranoid") {
-      return { ok: false, error: "level 必须是 basic / strict / paranoid" };
-    }
-    preferencesStore.setRedactionLevel(level);
-    // 同步到 sensitive-filter 模块级状态，下一次 redactSensitive 即生效
-    setActiveRedactionLevel(level);
-    return { ok: true };
-  });
-
-  ipcMain.handle("windows:get-all", async () => windowManager.getAllWindows());
-  ipcMain.handle("windows:get-active", async () => windowManager.getActiveWindow());
-  ipcMain.handle("windows:set-monitored", (_event, windowKeys: string[]) => {
-    autoCaptureService.setMonitoredWindowKeys(windowKeys);
-    return { ok: true };
-  });
-  ipcMain.handle("windows:get-monitored", () => autoCaptureService.getMonitoredWindowKeys());
-  ipcMain.handle("windows:get-capture-stats", () => autoCaptureService.getWindowCaptureStats());
-  ipcMain.handle("windows:get-thumbnails", async () => windowManager.getWindowThumbnails());
-
-  ipcMain.handle("capture:start", (_event, payload?: { intervalSeconds?: number }) => {
-    logSystem("info", "capture", "启动自动捕获", { intervalSeconds: payload?.intervalSeconds });
-    if (payload?.intervalSeconds) autoCaptureService.setInterval(payload.intervalSeconds);
-    autoCaptureService.start();
-    return { ok: true };
-  });
-  ipcMain.handle("capture:stop", () => {
-    logSystem("info", "capture", "停止自动捕获");
-    autoCaptureService.stop();
-    return { ok: true };
-  });
-  ipcMain.handle("capture:set-interval", (_event, seconds: number) => {
-    autoCaptureService.setInterval(seconds);
-    return { ok: true };
-  });
-  ipcMain.handle("capture:set-bg-monitoring", (_event, enabled: boolean) => {
-    autoCaptureService.setBackgroundMonitoring(!!enabled);
-    logSystem("info", "capture", "后台监控开关", { enabled: !!enabled });
-    return { ok: true, enabled: !!enabled };
-  });
-  ipcMain.handle("capture:get-bg-monitoring", () => autoCaptureService.isBackgroundMonitoring());
-  ipcMain.handle("capture:set-agent-interval", (_event, seconds: number) => {
-    const safeSeconds = Math.max(3, Math.min(600, Math.floor(Number(seconds) || 15)));
-    agentIntervalSeconds = safeSeconds;
-    scheduler.setInterval("agent-pipeline", safeSeconds * 1000);
-    logSystem("info", "capture", "Agent 调用间隔已更新", { seconds: safeSeconds });
-    return { ok: true, seconds: safeSeconds };
-  });
-  ipcMain.handle("capture:get-agent-interval", () => agentIntervalSeconds);
-  ipcMain.handle("capture:get-buffers", () => eventProcessor.getBuffers());
-  ipcMain.handle("capture:clear-cache", () => {
-    autoCaptureService.clearAllCaches();
-    return { ok: true, clearedAt: Date.now() };
-  });
-  ipcMain.handle("capture:take-screenshot", async () => {
-    const bizLogId = startBizNode(null, "capture.manual", {
-      source: "console.screenshot-test"
-    });
-    try {
-      const image = await screenshotManager.captureScreen();
-      const result = {
-        dataUrl: `data:image/png;base64,${image.toString("base64")}`,
-        mimeType: "image/png",
-        byteLength: image.byteLength,
-        capturedAt: Date.now()
-      };
-      finishBizNode(bizLogId, "success", {
-        output: {
-          byteLength: result.byteLength,
-          mimeType: result.mimeType
-        }
-      });
-      return result;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "截图失败";
-      finishBizNode(bizLogId, "failed", {
-        error: message
-      });
-      logSystem("error", "capture", "手动截图失败", { error: message });
-      throw error;
-    }
-  });
-  ipcMain.handle("health:get-latest", () => latestHealth);
-  ipcMain.handle("health:get-config", () => healthConfig);
-  ipcMain.handle("health:set-config", (_event, payload: { enabled?: boolean; intervalSeconds?: number }) => {
-    if (typeof payload.enabled === "boolean") healthConfig.enabled = payload.enabled;
-    if (typeof payload.intervalSeconds === "number") {
-      healthConfig.intervalSeconds = Math.max(10, Math.floor(payload.intervalSeconds));
-      scheduler.setInterval("health-check", healthConfig.intervalSeconds * 1000);
-    }
-    if (!healthConfig.enabled) {
-      scheduler.unregister("health-check");
-    } else if (!scheduler.has("health-check")) {
-      scheduler.register({
-        id: "health-check",
-        intervalMs: healthConfig.intervalSeconds * 1000,
-        task: async () => {
-          if (!healthConfig.enabled) return;
-          const report = await autoCaptureService.runHealthCheck();
-          latestHealth = report;
-          broadcastToRendererWindows("health:update", report);
-        },
-        onError: (error) => {
-          errorLogger.alert("warn", "health-check", "自检任务异常", {
-            error: error instanceof Error ? error.message : String(error)
-          });
-        }
-      });
-    }
-    return { ok: true, config: healthConfig };
-  });
-
-  ipcMain.handle("ocr:initialize", async () => {
-    await ocrEngine.initialize();
-    return { ok: true };
-  });
-  ipcMain.handle("ocr:recognize", async (_event, payload: { base64?: string }) => {
-    const bizLogId = startBizNode(null, "ocr.recognize", {
-      source: payload?.base64 ? "payload.base64" : "screenshot.capture"
-    });
-    if (payload?.base64) {
-      const ocr = await ocrEngine.recognize(Buffer.from(payload.base64, "base64"));
-      finishBizNode(bizLogId, "success", {
-        output: {
-          confidence: ocr.confidence,
-          textLength: ocr.text.length
-        }
-      });
-      return ocr;
-    }
-    try {
-      const image = await screenshotManager.captureScreen();
-      const ocr = await ocrEngine.recognize(image);
-      finishBizNode(bizLogId, "success", {
-        output: {
-          confidence: ocr.confidence,
-          textLength: ocr.text.length
-        }
-      });
-      return ocr;
-    } catch (error) {
-      finishBizNode(bizLogId, "failed", {
-        error: error instanceof Error ? error.message : "ocr 失败"
-      });
-      logSystem("error", "ocr", "OCR 识别失败", {
-        error: error instanceof Error ? error.message : "unknown"
-      });
-      throw error;
-    }
-  });
-
-  ipcMain.handle("agent:detect-backends", async () => agentBridge.detectAvailableBackends());
-
-  // SEC-4: 启动时从 secrets-store 恢复 API 配置状态
-  void (async () => {
-    try {
-      const { secretsStore } = await import("./secrets-store.js");
-      if (secretsStore.hasApiKey()) {
-        agentBridge.markApiConfigured(true);
-        logSystem("info", "agent", "已从 safeStorage 恢复 API 配置");
-      }
-    } catch (e) {
-      logSystem("warning", "agent", "API 配置恢复失败", {
-        error: e instanceof Error ? e.message : String(e)
-      });
-    }
-  })();
-
-  // Auto-detect agent backends on startup so the status page shows real data；
-  // 默认优先使用 hermes（稳定性 / 没有 401/403 风险）。
-  void safeExecuteAsync(
-    async () => {
-      const backends = await agentBridge.detectAvailableBackends();
-      logSystem("info", "agent", "检测到 Agent 后端", { backends });
-      if (backends.includes("hermes")) {
-        agentBridge.setPreferredBackend("hermes");
-        logSystem("info", "agent", "已默认设置 preferred backend = hermes");
-      }
-    },
-    "agent.detect-backends",
-    undefined,
-    "warn"
-  );
-
-  ipcMain.handle("agent:set-backend", (_event, backend: Parameters<AgentBridge["setPreferredBackend"]>[0]) => {
-    agentBridge.setPreferredBackend(backend);
-    return { ok: true };
-  });
-  // SEC-4: API key 走 safeStorage 加密落盘——renderer 永远拿不到明文
-  ipcMain.handle("agent:set-api-config", async (_event, config: { baseUrl: string; key: string; model: string }) => {
-    // baseUrl 白名单（防 renderer XSS 把 key 重定向到攻击者域名）
-    const ALLOWED_HOSTS = new Set([
-      "api.anthropic.com",
-      "api.openai.com",
-      "api.deepseek.com",
-      "openrouter.ai",
-      "api.groq.com"
-    ]);
-    try {
-      const u = new URL(config.baseUrl);
-      if (u.protocol !== "https:") return { ok: false, error: "baseUrl 必须是 https" };
-      if (!ALLOWED_HOSTS.has(u.host)) {
-        return { ok: false, error: `baseUrl host 不在白名单：${u.host}` };
-      }
-    } catch {
-      return { ok: false, error: "baseUrl 不是合法 URL" };
-    }
-    const { secretsStore } = await import("./secrets-store.js");
-    if (!secretsStore.isEncryptionAvailable()) {
-      return { ok: false, error: "系统未提供凭证存储（safeStorage 不可用）" };
-    }
-    if (config.key && !secretsStore.setApiKey(config.key)) {
-      return { ok: false, error: "凭证写入失败" };
-    }
-    secretsStore.setApiBaseUrl(config.baseUrl);
-    secretsStore.setApiModel(config.model);
-    agentBridge.markApiConfigured(secretsStore.hasApiKey());
-    return { ok: true };
-  });
-  ipcMain.handle("agent:get-api-config-status", async () => {
-    const { secretsStore } = await import("./secrets-store.js");
-    return {
-      hasKey: secretsStore.hasApiKey(),
-      maskedKey: secretsStore.getMaskedApiKey(),
-      baseUrl: secretsStore.getApiBaseUrl(),
-      model: secretsStore.getApiModel(),
-      encryptionAvailable: secretsStore.isEncryptionAvailable()
-    };
-  });
-  ipcMain.handle("agent:clear-api-config", async () => {
-    const { secretsStore } = await import("./secrets-store.js");
-    secretsStore.clearApiKey();
-    agentBridge.markApiConfigured(false);
-    return { ok: true };
-  });
-  ipcMain.handle("agent:status", () => agentBridge.getStatus());
-  ipcMain.handle("agent:test-scenario", async (_event, payload: { scenarioId: string; customPrompt?: string }) =>
-    claudeTester.runScenario(payload)
-  );
-
-  ipcMain.handle("kg:search-entities", (_event, query: string) => kg.searchEntities(query));
-  ipcMain.handle("kg:get-entity", (_event, id: string) => {
-    // 兼容传入 entity id 或 entity name
-    const matches = kg.searchEntities(id, 50);
-    return matches.find((entity) => entity.id === id || entity.name === id) ?? null;
-  });
-  ipcMain.handle(
-    "kg:get-events",
-    (_event, payload?: number | { entityId?: string; limit?: number }) => {
-      if (typeof payload === "number") return kg.getEvents(payload);
-      if (payload && payload.entityId) {
-        return kg.getEventsByEntity(payload.entityId, payload.limit ?? 50);
-      }
-      return kg.getEvents(payload?.limit ?? 100);
-    }
-  );
-  ipcMain.handle("kg:get-stats", () => kg.getStats());
-  ipcMain.handle("kg:get-graph", (_event, limit?: number) => kg.getGraphSnapshot(limit ?? 80));
-  ipcMain.handle("kg:analyze-personality", () => personalityAnalyzer.analyze());
-  ipcMain.handle("kg:clear", () => {
-    kg.clearAll();
-    return { ok: true };
-  });
-  ipcMain.handle("kg:export", () => ({
-    stats: kg.getStats(),
-    entities: kg.getRelevantContext().relevantEntities,
-    relations: kg.getRelevantContext().relevantRelations
-  }));
-
-  // KG-D: 用户主权操作
-  ipcMain.handle("kg:set-pinned", (_event, payload: { entityId: string; pinned: boolean }) => {
-    kg.setPinned(payload.entityId, !!payload.pinned);
-    return { ok: true };
-  });
-  ipcMain.handle("kg:delete-entity", (_event, entityId: string) => {
-    return kg.deleteEntity(entityId);
-  });
-  ipcMain.handle("kg:get-entity-detail", (_event, entityId: string) => {
-    return kg.getEntityDetail(entityId);
-  });
-  ipcMain.handle("kg:run-gc", () => kg.runEntityGC());
-
-  // T13 / M8: 网络状态 — renderer 用 navigator.onLine 上报到主进程，业务模块从 systemEvents 读
-  ipcMain.handle("system:report-online", (_event, online: boolean) => {
-    systemEvents.reportOnlineState(!!online);
-    return { ok: true };
-  });
-  ipcMain.handle("system:is-online", () => systemEvents.isOnline());
-
-  // PHIL-1 / P0.4: 玻璃管家 negative patterns（用户教 Ovo "永远不要这样做"）
-  ipcMain.handle("kg:add-negative-pattern", (_event, payload: {
-    appName?: string;
-    intent?: string;
-    actionType?: string;
-    patternText: string;
-    contextSignature?: string;
-  }) => {
-    if (!payload.patternText || typeof payload.patternText !== "string") {
-      return { ok: false, error: "patternText 必填" };
-    }
-    const id = kg.insertNegativePattern(payload);
-    return { ok: true, id };
-  });
-  ipcMain.handle("kg:list-negative-patterns", (_event, limit?: number) =>
-    kg.listNegativePatterns(typeof limit === "number" && limit > 0 ? limit : 100));
-  ipcMain.handle("kg:delete-negative-pattern", (_event, id: string) => {
-    kg.deleteNegativePattern(id);
-    return { ok: true };
-  });
-
-  // P8: prompt 自评建议
-  ipcMain.handle("prompt-eval:list", (_event, limit?: number) => kg.listPromptEvalSuggestions(limit ?? 30));
-  ipcMain.handle("prompt-eval:set-status", (_event, payload: { id: string; status: "applied" | "dismissed" | "pending" }) => {
-    kg.setPromptEvalStatus(payload.id, payload.status);
-    return { ok: true };
-  });
-  ipcMain.handle("prompt-eval:run-now", async () => {
-    void runPromptSelfEval();
-    return { ok: true, started: true };
-  });
-  // R8: 「ovo 越来越懂你」指标
-  ipcMain.handle("kg:weekly-acceptance", () => kg.getWeeklyAcceptanceTrend());
-  // F3: 流程 tab 时间线
-  ipcMain.handle("process:timeline", (_event, limit?: number) => kg.getProcessTimeline(limit ?? 80));
-  // 问题4：人类可读的「ovo 做过什么」清单（按 action 维度而不是 pipeline 维度）
-  ipcMain.handle("history:list-actions", (_event, limit?: number) => kg.getActionHistory(limit ?? 100));
-  // A: toast 弹窗历史——主控台「通知历史」面板用
-  ipcMain.handle("history:list-notifications", (_event, limit?: number) => kg.getToastHistory(limit ?? 100));
-  // C: action 详情——给 ActionDetailDrawer 用
-  ipcMain.handle("action:get-detail", (_event, actionId: string) => kg.getActionDetail(actionId));
-  // F4: 流程 tab 进度条数据（按 pipeline 分组）
-  ipcMain.handle("process:pipelines", (_event, limit?: number) => kg.getPipelineProgress(limit ?? 50));
-
-  // T2: 应用黑名单
-  ipcMain.handle("privacy:get-blacklist", () => preferencesStore.get().blacklistedApps ?? []);
-  ipcMain.handle("privacy:set-blacklist", (_event, apps: string[]) => {
-    const cleaned = (apps ?? []).map((a) => String(a).trim()).filter((a) => a.length > 0);
-    preferencesStore.setBlacklistedApps(cleaned);
-    return { ok: true };
-  });
-
-  // T3: 暂停 / 恢复
-  ipcMain.handle("privacy:pause", (_event, minutes: number) => {
-    const m = Math.max(1, Math.min(24 * 60, Math.floor(minutes)));
-    const until = Date.now() + m * 60_000;
-    preferencesStore.setPausedUntil(until);
-    return { ok: true, pausedUntil: until };
-  });
-  ipcMain.handle("privacy:resume", () => {
-    preferencesStore.setPausedUntil(0);
-    return { ok: true };
-  });
-  ipcMain.handle("privacy:get-pause-state", () => ({
-    pausedUntil: preferencesStore.get().pausedUntil ?? 0,
-    isPaused: (preferencesStore.get().pausedUntil ?? 0) > Date.now()
-  }));
-
-  ipcMain.handle("suggestion:feedback", (_event, payload: Parameters<FeedbackEngine["submitSuggestionFeedback"]>[0]) => {
-    // R2 / R7: 用户 reject 后让 toast 短期屏蔽这类 type
-    if (payload.action === "rejected" && payload.suggestionType) {
-      safeExecute(
-        () => options.toastManager?.noteRejection?.(payload.suggestionType),
-        "toast.note-rejection",
-        undefined,
-        "info"
-      );
-    }
-    // R2: offer accept 时立刻给一条 receipt（capability 引擎未上线，先告诉用户已记下偏好）
-    if (payload.action === "accepted" && payload.suggestionType?.startsWith("offer:")) {
-      safeExecute(
-        () => options.toastManager?.enqueueReceipts?.([{
-          id: `accept_${payload.suggestionId}_${Date.now().toString(36)}`,
-          type: "receipt",
-          title: "✓ ovo 已记下你的偏好",
-          content: "ovo 会持续观察这类机会。capability 引擎下一轮上线后，会按你订的频率自动给你输出。",
-          priority: 100
-        }]),
-        "toast.enqueue-receipt",
-        undefined,
-        "info"
-      );
-    }
-    return feedbackEngine.submitSuggestionFeedback(payload);
-  });
-  ipcMain.handle("toast:set-dnd", (_event, minutes: number) => {
-    safeExecute(
-      () => options.toastManager?.setDoNotDisturb?.(Math.max(1, Math.floor(minutes))),
-      "toast.set-dnd",
-      undefined,
-      "info"
-    );
-    return { ok: true };
-  });
-
+  // 把 pipeline_logger action stage 合并的逻辑提到 deps——给 pipeline.ts (action:confirm / cancel) 用
   const mergePipelineAction = (pipelineId: string, actionId: string, result: ActionResult) => {
     pipelineLogger.mergeActionsStage(pipelineId, (actions) => {
       const idx = actions.findIndex((a) => a.actionId === actionId);
@@ -1829,348 +998,54 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     if (updated) broadcastToRendererWindows("pipeline:update", updated);
   };
 
-  ipcMain.handle(
-    "action:confirm",
-    async (_event, payload: { actionId?: string; action?: AgentAction; pipelineId?: string }) => {
-      // SEC-11: 优先按 actionId 从主进程 registry 取真实 action；
-      // renderer 提供的 payload.action 不再被信任（防 XSS 伪造）。
-      const requestedId = payload.actionId ?? payload.action?.id;
-      if (!requestedId) {
-        return {
-          actionId: "unknown",
-          status: "failed" as const,
-          output: "",
-          duration: 0,
-          error: "缺少 actionId"
-        };
-      }
-      const registered = consumePendingAction(requestedId);
-      if (!registered) {
-        return {
-          actionId: requestedId,
-          status: "failed" as const,
-          output: "",
-          duration: 0,
-          error: "动作不存在或已过期，请重新触发"
-        };
-      }
-      const action = registered.action;
-      const pipelineId = registered.pipelineId ?? payload.pipelineId;
-      const bizLogId = startBizNode(pipelineId ?? null, "action.confirm.execute", {
-        actionId: action.id,
-        description: action.description
-      });
-      const result = await actionExecutor.execute(action);
-      finishBizNode(bizLogId, result.status === "success" ? "success" : "failed", {
-        output: {
-          actionId: result.actionId,
-          duration: result.duration,
-          status: result.status
-        },
-        error: result.error
-      });
-      if (pipelineId) mergePipelineAction(pipelineId, action.id, result);
-      // P4: 用户刚确认的 action 完成后也弹回执
-      safeExecute(
-        () => {
-          const receipts = buildActionReceipts([action], [result]);
-          if (receipts.length && options.onReceipts) options.onReceipts(receipts);
-        },
-        "ipc.action-receipt",
-        undefined,
-        "info"
-      );
-      return result;
-    }
-  );
-  ipcMain.handle(
-    "action:cancel",
-    (_event, payload: { actionId: string; pipelineId?: string }) => {
-      // SEC-11: 取消时也从 registry 移除，避免后续 confirm 误判
-      consumePendingAction(payload.actionId);
-      const result: ActionResult = {
-        actionId: payload.actionId,
-        status: "cancelled",
-        output: "用户已取消",
-        duration: 0
-      };
-      kg.addBusinessLog({
-        pipelineId: payload.pipelineId ?? null,
-        node: "action.cancel",
-        status: "cancelled",
-        input: {
-          actionId: payload.actionId
-        },
-        output: result
-      });
-      if (payload.pipelineId) mergePipelineAction(payload.pipelineId, payload.actionId, result);
-      return result;
-    }
-  );
+  // ============================================================
+  // 子模块按域注册（A1 / CODE-11: god module 拆分）
+  // ============================================================
+  const floatingDragState: { start: { x: number; y: number } | null } = { start: null };
+  const deps: IpcHandlerDeps = {
+    ipcMain,
+    safeHandle,
+    kg,
+    agentBridge,
+    actionExecutor,
+    feedbackEngine,
+    personalityAnalyzer,
+    ttsEngine,
+    ocrEngine,
+    eventProcessor,
+    windowManager,
+    screenshotManager,
+    suggestionEngine,
+    pipelineLogger,
+    claudeTester,
+    autoCaptureService,
+    options,
+    logSystem,
+    broadcast: broadcastToRendererWindows,
+    startBizNode,
+    finishBizNode,
+    consumePendingAction,
+    buildActionReceipts,
+    mergePipelineAction,
+    pushFloatingState,
+    floatingDragState,
+    isDevMode: !app.isPackaged,
+    getAgentIntervalSeconds: () => agentIntervalSeconds,
+    setAgentIntervalSeconds: (s) => { agentIntervalSeconds = s; },
+    healthConfig,
+    getLatestHealth: () => latestHealth,
+    setLatestHealth: (v) => { latestHealth = v; },
+    runAgentPipelineOnce,
+    runPromptSelfEval
+  };
 
-  ipcMain.handle("pipeline:get-recent", (_event, limit = 20) => pipelineLogger.getRecent(limit));
-  ipcMain.handle("pipeline:get-detail", (_event, id: string) => pipelineLogger.getById(id));
-  ipcMain.handle("pipeline:rate-stage", (_event, payload: { pipelineId: string; stage: string; rating: "good" | "bad" }) => {
-    pipelineLogger.rateStage(payload.pipelineId, payload.stage, payload.rating);
-    return { ok: true };
-  });
-  ipcMain.handle("pipeline:rate-overall", (_event, payload: { pipelineId: string; rating: "good" | "neutral" | "bad" }) => {
-    pipelineLogger.rateOverall(payload.pipelineId, payload.rating);
-    return { ok: true };
-  });
-  ipcMain.handle("pipeline:clear", () => {
-    pipelineLogger.clear();
-    return { ok: true };
-  });
-
-  ipcMain.handle("system-log:list", (_event, limit = 200) => kg.getSystemLogs(limit));
-  ipcMain.handle("business-log:list", (_event, payload?: { limit?: number; pipelineId?: string }) =>
-    kg.getBusinessLogs(payload?.limit ?? 100, payload?.pipelineId)
-  );
-  ipcMain.handle(
-    "business-log:create",
-    (_event, payload: { pipelineId?: string; node: string; status: "pending" | "running" | "success" | "failed" | "skipped" | "cancelled"; input?: unknown; output?: unknown; error?: string; meta?: Record<string, unknown> }) => ({
-      id: kg.addBusinessLog({
-        pipelineId: payload.pipelineId ?? null,
-        node: payload.node,
-        status: payload.status,
-        input: payload.input,
-        output: payload.output,
-        error: payload.error,
-        meta: payload.meta,
-        startTime: Date.now()
-      })
-    })
-  );
-  ipcMain.handle(
-    "business-log:update",
-    (
-      _event,
-      payload: {
-        id: string;
-        status?: "pending" | "running" | "success" | "failed" | "skipped" | "cancelled";
-        output?: unknown;
-        error?: string;
-        meta?: Record<string, unknown>;
-      }
-    ) => ({
-      ok: kg.updateBusinessLog(payload.id, {
-        status: payload.status,
-        output: payload.output,
-        error: payload.error,
-        meta: payload.meta,
-        endTime: Date.now()
-      })
-    })
-  );
-
-  ipcMain.handle("tts:speak", (_event, payload: { text: string; voice?: string }) =>
-    ttsEngine.speak(payload.text, payload.voice)
-  );
-  ipcMain.handle("app:get-version", () => app.getVersion());
-  ipcMain.handle("app:runtime-check", () => ({
-    ok: true,
-    version: app.getVersion(),
-    channels: {
-      takeScreenshot: true,
-      openSettings: true
-    }
-  }));
-  ipcMain.handle("app:open-console", () => {
-    const win = options.getConsoleWindow();
-    if (!win) return { ok: false };
-    win.show();
-    win.focus();
-    return { ok: true };
-  });
-  // P1: 点击悬浮球 toggle 主窗口
-  ipcMain.handle("app:toggle-console", () => {
-    const win = options.getConsoleWindow();
-    if (!win) return { ok: false, visible: false };
-    if (win.isVisible() && win.isFocused()) {
-      win.hide();
-      return { ok: true, visible: false };
-    }
-    win.show();
-    win.focus();
-    return { ok: true, visible: true };
-  });
-
-  // 错误日志查询
-  ipcMain.handle("error-log:get-recent", (_event, limit = 50) => errorLogger.getEntries(limit));
-  ipcMain.handle("error-log:get-count", () => errorLogger.getErrorCount());
-
-  // macOS 权限检测
-  ipcMain.handle("permissions:get-status", () => {
-    const result: Record<string, string> = {};
-    if (process.platform === "darwin") {
-      result.screenRecording = systemPreferences.getMediaAccessStatus("screen") as string;
-      result.camera = systemPreferences.getMediaAccessStatus("camera") as string;
-      result.microphone = systemPreferences.getMediaAccessStatus("microphone") as string;
-    } else {
-      result.screenRecording = "not-available";
-      result.camera = "not-available";
-      result.microphone = "not-available";
-    }
-    return result;
-  });
-  ipcMain.handle("permissions:open-settings", async (_event, payload?: { target?: "screen" | "camera" | "microphone" }) => {
-    const attempts: Array<{ method: string; ok: boolean; detail?: string }> = [];
-    const log = (level: "info" | "warning", msg: string, ctx?: Record<string, unknown>) => {
-      options.logger?.[level === "info" ? "info" : "warning"]("permissions:open-settings", msg, ctx);
-    };
-    const openWithCommand = (args: string[]) =>
-      new Promise<boolean>((resolve) => {
-        execFile("open", args, (err) => resolve(!err));
-      });
-
-    if (process.platform !== "darwin") {
-      if (process.platform === "win32") {
-        await shell.openExternal("ms-settings:privacy");
-      } else {
-        await shell.openExternal("https://wiki.archlinux.org/title/Screen_sharing");
-      }
-      return { ok: true, attempts: [{ method: "platform-fallback", ok: true }] };
-    }
-
-    const target = payload?.target ?? "screen";
-    const anchor = target === "camera"
-      ? "Privacy_Camera"
-      : target === "microphone"
-        ? "Privacy_Microphone"
-        : "Privacy_ScreenCapture";
-
-    // macOS 13+：osascript reveal anchor 是经验上最稳定的（System Settings 而非 System Preferences）。
-    const osascript = `tell application "System Settings" to activate
-delay 0.2
-tell application "System Settings" to reveal anchor "${anchor}" of pane id "com.apple.preference.security"`;
-    try {
-      await new Promise<void>((resolve, reject) => {
-        execFile("osascript", ["-e", osascript], (err) => (err ? reject(err) : resolve()));
-      });
-      attempts.push({ method: "osascript-reveal", ok: true });
-      log("info", "已通过 osascript 打开系统设置", { target, anchor });
-      return { ok: true, method: "osascript-reveal", target, attempts };
-    } catch (err) {
-      attempts.push({ method: "osascript-reveal", ok: false, detail: err instanceof Error ? err.message : String(err) });
-    }
-
-    const urlsToTry = [
-      `x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?${anchor}`,
-      `x-apple.systempreferences:com.apple.preference.security?${anchor}`
-    ];
-    for (const url of urlsToTry) {
-      try {
-        await shell.openExternal(url);
-        attempts.push({ method: `shell.openExternal:${url}`, ok: true });
-        log("info", "已通过 shell.openExternal 打开系统设置", { url });
-        return { ok: true, method: "shell.openExternal", target, url, attempts };
-      } catch (err) {
-        attempts.push({ method: `shell.openExternal:${url}`, ok: false, detail: err instanceof Error ? err.message : String(err) });
-      }
-    }
-
-    for (const url of urlsToTry) {
-      const ok = await openWithCommand([url]);
-      attempts.push({ method: `open ${url}`, ok });
-      if (ok) {
-        log("info", "已通过 open URL 打开系统设置", { url });
-        return { ok: true, method: "open-url", target, url, attempts };
-      }
-    }
-
-    if (await openWithCommand(["-a", "System Settings"])) {
-      attempts.push({ method: "open -a 'System Settings'", ok: true });
-      log("info", "已通过 open -a System Settings", {});
-      return { ok: true, method: "open-app-name", target, attempts };
-    }
-    if (await openWithCommand(["-b", "com.apple.systempreferences"])) {
-      attempts.push({ method: "open -b com.apple.systempreferences", ok: true });
-      log("info", "已通过 bundle id 打开系统设置", {});
-      return { ok: true, method: "open-bundle-id", target, attempts };
-    }
-
-    const openPathError = await shell.openPath("/System/Applications/System Settings.app");
-    if (!openPathError) {
-      attempts.push({ method: "shell.openPath", ok: true });
-      return { ok: true, method: "shell.openPath", target, attempts };
-    }
-    attempts.push({ method: "shell.openPath", ok: false, detail: openPathError });
-
-    log("warning", "全部策略失败", { attempts });
-    return { ok: false, method: "failed", target, error: openPathError || "unable to open settings", attempts };
-  });
-
-  // 触发 desktopCapturer 以引发 macOS 原生屏幕录制授权提示；
-  // 成功与否都返回一次最新状态。
-  ipcMain.handle("permissions:request-screen", async () => {
-    try {
-      await screenshotManager.captureScreen();
-    } catch {
-      /* 忽略失败，依然返回最新状态 */
-    }
-    if (process.platform === "darwin") {
-      return { screen: systemPreferences.getMediaAccessStatus("screen"), timestamp: Date.now() };
-    }
-    return { screen: "not-available", timestamp: Date.now() };
-  });
-
-  // 日志系统 IPC（preload 已暴露，这里补齐 handler）
-  ipcMain.handle(
-    "logger:info",
-    (_event, payload: { source: string; message: string; context?: Record<string, unknown> }) => {
-      options.logger?.info(payload.source, payload.message, payload.context);
-      return { ok: true };
-    }
-  );
-  ipcMain.handle(
-    "logger:warning",
-    (_event, payload: { source: string; message: string; context?: Record<string, unknown> }) => {
-      options.logger?.warning(payload.source, payload.message, payload.context);
-      return { ok: true };
-    }
-  );
-  ipcMain.handle(
-    "logger:error",
-    (_event, payload: { source: string; message: string; context?: Record<string, unknown> }) => {
-      options.logger?.error(payload.source, payload.message, payload.context);
-      return { ok: true };
-    }
-  );
-  ipcMain.handle(
-    "logger:business",
-    (
-      _event,
-      payload: {
-        pipelineId?: string;
-        node: string;
-        status: BusinessLogStatus;
-        input?: unknown;
-        output?: unknown;
-        error?: string;
-        meta?: Record<string, unknown>;
-      }
-    ) => ({
-      id: kg.addBusinessLog({
-        pipelineId: payload.pipelineId ?? null,
-        node: payload.node,
-        status: payload.status,
-        input: payload.input,
-        output: payload.output,
-        error: payload.error,
-        meta: payload.meta,
-        startTime: Date.now()
-      })
-    })
-  );
-  ipcMain.handle(
-    "logger:get-logs",
-    (_event, payload?: { type?: "system" | "business"; limit?: number }) => {
-      const limit = payload?.limit ?? 100;
-      if (payload?.type === "business") return kg.getBusinessLogs(limit);
-      return kg.getSystemLogs(limit);
-    }
-  );
+  registerPrivacyHandlers(deps);
+  registerKgHandlers(deps);
+  registerCaptureHandlers(deps);
+  registerAgentHandlers(deps);
+  registerPipelineHandlers(deps);
+  registerSystemHandlers(deps);
+  registerDevHandlers(deps);
 
   return { autoCaptureService };
 }

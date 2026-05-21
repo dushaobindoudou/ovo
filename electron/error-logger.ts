@@ -136,6 +136,22 @@ export class ErrorLogger {
     if (level === "error" || level === "critical") {
       this.write(level, source, message);
     }
+    // N8: critical 级别同步走 macOS 系统通知中心 — 切到全屏 app 时仍能看见
+    // （N8 修复：toast 自渲染 BrowserWindow 在全屏应用下会被遮挡）
+    if (level === "critical") {
+      try {
+        const electron = loadElectron();
+        if (electron?.Notification?.isSupported?.()) {
+          new electron.Notification({
+            title: "Ovo · 重要提醒",
+            body: `${source}: ${message}`.slice(0, 200),
+            silent: false
+          }).show();
+        }
+      } catch {
+        /* 系统通知失败不影响主流程 */
+      }
+    }
     // broadcast to renderer windows so StatusPanel can react in real time
     try {
       const electron = loadElectron();

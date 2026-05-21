@@ -52,6 +52,7 @@ export type OvoInvokeChannel =
   | "kg:search-entities"
   | "kg:get-entity"
   | "kg:get-events"
+  | "kg:get-recent-events"
   | "kg:get-stats"
   | "kg:get-graph"
   | "kg:trigger-summarize"
@@ -79,6 +80,11 @@ export type OvoInvokeChannel =
   | "suggestion:feedback"
   | "action:confirm"
   | "action:cancel"
+  | "drafts:list"
+  | "drafts:promote"
+  | "drafts:dismiss"
+  | "outputs:list-past"
+  | "outputs:list-future"
   | "pipeline:get-recent"
   | "pipeline:get-detail"
   | "pipeline:rate-stage"
@@ -89,6 +95,7 @@ export type OvoInvokeChannel =
   | "business-log:create"
   | "business-log:update"
   | "tts:speak"
+  | "tts:set-enabled"
   | "app:get-version"
   | "app:runtime-check"
   | "app:open-console"
@@ -120,6 +127,9 @@ export type OvoInvokeChannel =
   | "kg:delete-negative-pattern"
   | "system:report-online"
   | "system:is-online"
+  | "system:open-app"
+  | "privacy:get-redaction-stats"
+  | "privacy:reset-redaction-stats"
   | "dev:run-sample-pipeline"
   | "permissions:get-status"
   | "permissions:open-settings"
@@ -312,6 +322,7 @@ export interface OvoInvokePayloadMap {
   "kg:search-entities": string;
   "kg:get-entity": string;
   "kg:get-events": number | { entityId?: string; limit?: number } | undefined;
+  "kg:get-recent-events": number | undefined;
   "kg:get-stats": undefined;
   "kg:get-graph": number | undefined;
   "kg:trigger-summarize": undefined;
@@ -339,6 +350,11 @@ export interface OvoInvokePayloadMap {
   "suggestion:feedback": any;
   "action:confirm": { actionId?: string; action?: AgentAction; pipelineId?: string };
   "action:cancel": { actionId: string; pipelineId?: string };
+  "drafts:list": number | undefined;
+  "drafts:promote": string;
+  "drafts:dismiss": string;
+  "outputs:list-past": number | undefined;
+  "outputs:list-future": undefined;
   "pipeline:get-recent": number | undefined;
   "pipeline:get-detail": string;
   "pipeline:rate-stage": { pipelineId: string; stage: string; rating: "good" | "bad" };
@@ -363,6 +379,7 @@ export interface OvoInvokePayloadMap {
     meta?: Record<string, unknown>;
   };
   "tts:speak": { text: string; voice?: string };
+  "tts:set-enabled": boolean;
   "app:get-version": undefined;
   "app:runtime-check": undefined;
   "app:open-console": undefined;
@@ -394,6 +411,9 @@ export interface OvoInvokePayloadMap {
   "kg:delete-negative-pattern": string;
   "system:report-online": boolean;
   "system:is-online": undefined;
+  "system:open-app": { app?: string; bundleId?: string };
+  "privacy:get-redaction-stats": undefined;
+  "privacy:reset-redaction-stats": undefined;
   "dev:run-sample-pipeline": undefined;
   "permissions:get-status": undefined;
   "permissions:open-settings": { target?: "screen" | "camera" | "microphone" } | undefined;
@@ -496,6 +516,20 @@ export interface OvoAPI {
     searchEntities: (query: string) => Promise<any[]>;
     getEntity: (id: string) => Promise<any>;
     getEvents: (payload?: number | { entityId?: string; limit?: number }) => Promise<any[]>;
+    /** U2 时间线视图：拉最近 memory_events（含 5W actor 字段） */
+    getRecentEvents: (limit?: number) => Promise<Array<{
+      id: string;
+      timestamp: number;
+      appName: string;
+      windowTitle: string;
+      content: string;
+      summary: string;
+      intent: string;
+      importance: number;
+      sourceWindowId: string;
+      actor?: "self" | "other" | "system" | "ovo" | "unknown" | null;
+      actorName?: string | null;
+    }>>;
     getStats: () => Promise<any>;
     getGraph: (limit?: number) => Promise<{
       nodes: Array<{ id: string; name: string; type: string; description?: string; mentionCount: number; lastSeen: number }>;
@@ -624,6 +658,9 @@ export interface OvoAPI {
     pause: (minutes: number) => Promise<{ ok: boolean; pausedUntil: number }>;
     resume: () => Promise<{ ok: boolean }>;
     getPauseState: () => Promise<{ pausedUntil: number; isPaused: boolean }>;
+    // DATA-12: 脱敏命中累计
+    getRedactionStats: () => Promise<{ total: number; byType: Record<string, number> }>;
+    resetRedactionStats: () => Promise<{ ok: boolean }>;
   };
   suggestion: {
     feedback: (payload: any) => Promise<any>;
@@ -632,6 +669,41 @@ export interface OvoAPI {
     confirm: (payload: { actionId?: string; action?: any; pipelineId?: string }) => Promise<any>;
     cancel: (payload: { actionId: string; pipelineId?: string }) => Promise<any>;
     getDetail: (actionId: string) => Promise<ActionDetail | null>;
+  };
+  drafts: {
+    list: (limit?: number) => Promise<Array<{
+      id: string;
+      createdAt: number;
+      actionId: string;
+      actionType: string;
+      description: string;
+      params: Record<string, unknown>;
+      evidenceLevel: string;
+      evidence: string[];
+      groundingStatus: string;
+      groundingReason: string;
+      appName?: string;
+      windowTitle?: string;
+      pipelineId?: string;
+    }>>;
+    promote: (id: string) => Promise<{ ok: boolean; result?: any; error?: string }>;
+    dismiss: (id: string) => Promise<{ ok: boolean }>;
+  };
+  outputs: {
+    listPast: (limit?: number) => Promise<Array<{
+      actionId: string;
+      type: string;
+      description: string;
+      status: string;
+      timestamp: number;
+      pipelineId?: string;
+      params?: Record<string, unknown>;
+      output?: string;
+    }>>;
+    listFuture: () => Promise<{
+      reminders: Array<{ name: string; dueAt?: string; listName?: string; completed: boolean }>;
+      events: Array<{ title: string; startsAt: string; endsAt?: string; calendarName?: string; location?: string }>;
+    }>;
   };
   pipeline: {
     getRecent: (limit?: number) => Promise<any[]>;
@@ -662,6 +734,7 @@ export interface OvoAPI {
   };
   tts: {
     speak: (payload: { text: string; voice?: string }) => Promise<any>;
+    setEnabled: (enabled: boolean) => Promise<{ ok: boolean }>;
   };
   app: {
     getVersion: () => Promise<string>;
@@ -706,6 +779,8 @@ export interface OvoAPI {
   system: {
     reportOnline: (online: boolean) => Promise<{ ok: boolean }>;
     isOnline: () => Promise<boolean>;
+    /** 打开外部 macOS 应用（白名单内 stock app 或合法 bundleId）。用于 ActionDetailDrawer "去现场看" 按钮 */
+    openApp: (payload: { app?: string; bundleId?: string }) => Promise<{ ok: boolean; error?: string }>;
   };
   prefs: {
     getPersonalityOverrides: () => Promise<Record<string, number>>;
@@ -768,6 +843,14 @@ export interface ActionDetail {
   ocrPreview?: string;
   intent?: string;
   summary?: string;
+  prediction?: string;
+  siblingActions?: Array<{
+    id: string;
+    type: string;
+    description: string;
+    status: string;
+  }>;
+  siblingSuggestions?: Array<{ title: string }>;
   timeline?: Array<{
     node: string;
     status: string;

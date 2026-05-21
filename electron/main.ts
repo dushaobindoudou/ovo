@@ -4,12 +4,14 @@ import path from "node:path";
 import { registerIpcHandlers } from "./ipc-handlers.js";
 import { KnowledgeGraphEngine } from "./knowledge-graph.js";
 import { Logger } from "./logger.js";
-import { runVerifyRealLogs } from "./verify-real-logs.js";
+// C8: verify-real-logs 改成 dynamic import — 不再静态进入主 bundle
+// 生产 build 走 isPackaged 守卫，env 即使被设也无效
 import { errorLogger } from "./error-logger.js";
 import { scheduler } from "./scheduler.js";
 import { preferencesStore } from "./preferences-store.js";
 import { setActiveRedactionLevel } from "./sensitive-filter.js";
 import { systemEvents } from "./system-events.js";
+import { startUpdateChecker } from "./update-check.js";
 import { inferActivityState } from "./session-tracker.js";
 import { renderAppIcon, renderTrayIcon } from "./icon-renderer.js";
 import type { AgentSuggestion } from "./types.js";
@@ -599,6 +601,8 @@ async function bootstrap() {
   setActiveRedactionLevel(preferencesStore.getRedactionLevel());
   // T13 / C5 / M8 / M9 / A5: 初始化系统事件 hub
   systemEvents.init();
+  // C7: 自动更新检查（仅生产构建）— 启动 30s 后异步查 GitHub Releases 比对版本
+  startUpdateChecker();
   errorLogger.alert("info", "boot", "ovo 主进程启动", {
     version: app.getVersion(),
     pid: process.pid,
@@ -619,20 +623,11 @@ async function bootstrap() {
     error: (source: string, message: string, context?: Record<string, unknown>) => logger?.error(source, message, context)
   };
 
-  // 捕获所有未处理的异常
-  process.on("uncaughtException", (error) => {
-    logger?.error("electron:main", "uncaughtException", {
-      message: error.message,
-      stack: error.stack
-    });
-  });
-
-  // 捕获所有未处理的 Promise 拒绝
-  process.on("unhandledRejection", (reason) => {
-    logger?.error("electron:main", "unhandledRejection", {
-      reason: typeof reason === "string" ? reason : JSON.stringify(reason)
-    });
-  });
+  // CODE-7: 删除原 bootstrap() 内重复的 uncaughtException / unhandledRejection 注册
+  //   - error-logger.ts:70 已注册一对（init() 时）
+  //   - main.ts:547 / 559 已注册一对（module-level）
+  //   - 这里再注册第三对会让同一错误触发 3 次告警 + 触发 MaxListenersExceededWarning
+  //   现在仅依赖前两处，bootstrap 内只做模块初始化，不再注册全局 handler
 
   // 先注册 IPC，避免窗口初始渲染阶段 invoke 发生竞态
   suggestionToastManager = new SuggestionToastManager();
@@ -653,8 +648,11 @@ async function bootstrap() {
     }
   });
 
-  if (process.env.OVO_RUN_REAL30 === "1") {
-    void runVerifyRealLogs()
+  // C8 / M14: verify-real-logs 仅 dev 模式（!isPackaged）+ env=1 双重守卫
+  // 生产 build 即便用户设了 OVO_RUN_REAL30=1 也不会触发测试逻辑污染真实数据
+  if (!app.isPackaged && process.env.OVO_RUN_REAL30 === "1") {
+    void import("./verify-real-logs.js")
+      .then(({ runVerifyRealLogs }) => runVerifyRealLogs())
       .then(() => {
         logger?.info("verify-real-logs", "真实场景验证完成");
         app.quit();

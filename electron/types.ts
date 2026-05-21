@@ -69,6 +69,20 @@ export const ACTION_TYPES: ActionType[] = [
   "other"
 ];
 
+/**
+ * 信号强度分级 — 决定 action 是直接执行 / 进草稿台 / 拒绝。
+ * 参考 docs/REFLECTION_LOG.md 反思 #2。
+ *
+ *   - direct      用户在屏幕上明确表达了这个意图（选中文本、输入框打字、点了按钮）
+ *   - inferred    屏幕行为强暗示（写邮件中、在 IDE 编辑 TODO 注释等）
+ *   - speculative LLM 概念关联，没有屏幕直接证据 → 应该转 suggestion 而不是 action
+ *
+ * LLM 自报这个值，但主进程 evidence-grounder.ts 会验证 evidence[] 字符串是否
+ * 真在 OCR 里找得到。验证不通过的 inferred → 走草稿台（grounded=false），
+ * 不会直接执行。这是反幻觉的硬性 check。
+ */
+export type EvidenceLevel = "direct" | "inferred" | "speculative";
+
 export interface AgentAction {
   id: string;
   description: string;
@@ -79,6 +93,16 @@ export interface AgentAction {
   type?: ActionType;
   /** PHIL-1: 玻璃管家三层叙述中的"因为"——LLM 给的执行理由（可选） */
   reason?: string;
+  /**
+   * 反思 #2 核心字段：LLM 自报的信号等级。缺失时降级为 speculative（最保守）。
+   */
+  evidence_level?: EvidenceLevel;
+  /**
+   * LLM 列出的具体屏幕证据，1-3 条短句。例：
+   *   ["收件人栏: wang@example.com", "subject 是空的", "用户刚切到 Mail.app"]
+   * 主进程 grounder 会用这个数组在 OCR preview 里做子串匹配验证。
+   */
+  evidence?: string[];
 }
 
 export interface AgentSuggestion {

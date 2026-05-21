@@ -33,6 +33,7 @@ const ALLOWED_CHANNELS = new Set([
   "kg:search-entities",
   "kg:get-entity",
   "kg:get-events",
+  "kg:get-recent-events",
   "kg:get-stats",
   "kg:get-graph",
   "kg:trigger-summarize",
@@ -104,6 +105,15 @@ const ALLOWED_CHANNELS = new Set([
   "kg:delete-negative-pattern",
   "system:report-online",
   "system:is-online",
+  "system:open-app",
+  "drafts:list",
+  "drafts:dismiss",
+  "drafts:promote",
+  "outputs:list-past",
+  "outputs:list-future",
+  "tts:set-enabled",
+  "privacy:get-redaction-stats",
+  "privacy:reset-redaction-stats",
   // 调试
   "dev:run-sample-pipeline",
   // 权限检测
@@ -194,6 +204,7 @@ contextBridge.exposeInMainWorld("ovoAPI", {
     searchEntities: (payload) => ipcRenderer.invoke("kg:search-entities", payload),
     getEntity: (id) => ipcRenderer.invoke("kg:get-entity", id),
     getEvents: (payload) => ipcRenderer.invoke("kg:get-events", payload),
+    getRecentEvents: (limit) => ipcRenderer.invoke("kg:get-recent-events", limit),
     getStats: () => ipcRenderer.invoke("kg:get-stats"),
     getGraph: (limit) => ipcRenderer.invoke("kg:get-graph", limit),
     triggerSummarize: () => ipcRenderer.invoke("kg:trigger-summarize"),
@@ -230,7 +241,10 @@ contextBridge.exposeInMainWorld("ovoAPI", {
     setBlacklist: (apps) => ipcRenderer.invoke("privacy:set-blacklist", apps),
     pause: (minutes) => ipcRenderer.invoke("privacy:pause", minutes),
     resume: () => ipcRenderer.invoke("privacy:resume"),
-    getPauseState: () => ipcRenderer.invoke("privacy:get-pause-state")
+    getPauseState: () => ipcRenderer.invoke("privacy:get-pause-state"),
+    // DATA-12: 脱敏命中累计
+    getRedactionStats: () => ipcRenderer.invoke("privacy:get-redaction-stats"),
+    resetRedactionStats: () => ipcRenderer.invoke("privacy:reset-redaction-stats")
   },
   suggestion: {
     feedback: (payload) => ipcRenderer.invoke("suggestion:feedback", payload)
@@ -239,6 +253,15 @@ contextBridge.exposeInMainWorld("ovoAPI", {
     confirm: (payload) => ipcRenderer.invoke("action:confirm", payload),
     getDetail: (actionId) => ipcRenderer.invoke("action:get-detail", actionId),
     cancel: (payload) => ipcRenderer.invoke("action:cancel", payload)
+  },
+  drafts: {
+    list: (limit) => ipcRenderer.invoke("drafts:list", limit),
+    promote: (id) => ipcRenderer.invoke("drafts:promote", id),
+    dismiss: (id) => ipcRenderer.invoke("drafts:dismiss", id)
+  },
+  outputs: {
+    listPast: (limit) => ipcRenderer.invoke("outputs:list-past", limit),
+    listFuture: () => ipcRenderer.invoke("outputs:list-future")
   },
   pipeline: {
     getRecent: (limit) => ipcRenderer.invoke("pipeline:get-recent", limit),
@@ -262,7 +285,8 @@ contextBridge.exposeInMainWorld("ovoAPI", {
     getLogs: (type, limit) => ipcRenderer.invoke("logger:get-logs", { type, limit })
   },
   tts: {
-    speak: (payload) => ipcRenderer.invoke("tts:speak", payload)
+    speak: (payload) => ipcRenderer.invoke("tts:speak", payload),
+    setEnabled: (enabled) => ipcRenderer.invoke("tts:set-enabled", enabled)
   },
   app: {
     getVersion: () => ipcRenderer.invoke("app:get-version"),
@@ -299,7 +323,8 @@ contextBridge.exposeInMainWorld("ovoAPI", {
   // T13 / M8: 系统事件 — 网络状态上报
   system: {
     reportOnline: (online) => ipcRenderer.invoke("system:report-online", online),
-    isOnline: () => ipcRenderer.invoke("system:is-online")
+    isOnline: () => ipcRenderer.invoke("system:is-online"),
+    openApp: (payload) => ipcRenderer.invoke("system:open-app", payload)
   },
   prefs: {
     getPersonalityOverrides: () => ipcRenderer.invoke("prefs:get-personality-overrides"),
