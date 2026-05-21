@@ -91,6 +91,28 @@
     "toastHintAlerts": "仅风险预警和需要确认的动作会弹",
     "toastHintAll": "所有建议都会弹到屏幕角"
   },
+  "toast": {
+    "pinLocked": "已锁定（点击恢复倒计时）",
+    "pinLock": "锁定 — 暂停自动关闭",
+    "closeNow": "立即关闭",
+    "closeCountdown": "{{n}}s 后自动关闭，点击立即关闭",
+    "titleCodeHidden": "（标题含代码，已隐藏）",
+    "contentCodeHidden": "（内容含代码，已隐藏，请回到屏幕原处查看）",
+    "detailCodeHidden": "（详情含代码，已隐藏）",
+    "executing": "执行中…",
+    "execute": "执行",
+    "ignore": "忽略",
+    "gotIt": "知道了",
+    "want": "要",
+    "dontWant": "不要",
+    "adopt": "采纳",
+    "read": "朗读",
+    "ttsUnknownError": "未知错误",
+    "ttsDisabled": "朗读已关闭，请到「设置 → 语音输出」开启",
+    "ttsNetwork": "网络问题，无法连接到 Edge TTS 服务",
+    "ttsFirstPlay": "首次播放需要先点一下窗口任意位置授权",
+    "ttsFailed": "朗读失败：{{reason}}"
+  },
   "process": {
     "tabActions": "动作清单",
     "tabReplay": "技术回放",

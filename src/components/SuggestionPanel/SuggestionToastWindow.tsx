@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { X, Volume2, ThumbsUp, Pin, PinOff } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useFeedback } from "../../hooks/useFeedback";
 import { useTTS } from "../../hooks/useTTS";
 import { getSuggestionSpec } from "./suggestionTypes";
@@ -46,6 +47,7 @@ function parseToastPayload(): ToastSuggestion | null {
 }
 
 export function SuggestionToastWindow() {
+  const { t } = useTranslation();
   const { submitSuggestionFeedback } = useFeedback();
   const { speak } = useTTS();
   const item = useMemo(() => {
@@ -55,11 +57,11 @@ export function SuggestionToastWindow() {
     // 兜底：所有可见文本（title / content / detail）渲染前都过 sanitize。
     return {
       ...raw,
-      title: sanitizeForDisplay(raw.title, "（标题含代码，已隐藏）", 100),
-      content: sanitizeForDisplay(raw.content, "（内容含代码，已隐藏，请回到屏幕原处查看）", 500),
-      detail: raw.detail ? sanitizeForDisplay(raw.detail, "（详情含代码，已隐藏）", 300) : raw.detail
+      title: sanitizeForDisplay(raw.title, t("toast.titleCodeHidden"), 100),
+      content: sanitizeForDisplay(raw.content, t("toast.contentCodeHidden"), 500),
+      detail: raw.detail ? sanitizeForDisplay(raw.detail, t("toast.detailCodeHidden"), 300) : raw.detail
     };
-  }, []);
+  }, [t]);
   // P1.16: 按内容长度计算总时长（基础 + 每字符），上限 60s
   const totalMs = useMemo(() => {
     if (!item) return AUTO_CLOSE_BASE_MS;
@@ -168,7 +170,7 @@ export function SuggestionToastWindow() {
         <div className="absolute right-2 top-2 flex items-center gap-1">
           <button
             type="button"
-            title={pinned ? "已锁定（点击恢复倒计时）" : "锁定 — 暂停自动关闭"}
+            title={pinned ? t("toast.pinLocked") : t("toast.pinLock")}
             onClick={() => setPinned((p) => !p)}
             className={`flex items-center rounded-md px-1 py-1 transition-colors ${
               pinned
@@ -180,7 +182,7 @@ export function SuggestionToastWindow() {
           </button>
           <button
             type="button"
-            title={pinned ? "立即关闭" : `${secondsLeft}s 后自动关闭，点击立即关闭`}
+            title={pinned ? t("toast.closeNow") : t("toast.closeCountdown", { n: secondsLeft })}
             onClick={() => window.close()}
             className="flex items-center gap-1 rounded-md px-1 py-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
           >
@@ -231,7 +233,7 @@ export function SuggestionToastWindow() {
                       .finally(() => window.close());
                   }}
                 >
-                  {actionBusy ? "执行中…" : "执行"}
+                  {actionBusy ? t("toast.executing") : t("toast.execute")}
                 </button>
                 <button
                   type="button"
@@ -245,7 +247,7 @@ export function SuggestionToastWindow() {
                       .finally(() => window.close());
                   }}
                 >
-                  忽略
+                  {t("toast.ignore")}
                 </button>
               </>
             ) : isReceipt ? (
@@ -254,7 +256,7 @@ export function SuggestionToastWindow() {
                 className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:border-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 onClick={() => window.close()}
               >
-                知道了
+                {t("toast.gotIt")}
               </button>
             ) : isOffer ? (
               <>
@@ -270,7 +272,7 @@ export function SuggestionToastWindow() {
                     window.close();
                   }}
                 >
-                  要
+                  {t("toast.want")}
                 </button>
                 <button
                   type="button"
@@ -284,7 +286,7 @@ export function SuggestionToastWindow() {
                     window.close();
                   }}
                 >
-                  不要
+                  {t("toast.dontWant")}
                 </button>
               </>
             ) : (
@@ -301,7 +303,7 @@ export function SuggestionToastWindow() {
                     window.close();
                   }}
                 >
-                  <ThumbsUp size={11} />采纳
+                  <ThumbsUp size={11} />{t("toast.adopt")}
                 </button>
                 <button
                   type="button"
@@ -315,29 +317,29 @@ export function SuggestionToastWindow() {
                     window.close();
                   }}
                 >
-                  忽略
+                  {t("toast.ignore")}
                 </button>
               </>
             )}
             <button
               type="button"
-              title="朗读"
+              title={t("toast.read")}
               onClick={async () => {
                 // 用户 Bug 反馈：TTS 没声音。原来错误被静默吞，现在显式 alert + 锁定 toast
                 // 不让它自动关闭（pinned），让用户看到错误
                 const res = await speak(`${item.title}. ${item.content}`);
                 if (!res?.ok) {
                   setPinned(true);
-                  const detail = res?.error ?? "未知错误";
+                  const detail = res?.error ?? t("toast.ttsUnknownError");
                   // 友好提示：TTS 失败时告诉用户为什么
                   const friendly = /未启用/.test(detail)
-                    ? "朗读已关闭，请到「设置 → 语音输出」开启"
+                    ? t("toast.ttsDisabled")
                     : /网络|fetch|ENET|abort/i.test(detail)
-                    ? "网络问题，无法连接到 Edge TTS 服务"
+                    ? t("toast.ttsNetwork")
                     : /autoplay|gesture/i.test(detail)
-                    ? "首次播放需要先点一下窗口任意位置授权"
+                    ? t("toast.ttsFirstPlay")
                     : detail;
-                  alert(`朗读失败：${friendly}`);
+                  alert(t("toast.ttsFailed", { reason: friendly }));
                 }
               }}
               className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card-hover)] hover:text-[var(--accent)]"

@@ -91,6 +91,28 @@
     "toastHintAlerts": "Only risk alerts and actions needing confirmation pop",
     "toastHintAll": "All suggestions pop to the screen corner"
   },
+  "toast": {
+    "pinLocked": "Locked (click to resume countdown)",
+    "pinLock": "Lock — pause auto-close",
+    "closeNow": "Close now",
+    "closeCountdown": "auto-closes in {{n}}s, click to close now",
+    "titleCodeHidden": "(title has code, hidden)",
+    "contentCodeHidden": "(content has code, hidden — check the original on screen)",
+    "detailCodeHidden": "(detail has code, hidden)",
+    "executing": "Running…",
+    "execute": "Run",
+    "ignore": "Ignore",
+    "gotIt": "Got it",
+    "want": "Yes",
+    "dontWant": "No",
+    "adopt": "Useful",
+    "read": "Read aloud",
+    "ttsUnknownError": "Unknown error",
+    "ttsDisabled": "Read-aloud is off — enable it in Settings → Voice output",
+    "ttsNetwork": "Network issue, can't reach Edge TTS service",
+    "ttsFirstPlay": "First playback needs a click anywhere in the window to authorize",
+    "ttsFailed": "Read-aloud failed: {{reason}}"
+  },
   "process": {
     "tabActions": "Actions",
     "tabReplay": "Tech replay",
