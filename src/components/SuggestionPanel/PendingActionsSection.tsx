@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, Check, ChevronRight, Loader2, RotateCcw, X, Zap, ShieldOff, Undo2 } from "lucide-react";
 import { Card } from "../shared/Card";
+import { Modal } from "../shared/Modal";
 import { usePendingActions, type PendingActionItem } from "../../hooks/usePendingActions";
 import { translateError, type TranslatedError } from "../../utils/errorTranslator";
 import { sanitizeForDisplay } from "../../utils/sanitizeText";
@@ -320,14 +321,7 @@ function NeverDialog({ dialog, onClose, onSaved }: {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-md rounded-2xl border border-[var(--danger)]/30 bg-[var(--bg-card)] p-5 shadow-[var(--shadow-lg)]"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal open onClose={onClose} size="md" danger showCloseButton={false}>
         <div className="mb-3 flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--danger)]/15 text-[var(--danger)]">
             <ShieldOff size={18} />
@@ -408,8 +402,7 @@ function NeverDialog({ dialog, onClose, onSaved }: {
             算了
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
