@@ -3,7 +3,7 @@
 > UI 设计专家视角，聚焦视觉一致性、设计系统、品牌完整性。
 > 与 `UX_AUDIT.md`（产品 UX）/ `BUG_REPORT.md`（QA bug）互补 — 这份只看视觉层。
 
-**最新更新**：第 2 轮（2026-05-16）· 累计 22 个设计问题 · 5 个系统性反模式
+**最新更新**：修复轮（2026-05-21）· 🎨 配色一致性已修复 ✅（B1/B2/B3/B4/S1）· 累计 22 个问题（5 个已解决）· 5 个系统性反模式
 
 ---
 
@@ -377,3 +377,16 @@ CSS 定义了完整 tokens 但代码大规模绕过。**Design tokens 必须 ESL
   - **macOS 系统级集成**：menu bar 表现 / 系统暗色切换实时性 / 字体回退链
   - **国际化视觉断裂**：英文长字符串 vs 中文短字符串布局崩
   - **OS 字体放大场景**：系统设置放大文字 → Ovo UI 是否破版
+
+### 2026-05-21 修复轮（配色一致性统一）✅
+- 触发：创始人 dogfood 时一眼发现"系统蓝 / 图标黄 / 悬浮球绿紫"不一致（验证了 B1/B2/B3/B4/S1）
+- 决策：**品牌主色统一到 systemBlue `#007aff`**，状态色从主色派生
+- 修复 commit：`4609d82` fix(ui): 统一品牌色到 systemBlue
+- 已解决的问题：
+  - ✅ **B1 三套 Logo 视觉系统** → icon-renderer 改 navy + systemBlue（修了 R/B 通道 bug），重新生成 `build/icon*.png` + `.icns`
+  - ✅ **B2 5 套色板** → 全部归一到 systemBlue token 体系
+  - ✅ **B3 主题色概念矛盾** → 去掉微信绿 `#07C160`，AnimatedLogo 改读 `var(--state-*)` CSS 变量
+  - ✅ **B4 无 tailwind.config 根因** → `index.css` 用 Tailwind v4 `@theme` 暴露 tokens 为类名（`bg-accent` 等）
+  - ✅ **S1 状态机三套颜色** → FloatingIcon orb / AnimatedLogo / CSS state tokens 现统一从 systemBlue 派生（idle→systemBlue / thinking→indigo / acting→green / alert→orange）
+- 对应 GitHub issues：#26 / #27 / #28（已在 PR #29 关联，merge 后自动关闭）
+- 仍待处理：B5（emoji vs lucide 图标系统，见 issue #3）、S5（z-index）、S6（focus ring）、S7（动画 scale）、S8（空状态文案）

@@ -161,6 +161,9 @@ Vision OCR 在 macOS 12+ 才稳定。如果用户 macOS 11 或 native module 编
 | **R5-1** | action toast 多张重叠(slot 全=0) + 无去重刷屏 | 独立 getNextActionSlot 纵向堆叠(最多4行) + 按 (type:desc) 2分钟去重 + 同 actionId 不重复弹 | `main.ts` enqueueActions/openActionToast |
 | **R6-2** | synthesis prompt requireConfirm 规则让 LLM 给 set_reminder/add_calendar 标 requireConfirm:true→架空 R4-1 Lv.3 自动 | line 464 清单对齐 REQUIRE_CONFIRM_TYPES(send_email/send_imessage/index_path)，其余交信任等级 | `adaptive-prompt.ts:464` |
 | **R6-1** | （修正：原判 P1 有误）缺 evidence 字段的 buildAdaptivePrompt 是死代码无调用方；生产 synthesis prompt 字段正确 | 删除死代码 buildAdaptivePrompt(−179行) | `adaptive-prompt.ts` |
+| **图标 R/B bug** | 图标一直是棕橙(非蓝)，与主界面冲突。根因 createFromBuffer 当 BGRA 解析而代码填 RGBA→R/B 互换 | rgbaToBGRA() 交换通道 + 重生成图标；悬浮球 idle 绿→systemBlue | `icon-renderer.ts` `FloatingIcon.tsx` |
+| **A1** | 安装版(未签名打包)每次启动弹钥匙串密码框 | keychain 默认关闭(明文)，OVO_FORCE_ENCRYPTION=1 强开；签名(E2)后再开回 | `secrets-store.ts` |
+| **R5-2** | send 类草稿 promote 后忽略确认浮窗→动作丢失(孤儿) | promote 转待确认时 revertDraft 退回 pending，留在草稿台 | `knowledge-graph.ts` `ipc/kg.ts` |
 
 ## 🔲 待办问题（按价值排序）
 
