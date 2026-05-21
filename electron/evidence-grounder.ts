@@ -59,26 +59,37 @@ function normalize(s: string): string {
     .trim();
 }
 
+/** 是否含 CJK（中日韩）字符——决定 n-gram 粒度。 */
+function hasCJK(s: string): boolean {
+  return /[぀-ヿ㐀-鿿가-힯ｦ-ﾟ]/.test(s);
+}
+
 /**
  * 单个 evidence 是否在 context 里找得到。
- * 策略：把 evidence 也归一化，然后做"3-gram 命中率"。短句直接子串。
+ * 策略：归一化后做"n-gram 命中率"，短句直接子串。
  *
- * 用 3-gram 而不是 exact substring 是为了容忍 OCR 错字 / LLM 重述顺序的
- * 小差异。命中率 ≥ 60% 视为找到。
+ * R3-2 中文适配：中英文 gram 粒度不同——
+ *   - 拉丁文：6 字符 gram、步长 3、短串(≤8)严格子串。一个英文词约 5-6 字母。
+ *   - CJK：3 字 gram、步长 1、短串(≤4)严格子串。每个汉字信息量大，6 字 gram 太长，
+ *     OCR 错一个字就让整段 6-gram 全 miss；3 字 gram + 步长 1 更细、更耐错字。
+ * n-gram 而非 exact substring 是为了容忍 OCR 错字 / LLM 重述顺序的小差异。命中率 ≥ 60% 视为找到。
  */
 function evidenceFoundIn(evidence: string, normContext: string): boolean {
   const ev = normalize(evidence);
   if (!ev) return false;
-  if (ev.length <= 8) {
+  const cjk = hasCJK(ev);
+  const shortLimit = cjk ? 4 : 8;
+  if (ev.length <= shortLimit) {
     // 短证据：必须严格子串
     return normContext.includes(ev);
   }
   if (normContext.includes(ev)) return true;
-  // 长证据：抽取至少 6 字符的"核心片段"做子串匹配 — LLM 可能改写
-  // 切成长度 6 的连续片段；任一片段命中 = 命中（容忍 ±几字误差）
+  // 长证据：切成连续 gram 做子串匹配 — LLM 可能改写、OCR 可能错字
+  const gramSize = cjk ? 3 : 6;
+  const step = cjk ? 1 : 3;
   const grams: string[] = [];
-  for (let i = 0; i + 6 <= ev.length; i += 3) {
-    grams.push(ev.slice(i, i + 6));
+  for (let i = 0; i + gramSize <= ev.length; i += step) {
+    grams.push(ev.slice(i, i + gramSize));
   }
   if (grams.length === 0) return false;
   const hits = grams.filter((g) => normContext.includes(g)).length;
@@ -105,8 +116,18 @@ export function groundEvidence(
   evidence: string[] | undefined,
   ctx: GroundingContext
 ): GroundingResult {
-  // 关键：未填 → direct（信任执行），不是 speculative（全军覆没）
-  const level = evidenceLevel ?? "direct";
+  // 关键修正（R3-1）：evidence_level **完全没声明**（字段缺失）→ 回退到信任等级判定。
+  //   理由：不是所有 backend（尤其默认的 hermes）都稳定输出 evidence_level；老数据也没有。
+  //   此时不该强行 grounding（否则因 evidence 也空 → 一律 unverified → 全落草稿台，
+  //   自动执行形同虚设）。返回 grounded = "放行到执行入口"，由 executeBatch 的 trust
+  //   闸门（可逆动作自动 / 发送类确认）来决定，这才是正确的两道闸门分工。
+  if (evidenceLevel === undefined) {
+    return {
+      status: "grounded",
+      reason: "未声明 evidence_level — 回退信任等级判定（不强制 grounding）"
+    };
+  }
+  const level = evidenceLevel;
 
   // 1) speculative 一律拒绝 — 这种 LLM 应该转 suggestion，进了 actions 就是幻觉
   if (level === "speculative") {

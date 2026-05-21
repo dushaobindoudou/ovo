@@ -21,23 +21,32 @@ export type TrustLevel = 0 | 1 | 2 | 3 | 4;
  * 每种 action type 的默认信任级别（参考哲学：默认克制）。
  * 无害本地操作 = 3（执行 + 撤销窗口）；外发/系统集成 = 2（必须确认）。
  */
+// 用户产品反馈（2026-05-21）：默认几乎所有动作都"等确认"，Ovo 显得被动。
+// 重新平衡为「可逆动作自动执行（Lv.3 + 5 秒撤销窗口），仅不可逆的发送类保留确认」。
+// 注意：trust 闸门在 evidence-grounding 闸门之后——只有 grounded 的推断动作才会
+// 走到这里被自动执行，speculative / unverified 仍然被拦截或落草稿台，仍有安全网。
 export const DEFAULT_TRUST_LEVELS: Record<ActionType, TrustLevel> = {
   log_note: 3,
   create_todo: 3,
-  // copy_to_clipboard：剪贴板是用户私有空间，Ovo 不能未经允许写入。
-  // 默认 2（必须用户点"确认执行"才会真的复制）— 避免 LLM 看到屏幕上的代码
-  // 就自作主张帮用户复制，破坏用户原剪贴板内容。
-  copy_to_clipboard: 2,
-  search: 2,
-  summarize: 2,
-  set_reminder: 2,
-  add_calendar: 2,
-  index_path: 2,
+  // 可逆 / 屏幕内 / 不抢焦点 —— 自动执行。剪贴板被覆盖、提醒/日历误建都可撤销/还原，
+  // 且不会突然抢走用户当前窗口，自动跑收益 > 打扰。
+  copy_to_clipboard: 3,
+  search: 3,
+  summarize: 3,
+  set_reminder: 3,
+  add_calendar: 3,
+  // R4-1 回退：open_url/open_app/search_web 会"抢屏"（突然打开浏览器/切换前台 app）。
+  // 基于推断静默自动执行太突兀且无撤销。现在有了可执行 action toast，确认不再麻烦
+  // ——它们弹一张带"执行"按钮的浮窗，用户一键就开。保留 Lv.2 确认。
   open_url: 2,
   open_app: 2,
   search_web: 2,
+  // index_path：文件系统遍历，涉及隐私 + 可能耗时，保留确认（用户未列入自动清单）。
+  index_path: 2,
+  // 不可逆 / 发给他人 —— 必须确认。误发邮件 / iMessage 无法撤回。
   send_email: 2,
   send_imessage: 2,
+  // 未分类动作默认保守，需确认。
   other: 2
 };
 

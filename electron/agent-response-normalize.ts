@@ -4,6 +4,7 @@ import type {
   AgentParsedPayload,
   AgentSchemaMeta,
   AgentSuggestion,
+  EvidenceLevel,
   ExtractedEntity,
   ExtractedRelation,
   OvoOffer,
@@ -19,15 +20,13 @@ function normalizeActionType(raw: unknown): ActionType {
 // P3: 任何会"抢"用户屏幕/键鼠/外发行为的动作都必须等用户确认
 // 用户原话：「会自动打开浏览器操作，这些肯定不行」「不要跟用户抢对电脑的操作」
 // 反例（不进 confirm）：log_note / copy_to_clipboard / summarize / search（纯 KG 内查）
-const REQUIRE_CONFIRM_TYPES = new Set<ActionType>([
-  "send_email",
-  "send_imessage",
-  "open_url",      // 浏览器跳转 = 抢屏
-  "search_web",    // 浏览器跳转 = 抢屏
-  "open_app",      // 切换前台应用
-  "set_reminder",  // 弹系统通知/提醒
-  "add_calendar",  // 改用户日历
-  "index_path"     // 文件系统遍历
+// 用户产品反馈（2026-05-21）：只对"不可逆 / 涉及隐私扫描"的动作强制确认。
+// 抢屏类（open_url/search_web/open_app）和提醒/日历改为跟随 trust 等级（默认 Lv.3 自动 +
+// 5 秒撤销），不再无条件挡在等确认队列里。
+export const REQUIRE_CONFIRM_TYPES = new Set<ActionType>([
+  "send_email",    // 发给他人，不可撤回
+  "send_imessage", // 发给他人，不可撤回
+  "index_path"     // 文件系统遍历，涉及隐私
 ]);
 
 function isRecord(x: unknown): x is Record<string, unknown> {
@@ -83,14 +82,28 @@ function parseAction(item: unknown): AgentAction | null {
   const id = asString(item.id, "") || toSlug(description || asString(item.type, ""), "action");
   if (!id || !description) return null;
   const type = normalizeActionType(item.type);
+  // R3-1 修复：之前这里漏拷 evidence_level / evidence，导致所有 action 到 grounder 时
+  //   evidence 永远 undefined → 一律判 unverified → 全落草稿台，自动执行形同虚设。
+  //   现在如实解析 LLM 自报的等级 + 证据，让 evidence-grounder 真正能工作。
+  const evidence_level = parseEvidenceLevel(item.evidence_level);
+  const evidence = asStringArray(item.evidence).map((e) => e.slice(0, 200)).slice(0, 6);
   return {
     id,
     type,
     description,
     params: isRecord(item.params) ? item.params : {},
     requireConfirm: REQUIRE_CONFIRM_TYPES.has(type) ? true : Boolean(item.requireConfirm),
-    priority: parsePriority(item.priority)
+    priority: parsePriority(item.priority),
+    ...(evidence_level ? { evidence_level } : {}),
+    ...(evidence.length > 0 ? { evidence } : {})
   };
+}
+
+/** 解析 LLM 自报的 evidence_level；非法 / 缺失 → undefined（由 grounder 回退信任等级判定）。 */
+function parseEvidenceLevel(v: unknown): EvidenceLevel | undefined {
+  if (typeof v !== "string") return undefined;
+  const t = v.trim().toLowerCase();
+  return t === "direct" || t === "inferred" || t === "speculative" ? t : undefined;
 }
 
 function parseSuggestion(item: unknown): AgentSuggestion | null {

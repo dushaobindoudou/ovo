@@ -59,12 +59,12 @@ export class AgentBridge {
   private lastError: string | null = null;
 
   async detectAvailableBackends() {
-    // 用户反馈：claude CLI 报错堆积日志噪音。把 hermes 放检测顺序首位 →
-    // pickBackend() 在没显式 preferred 时取 available[0]，即默认走 hermes。
-    // claude / openclaw 仍作 fallback。
+    // 用户反馈（2026-05-21）：不要有任何 `claude -p` 调用——它噪音大、并且我们
+    // 默认就用 hermes。这里直接把 claude-code 从探测里摘掉，使它永远不会进入
+    // available / candidateBackends，于是 callByBackend 的 claude-code 分支（claude -p）
+    // 永远不可达。hermes 默认 + openclaw / api 作 fallback。
     const checks: Array<{ backend: AgentBackend; cmd: string }> = [
       { backend: "hermes", cmd: "hermes" },
-      { backend: "claude-code", cmd: "claude" },
       { backend: "openclaw", cmd: "openclaw" }
     ];
     const available: AgentBackend[] = [];
@@ -239,11 +239,10 @@ export class AgentBridge {
     // 如果缓存里没有（detect 失败或未跑），fallback 回 cmd 名（保持向后兼容）
     const bin = (b: AgentBackend, fallback: string) => this.resolvedBinaries.get(b) ?? fallback;
     if (backend === "claude-code") {
-      const { stdout } = await execa(bin("claude-code", "claude"), ["-p", request.prompt, "--output-format", "json"], {
-        timeout,
-        env
-      });
-      return stdout;
+      // 用户明确要求：不要有任何 `claude -p` 调用（噪音大 + 非默认后端）。
+      // detectAvailableBackends 已不再探测 claude-code，正常不会走到这里；这道硬保险
+      // 防止任何残留路径（旧持久化的 preferred / 直接 callByBackend）再拉起 claude CLI。
+      throw new Error("claude-code 后端已禁用（不使用 claude -p），请用 hermes / openclaw / api");
     }
     if (backend === "openclaw") {
       const { stdout } = await execa(
