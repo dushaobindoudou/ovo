@@ -9,8 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Next release will be 0.3.0 — focus on macOS code signing + Notarization,
-auto-update mechanism, and the trust ladder UI._
+_Targeting 0.3.0. Still ahead: macOS code signing + Notarization, auto-update
+mechanism, and the trust ladder UI. Already landed on `main` since 0.2.0:_
+
+### Added
+- 🌍 **Full bilingual UI (简体中文 / English)** — language switcher promoted to a
+  standalone card at the very top of Settings, with localized status bar, all
+  Settings sections, Overview / Memory / Process panels, suggestion & action
+  toasts, and main-process surfaces (tray menu, receipt toasts)
+- 🧠 **5W memory model + timeline view** — memory events captured as
+  who/what/when/where/why and browsable on a timeline
+- ⚡ **Executable action toasts** — actions surface in a toast with
+  draft→promote confirmation before anything is sent
+- 🔁 **T8 reverse calibration + draft expiry scheduling** — knowledge-graph
+  schema split, drafts auto-expire instead of accumulating
+- 🐳 **DevContainer + all-contributors infrastructure** for easier contribution
+- 📝 Launch & self-audit docs: `FOUNDER_STORY.md`, `REFLECTION_LOG.md`,
+  `UNRESOLVED_ISSUES.md`
+
+### Changed
+- ♻️ Console / Suggestion panels refactored onto a shared component library
+- ♻️ `ipc-handlers` split into focused `ipc/*` modules + knowledge-graph migrations
+- 🤖 **hermes backend is now the default priority**, with agent-output schema
+  validation and an evidence grounder; the `claude -p` execution path was removed
+- 🎨 Unified brand color to systemBlue; default theme now follows the system
+- 📤 Output view shows deliverables only; memory search box narrowed;
+  exported JSON is unwrapped
+
+### Fixed
+- 🔐 Keychain encryption no longer triggers repeated permission popups
+- 💾 Draft promote no longer loses data
+- 🪟 Window-enumeration permission errors no longer flood the logs
+- 🖼 Icon red/blue channel bug fixed
+- 📡 Action-confirm flow broadcast + macOS handler + OCR / sensitive-filter fallbacks
+
+### Security
+- 🔑 Keychain encryption defaults to **off** until a signed build ships
+  (avoids confusing first-run prompts); action trust rebalanced toward
+  auto-running reversible actions while still confirming anything that sends
 
 ---
 
@@ -87,5 +123,6 @@ Initial private development version.
 
 ---
 
-[Unreleased]: https://github.com/dushaobindoudou/ovo/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/dushaobindoudou/ovo/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/dushaobindoudou/ovo/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/dushaobindoudou/ovo/releases/tag/v0.1.0

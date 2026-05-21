@@ -37,9 +37,9 @@
 ---
 
 <p align="center">
-  <img src="docs/assets/demo.gif" alt="Ovo 30 秒演示" width="800" />
+  <img src="docs/assets/demo-cn.gif" alt="Ovo 演示 —— 看屏幕、备好下一步、随时在身边" width="820" />
   <br/>
-  <em>Ovo 看到 Gmail 草稿，预测了回复，并准备好剪贴板 —— 全程可见，全程可审计。</em>
+  <em>Ovo 看着你的屏幕，在你开口前备好下一步；接受、拒绝或教它一次，随时一瞥即达 —— 全程可见、可审计。（<a href="docs/assets/demo-cn.mp4">看 MP4</a>）</em>
 </p>
 
 ---
@@ -172,15 +172,13 @@ pnpm pack:mac     # 构建 DMG 到 out/ 目录
 
 ## 🖼️ 截图展示
 
-> _截图和 GIF 将在 v0.2 release 中补充。欢迎 PR — 见 [#good-first-issue](https://github.com/dushaobindoudou/ovo/labels/good%20first%20issue)。_
-
-| 控制台主窗口 | 浮动球（常驻置顶） | 建议 Toast |
+| 控制台 ——「现在」页 | 浮动球（常驻置顶） | 可教学的反馈 |
 |---|---|---|
-| _占位_ | _占位_ | _占位_ |
+| <img src="docs/assets/shot-now.png" alt="现在页 —— 已备好的动作" /> | <img src="docs/assets/shot-float.png" alt="浮动球陪伴" /> | <img src="docs/assets/shot-toast.png" alt="接受 / 拒绝 / 教它" /> |
 
-| 知识图谱 | Pipeline 时间线（推理透明） | 设置 — 隐私面板 |
+| 知识图谱（记忆） | 动作回放（推理透明） | 设置 —— 隐私面板 |
 |---|---|---|
-| _占位_ | _占位_ | _占位_ |
+| <img src="docs/assets/shot-memory.png" alt="知识图谱记忆时间线" /> | <img src="docs/assets/shot-replay.png" alt="可审计的动作回放" /> | <img src="docs/assets/shot-settings.png" alt="隐私优先的设置" /> |
 
 ---
 

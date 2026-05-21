@@ -37,9 +37,9 @@
 ---
 
 <p align="center">
-  <img src="docs/assets/demo.gif" alt="Ovo 30-second demo" width="800" />
+  <img src="docs/assets/demo.gif" alt="Ovo product tour — watch, prepare, remember, audit" width="820" />
   <br/>
-  <em>Ovo watching a Gmail draft, predicting the reply, and offering to copy it — all visible, all auditable.</em>
+  <em>A quick tour: Ovo watches your screen, prepares the next steps, remembers what matters, and logs every action — all auditable. (<a href="docs/assets/demo.mp4">watch MP4</a>)</em>
 </p>
 
 ---
@@ -154,15 +154,13 @@ That's it. Within 1-2 minutes Ovo will start observing and suggesting.
 
 ## 🖼️ Screenshots
 
-> _Screenshots and GIFs will be added in v0.2 release. PRs welcome — see [#good-first-issue](https://github.com/dushaobindoudou/ovo/labels/good%20first%20issue)._
-
-| Console (main window) | Floating icon (always on top) | Suggestion toast |
+| Console — "Now" view | Floating companion (always on top) | Teachable feedback |
 |---|---|---|
-| _placeholder_ | _placeholder_ | _placeholder_ |
+| <img src="docs/assets/shot-now.png" alt="Now view with prepared actions" /> | <img src="docs/assets/shot-float.png" alt="Floating orb companion" /> | <img src="docs/assets/shot-toast.png" alt="Accept / reject / teach feedback" /> |
 
-| Knowledge graph | Pipeline timeline (transparent reasoning) | Settings — privacy panel |
+| Knowledge graph (Memory) | Action replay (transparent reasoning) | Settings — privacy panel |
 |---|---|---|
-| _placeholder_ | _placeholder_ | _placeholder_ |
+| <img src="docs/assets/shot-memory.png" alt="Knowledge graph memory timeline" /> | <img src="docs/assets/shot-replay.png" alt="Auditable action replay" /> | <img src="docs/assets/shot-settings.png" alt="Privacy-first settings" /> |
 
 ---
 
