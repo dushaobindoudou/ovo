@@ -2762,6 +2762,17 @@ export class KnowledgeGraphEngine {
   }
 
   /**
+   * R5-2：把 promoted 的草稿退回 pending。
+   * 用于 send 类草稿 promote → 转待确认而非直执行的场景：promoteDraft 已先标 promoted，
+   * 但动作还没真执行（在等用户确认）。退回 pending 后，若用户忽略确认浮窗，草稿仍留在
+   * 草稿台不丢失（避免"孤儿草稿"）。
+   */
+  revertDraft(id: string): { ok: boolean } {
+    const r = this.db.prepare("UPDATE drafts SET status = 'pending' WHERE id = ? AND status = 'promoted'").run(id);
+    return { ok: r.changes > 0 };
+  }
+
+  /**
    * 清理过期草稿（默认 7 天）—— 自动化运维，避免无限增长
    */
   expireOldDrafts(olderThanMs = 7 * 24 * 3600 * 1000): { expired: number } {

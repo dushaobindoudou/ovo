@@ -47,16 +47,13 @@ function keychainEncryptionEnabled(): boolean {
   if (cachedRealEncryption !== null) return cachedRealEncryption;
   if (process.env.OVO_DISABLE_KEYCHAIN === "1") { cachedRealEncryption = false; return false; }
   if (process.env.OVO_FORCE_ENCRYPTION === "1") { cachedRealEncryption = true; return true; }
-  let decided = false;
-  try {
-    // app.isPackaged：dev / electron 直跑时为 false → 明文，不弹窗。
-    // isEncryptionAvailable()：仅探测框架是否可用，本身不弹窗（弹窗来自 encrypt/decrypt）。
-    decided = app.isPackaged && safeStorage.isEncryptionAvailable();
-  } catch {
-    decided = false;
-  }
-  cachedRealEncryption = decided;
-  return decided;
+  // A1（2026-05-21）：默认不用钥匙串 = 明文。理由：
+  //   当前没有 Apple 代码签名(E2)，**未签名构建每次启动都会重弹钥匙串密码框**
+  //   （"始终允许"授权绑定代码签名，未签名时存不住）。这对 dev 和打包安装版都成立。
+  //   在签名就绪前，钥匙串加密既扰民又不可靠，故默认关闭。
+  //   → 拿到 Apple 证书后：签名构建里设 OVO_FORCE_ENCRYPTION=1（或加签名检测）开回加密。
+  cachedRealEncryption = false;
+  return false;
 }
 
 function filePath() {

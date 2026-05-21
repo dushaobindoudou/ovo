@@ -163,6 +163,9 @@ export function registerKgHandlers(deps: IpcHandlerDeps) {
     // 草稿可能搁置很久、params 已陈旧（如一封旧邮件正文），直发风险高。改为注册成 pending
     // 并弹"执行"浮窗，让用户对着最终参数再确认一次。其余可逆动作保持直接执行。
     if (REQUIRE_CONFIRM_TYPES.has(actionType)) {
+      // R5-2：动作还没真执行，先把草稿退回 pending，这样用户若忽略确认浮窗，
+      // 草稿仍留在草稿台不丢失（promoteDraft 之前已把它标 promoted）。
+      kg.revertDraft(d.id);
       const pendingId = `${d.actionId}_promote_${Date.now().toString(36)}`;
       const pendingAction: AgentAction = { ...action, id: pendingId, requireConfirm: true };
       deps.registerPendingAction(pendingAction, d.pipelineId);
