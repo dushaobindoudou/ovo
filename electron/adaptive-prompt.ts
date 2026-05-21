@@ -78,17 +78,22 @@ export function buildObservationPrompt(buffer: WindowBuffer, graphContext: Graph
   const structuredSection = structuredBlock
     ? `\n## 屏幕中已识别的关键信号（regex 抽取，比 OCR 原文更准）\n${structuredBlock}\n`
     : "";
+  // 防 prompt 膨胀（修复：observation prompt 过大导致 hermes 调用 60s 超时、Pass1 失败）。
+  // KG 上下文只取最相关的一部分注入——实体/关系各 ≤12，角色画像 ≤3（且常有近重复）。
   const entities = graphContext.relevantEntities
-    .map((e) => `- ${e.name} (${e.type}): ${e.description ?? ""}`)
+    .slice(0, 12)
+    .map((e) => `- ${e.name} (${e.type}): ${(e.description ?? "").slice(0, 120)}`)
     .join("\n");
   const relations = graphContext.relevantRelations
+    .slice(0, 12)
     .map((r) => `- ${r.source} --[${r.relation}]--> ${r.target}`)
     .join("\n");
   const summaries = (graphContext.insightSummaries ?? [])
+    .slice(0, 5)
     .map((s) => `- [importance=${s.importance}] ${s.name}: ${s.description}`)
     .join("\n");
   const knownRolesText = (graphContext.knownRoles ?? [])
-    .slice(0, 5)
+    .slice(0, 3)
     .map((r) => `- ${r.role} (置信 ${(r.confidence * 100).toFixed(0)}%)`)
     .join("\n");
   const feedbackBlock = graphContext.feedbackProfile && graphContext.feedbackProfile.trim()

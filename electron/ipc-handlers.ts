@@ -493,7 +493,7 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     const activity = inferActivityState(buffer.windowId);
     const graphCtx = {
       ...baseGraphCtx,
-      knownRoles: kg.getKnownRoles(5),
+      knownRoles: kg.getKnownRoles(3),
       feedbackProfile: kg.getUserFeedbackProfile(),
       sessionTrajectory: sessionTracker.getTrajectoryForPrompt(buffer.windowId),
       activityState: `状态: ${activity.state} · ${activity.description}`
