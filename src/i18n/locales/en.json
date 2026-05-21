@@ -19,5 +19,39 @@
     "system": "Follow system",
     "zh": "中文",
     "en": "English"
+  },
+  "statusBar": {
+    "justNow": "just now",
+    "secondsAgo": "{{n}}s ago",
+    "minutesAgo": "{{n}}m ago",
+    "hoursAgo": "{{n}}h ago",
+    "dash": "—",
+    "offline": "Offline",
+    "offlineHint": "local-only features (cloud AI not called)",
+    "paused": "ovo paused",
+    "pausedResume": "resumes in {{n}} min",
+    "thinking": "ovo is thinking...",
+    "alert": "Important alert",
+    "watchingApp": "Ovo is watching",
+    "appNameError": "(app name error)",
+    "lastCapture": "last capture {{time}}",
+    "lastThink": "last thought {{time}}",
+    "activityWatching": "Watching",
+    "activityStandby": "Standby",
+    "activityIdle": "Idle"
+  },
+  "actionType": {
+    "log_note": "Note",
+    "create_todo": "To-do",
+    "copy_to_clipboard": "Copy",
+    "set_reminder": "Reminder",
+    "add_calendar": "Calendar",
+    "send_email": "Email",
+    "send_imessage": "Message",
+    "open_url": "Open link",
+    "search_web": "Search",
+    "search": "Search",
+    "summarize": "Summary",
+    "other": "Action"
   }
 }

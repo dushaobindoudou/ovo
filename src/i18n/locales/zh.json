@@ -19,5 +19,39 @@
     "system": "跟随系统",
     "zh": "中文",
     "en": "English"
+  },
+  "statusBar": {
+    "justNow": "刚刚",
+    "secondsAgo": "{{n}} 秒前",
+    "minutesAgo": "{{n}} 分钟前",
+    "hoursAgo": "{{n}} 小时前",
+    "dash": "—",
+    "offline": "离线模式",
+    "offlineHint": "仅本地功能可用（云端 AI 不调用）",
+    "paused": "ovo 已暂停",
+    "pausedResume": "{{n}} 分钟后恢复",
+    "thinking": "ovo 正在思考...",
+    "alert": "有重要提醒",
+    "watchingApp": "Ovo 在看着",
+    "appNameError": "（应用名异常）",
+    "lastCapture": "上次截图 {{time}}",
+    "lastThink": "上次想了想 {{time}}",
+    "activityWatching": "观察中",
+    "activityStandby": "待机",
+    "activityIdle": "空闲"
+  },
+  "actionType": {
+    "log_note": "记笔记",
+    "create_todo": "建待办",
+    "copy_to_clipboard": "复制",
+    "set_reminder": "设提醒",
+    "add_calendar": "加日历",
+    "send_email": "发邮件",
+    "send_imessage": "发消息",
+    "open_url": "打开链接",
+    "search_web": "搜索",
+    "search": "搜索",
+    "summarize": "总结",
+    "other": "动作"
   }
 }

@@ -11,6 +11,7 @@
  * 完全跟 ActionDetailDrawer 的 VerifyAt 共享映射逻辑。
  */
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Card } from "../shared/Card";
 import { Bell, Calendar, FileText, ClipboardCopy, Mail, MessageSquare, Globe, Search as SearchIcon, Sparkles, ExternalLink, RefreshCw } from "lucide-react";
 import { sanitizeForDisplay } from "../../utils/sanitizeText";
@@ -85,6 +86,7 @@ async function openApp(name: string) {
 }
 
 export function OutputsPanel() {
+  const { t } = useTranslation();
   const [future, setFuture] = useState<FutureData>({ reminders: [], events: [] });
   const [past, setPast] = useState<PastEntry[]>([]);
   const [loadingFuture, setLoadingFuture] = useState(true);
@@ -263,7 +265,7 @@ export function OutputsPanel() {
                 return (
                   <div key={g.type}>
                     <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
-                      <Icon size={11} /> {meta.label} ({g.items.length})
+                      <Icon size={11} /> {t(`actionType.${g.type}`, meta.label)} ({g.items.length})
                       {meta.openApp && (
                         <button
                           type="button"

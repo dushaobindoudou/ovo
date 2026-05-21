@@ -8,6 +8,8 @@
  */
 import { useEffect, useState } from "react";
 import { Eye, Brain, Coffee, Type, MousePointer, Pause, AlertTriangle, WifiOff } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useNetworkWatcher } from "../../hooks/useNetworkWatcher";
 import { sanitizeForDisplay } from "../../utils/sanitizeText";
 
@@ -20,22 +22,25 @@ interface Health {
   windowTitle?: string;
 }
 
-function ago(ts: number): string {
-  if (!ts) return "—";
+function ago(ts: number, t: TFunction): string {
+  if (!ts) return t("statusBar.dash");
   const diff = Date.now() - ts;
-  if (diff < 1000) return "刚刚";
-  if (diff < 60_000) return `${Math.floor(diff / 1000)} 秒前`;
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-  return `${Math.floor(diff / 3_600_000)} 小时前`;
+  if (diff < 1000) return t("statusBar.justNow");
+  if (diff < 60_000) return t("statusBar.secondsAgo", { n: Math.floor(diff / 1000) });
+  if (diff < 3_600_000) return t("statusBar.minutesAgo", { n: Math.floor(diff / 60_000) });
+  return t("statusBar.hoursAgo", { n: Math.floor(diff / 3_600_000) });
 }
+
+type ActivityKey = "" | "watching" | "standby" | "idle";
 
 export function LiveStatusBar() {
   const [health, setHealth] = useState<Health | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<"idle" | "thinking" | "generating" | "alert">("idle");
   const [lastPipelineAt, setLastPipelineAt] = useState<number>(0);
-  const [activityLabel, setActivityLabel] = useState<string>("");
+  const [activityKey, setActivityKey] = useState<ActivityKey>("");
   const [pausedUntil, setPausedUntil] = useState<number>(0);
   const [, tick] = useState(0);
+  const { t } = useTranslation();
   // M8 / 哲学完全离线场景：banner 显示"仅本地功能可用"
   const { online } = useNetworkWatcher();
 
@@ -81,13 +86,13 @@ export function LiveStatusBar() {
   // 推断活动状态（前端简单版，跟主进程的状态机一致）
   useEffect(() => {
     if (!health?.timestamp) {
-      setActivityLabel("");
+      setActivityKey("");
       return;
     }
     const sinceCapture = Date.now() - health.timestamp;
-    if (sinceCapture < 30_000) setActivityLabel("观察中");
-    else if (sinceCapture < 120_000) setActivityLabel("待机");
-    else setActivityLabel("空闲");
+    if (sinceCapture < 30_000) setActivityKey("watching");
+    else if (sinceCapture < 120_000) setActivityKey("standby");
+    else setActivityKey("idle");
   }, [health?.timestamp]);
 
   const isThinking = pipelineStatus === "thinking" || pipelineStatus === "generating";
@@ -104,33 +109,33 @@ export function LiveStatusBar() {
         {!online ? (
           <>
             <WifiOff size={11} className="text-[var(--warning)]" />
-            <span className="font-medium">离线模式</span>
-            <span className="text-[var(--text-muted)]">· 仅本地功能可用（云端 AI 不调用）</span>
+            <span className="font-medium">{t("statusBar.offline")}</span>
+            <span className="text-[var(--text-muted)]">· {t("statusBar.offlineHint")}</span>
           </>
         ) : isPaused ? (
           <>
             <Pause size={11} />
-            <span className="font-medium">ovo 已暂停</span>
-            <span className="text-[var(--text-muted)]">· {pauseRemainingMin} 分钟后恢复</span>
+            <span className="font-medium">{t("statusBar.paused")}</span>
+            <span className="text-[var(--text-muted)]">· {t("statusBar.pausedResume", { n: pauseRemainingMin })}</span>
           </>
         ) : isThinking ? (
           <>
             <Brain size={11} className="animate-pulse text-[var(--accent)]" />
-            <span className="text-[var(--accent)]">ovo 正在思考...</span>
+            <span className="text-[var(--accent)]">{t("statusBar.thinking")}</span>
           </>
         ) : pipelineStatus === "alert" ? (
           <>
             <AlertTriangle size={11} className="text-[var(--danger)]" />
-            <span className="text-[var(--danger)]">有重要提醒</span>
+            <span className="text-[var(--danger)]">{t("statusBar.alert")}</span>
           </>
         ) : (
           <>
             <Eye size={11} className="text-[var(--text-muted)] animate-pulse" />
             {/* P0.7 / P1.9: 显示当前正在观察的应用名 — 让用户感知 Ovo 在真的看屏幕 */}
             <span>
-              Ovo 在看着
+              {t("statusBar.watchingApp")}
               {health?.appName && (
-                <span className="ml-1 text-[var(--text-secondary)]">· {sanitizeForDisplay(health.appName, "（应用名异常）", 40)}</span>
+                <span className="ml-1 text-[var(--text-secondary)]">· {sanitizeForDisplay(health.appName, t("statusBar.appNameError"), 40)}</span>
               )}
             </span>
           </>
@@ -139,22 +144,22 @@ export function LiveStatusBar() {
 
       {health && (
         <span className="flex items-center gap-1 text-[var(--text-muted)]">
-          · 上次截图 {ago(health.timestamp ?? 0)}
+          · {t("statusBar.lastCapture", { time: ago(health.timestamp ?? 0, t) })}
         </span>
       )}
 
       {lastPipelineAt > 0 && (
         <span className="text-[var(--text-muted)]">
-          · 上次想了想 {ago(lastPipelineAt)}
+          · {t("statusBar.lastThink", { time: ago(lastPipelineAt, t) })}
         </span>
       )}
 
-      {activityLabel && (
+      {activityKey && (
         <span className="ml-auto flex items-center gap-1 text-[var(--text-muted)]">
-          {activityLabel === "观察中" ? <Type size={11} /> :
-           activityLabel === "待机" ? <MousePointer size={11} /> :
+          {activityKey === "watching" ? <Type size={11} /> :
+           activityKey === "standby" ? <MousePointer size={11} /> :
            <Coffee size={11} />}
-          {activityLabel}
+          {t(`statusBar.activity${activityKey.charAt(0).toUpperCase()}${activityKey.slice(1)}`)}
         </span>
       )}
     </div>
