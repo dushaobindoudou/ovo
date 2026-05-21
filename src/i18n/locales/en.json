@@ -40,6 +40,27 @@
     "activityStandby": "Standby",
     "activityIdle": "Idle"
   },
+  "settingsPanel": {
+    "title": "Settings",
+    "subtitle": "Start with what matters: privacy first, then appearance, then developer tools",
+    "navPrivacy": "Privacy",
+    "navAppearance": "Appearance",
+    "navPermissions": "Permissions",
+    "navCapture": "Capture",
+    "navTts": "Speech",
+    "navToast": "Alerts",
+    "navAi": "AI",
+    "navAbout": "About",
+    "appearance": "Appearance",
+    "themeMode": "Theme",
+    "themeHint": "Choose the app appearance theme",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeSystem": "Follow system",
+    "devTools": "Developer tools",
+    "devShowAdvanced": "Show advanced views",
+    "devShowAdvancedHint": "Reveals “Reasoning”, “Ovo's action log” and “Ovo's self-reflection” — for advanced users debugging Ovo."
+  },
   "actionType": {
     "log_note": "Note",
     "create_todo": "To-do",

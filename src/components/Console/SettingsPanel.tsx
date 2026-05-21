@@ -76,21 +76,21 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">设置</h2>
-        <p className="mt-0.5 text-xs text-[var(--text-muted)]">从重要的开始：先隐私，再外观，最后开发者工具</p>
+        <h2 className="text-lg font-semibold">{t("settingsPanel.title")}</h2>
+        <p className="mt-0.5 text-xs text-[var(--text-muted)]">{t("settingsPanel.subtitle")}</p>
       </div>
 
       {/* P1.22: 锚点快捷导航 — 长页面让用户快速跳转 */}
       <nav className="sticky top-0 z-10 -mx-1 flex flex-wrap gap-1 rounded-md border border-[var(--border)] bg-[var(--bg-base)]/95 px-2 py-1.5 text-[11px] backdrop-blur">
         {[
-          { id: "section-privacy",  label: "隐私" },
-          { id: "section-appearance", label: "外观" },
-          { id: "section-permissions", label: "权限" },
-          { id: "section-capture", label: "截屏" },
-          { id: "section-tts", label: "朗读" },
-          { id: "section-toast", label: "提醒" },
-          { id: "section-api", label: "AI" },
-          { id: "section-about", label: "关于" }
+          { id: "section-privacy",  label: t("settingsPanel.navPrivacy") },
+          { id: "section-appearance", label: t("settingsPanel.navAppearance") },
+          { id: "section-permissions", label: t("settingsPanel.navPermissions") },
+          { id: "section-capture", label: t("settingsPanel.navCapture") },
+          { id: "section-tts", label: t("settingsPanel.navTts") },
+          { id: "section-toast", label: t("settingsPanel.navToast") },
+          { id: "section-api", label: t("settingsPanel.navAi") },
+          { id: "section-about", label: t("settingsPanel.navAbout") }
         ].map((s) => (
           <a
             key={s.id}
@@ -111,17 +111,17 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
 
       {(
         <div className="space-y-3">
-          <Card title="外观" id="section-appearance">
+          <Card title={t("settingsPanel.appearance")} id="section-appearance">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium">主题模式</p>
-                  <p className="text-xs text-[var(--text-secondary)]">选择应用外观主题</p>
+                  <p className="text-sm font-medium">{t("settingsPanel.themeMode")}</p>
+                  <p className="text-xs text-[var(--text-secondary)]">{t("settingsPanel.themeHint")}</p>
                 </div>
                 <Select value={theme} onChange={(e) => setTheme(e.target.value as ThemeMode)}>
-                  <option value="light">浅色</option>
-                  <option value="dark">暗黑</option>
-                  <option value="system">跟随系统</option>
+                  <option value="light">{t("settingsPanel.themeLight")}</option>
+                  <option value="dark">{t("settingsPanel.themeDark")}</option>
+                  <option value="system">{t("settingsPanel.themeSystem")}</option>
                 </Select>
               </div>
               <div className="flex items-center justify-between">
@@ -137,12 +137,12 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
               </div>
             </div>
           </Card>
-          <Card title="开发者工具">
+          <Card title={t("settingsPanel.devTools")}>
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-sm font-medium">显示进阶视图</p>
+                <p className="text-sm font-medium">{t("settingsPanel.devShowAdvanced")}</p>
                 <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-                  打开后会显示「推理过程」「Ovo 的行动记录」「Ovo 的自我反思」——给需要调试 Ovo 的高级用户。
+                  {t("settingsPanel.devShowAdvancedHint")}
                 </p>
               </div>
               <Toggle checked={developerMode} onChange={setDeveloperMode} />

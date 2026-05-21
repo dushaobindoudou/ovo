@@ -40,6 +40,27 @@
     "activityStandby": "待机",
     "activityIdle": "空闲"
   },
+  "settingsPanel": {
+    "title": "设置",
+    "subtitle": "从重要的开始：先隐私，再外观，最后开发者工具",
+    "navPrivacy": "隐私",
+    "navAppearance": "外观",
+    "navPermissions": "权限",
+    "navCapture": "截屏",
+    "navTts": "朗读",
+    "navToast": "提醒",
+    "navAi": "AI",
+    "navAbout": "关于",
+    "appearance": "外观",
+    "themeMode": "主题模式",
+    "themeHint": "选择应用外观主题",
+    "themeLight": "浅色",
+    "themeDark": "暗黑",
+    "themeSystem": "跟随系统",
+    "devTools": "开发者工具",
+    "devShowAdvanced": "显示进阶视图",
+    "devShowAdvancedHint": "打开后会显示「推理过程」「Ovo 的行动记录」「Ovo 的自我反思」——给需要调试 Ovo 的高级用户。"
+  },
   "actionType": {
     "log_note": "记笔记",
     "create_todo": "建待办",
