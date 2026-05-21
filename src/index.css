@@ -266,6 +266,12 @@ a:hover {
   background: var(--text-muted);
 }
 
+/* P1.6: 高优先级建议脉动呼吸 — 整卡片视觉权重 */
+@keyframes ovo-priority-breathe {
+  0%, 100% { box-shadow: 0 0 0 3px var(--accent-dim); }
+  50%      { box-shadow: 0 0 0 6px var(--accent-glow); }
+}
+
 @keyframes suggestion-toast-enter {
   from {
     opacity: 0;

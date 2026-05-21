@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import { X as XIcon } from "lucide-react";
+// XIcon 之前 sticky 卡片用的，sticky 已废
 import type { FloatingStatePayload } from "../../types/ovo";
 
 const isElectron = typeof window !== "undefined" && !!window.ovoAPI;
@@ -18,24 +18,34 @@ const DEFAULT_STATE: FloatingStatePayload = {
  * 状态视觉。设计：科技感 + 心跳呼吸，不复杂、不打扰。
  * 没有 scene 图标——LLM 输出的 summary 自由文本走 hover tooltip 即可。
  */
-type Visual = "idle" | "thinking" | "generating" | "alert" | "error";
+// P1.15: 新增 has_suggestion 状态——未读建议高亮（青色 + 慢呼吸），优先级高于 idle
+type Visual = "idle" | "thinking" | "generating" | "alert" | "error" | "has_suggestion";
 
+// B1 / B2 修复（2026-05-17）：
+//   PALETTE 这里仍保留 hex 而非直接 var()——因为 SVG <stop stopColor> 属性在 attribute 层面
+//   不解析 CSS var()（只有 style 属性会）。这里的 hex 值必须与 src/index.css :root 的
+//   --state-* / --info / --warning / --danger CSS 变量保持一致，是品牌色板的"SVG 镜像"。
+//
+//   归一映射：
+//     idle           → --state-idle           (#8e8e93 -> 这里 #34d399 保留视觉柔和度)
+//     has_suggestion → 青色 (新增 P1.15)
+//     thinking       → --state-thinking       (#5856d6)
+//     generating     → --warning              (#ff9500 / #fbbf24 视觉等效)
+//     alert / error  → --danger               (#ff3b30 / #ef4444 视觉等效)
+//
+//   暗色 mode 视觉差异已通过 :root[data-theme="dark"] 在 index.css 处理（state-* 自动切换）；
+//   FloatingIcon 自身是独立 BrowserWindow 也继承 data-theme，未来重构时把 hex → useEffect+
+//   getComputedStyle 读 CSS var 即可完全归一（性能开销 < 1ms 不值得引入 useState 复杂度）
 const PALETTE: Record<Visual, { glow: string; ring: string; accent: string; cycle: number }> = {
-  idle:       { glow: "#34d399", ring: "#34d39966", accent: "#34d399", cycle: 3.0 },
-  thinking:   { glow: "#7c8dff", ring: "#7c8dff66", accent: "#a78bfa", cycle: 1.4 },
-  generating: { glow: "#fbbf24", ring: "#fbbf2466", accent: "#fbbf24", cycle: 0.55 },
-  alert:      { glow: "#ef4444", ring: "#ef444499", accent: "#ef4444", cycle: 0.7 },
-  error:      { glow: "#ef4444", ring: "#ef444466", accent: "#ef4444", cycle: 1.6 }
+  idle:           { glow: "#34d399", ring: "#34d39966", accent: "#34d399", cycle: 3.0 },
+  has_suggestion: { glow: "#06b6d4", ring: "#06b6d499", accent: "#06b6d4", cycle: 2.0 },
+  thinking:       { glow: "#5856d6", ring: "#5856d666", accent: "#7c7be0", cycle: 1.4 },
+  generating:     { glow: "#ff9500", ring: "#ff950066", accent: "#ff9500", cycle: 0.55 },
+  alert:          { glow: "#ff3b30", ring: "#ff3b3099", accent: "#ff3b30", cycle: 0.7 },
+  error:          { glow: "#ff3b30", ring: "#ff3b3066", accent: "#ff3b30", cycle: 1.6 }
 };
 
-function timeAgo(ts: number): string {
-  if (!ts) return "未运行";
-  const ms = Date.now() - ts;
-  if (ms < 5_000) return "刚刚";
-  if (ms < 60_000) return `${Math.floor(ms / 1000)}s 前`;
-  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m 前`;
-  return `${Math.floor(ms / 3_600_000)}h 前`;
-}
+// timeAgo 之前 sticky 卡片 summarySub 用，sticky 已废
 
 function pickVisual(state: FloatingStatePayload): Visual {
   const isAlert = state.lastRiskLevel === "high" || state.lastRiskLevel === "critical";
@@ -43,6 +53,8 @@ function pickVisual(state: FloatingStatePayload): Visual {
   if (state.pipelineStatus === "thinking") return "thinking";
   if (state.pipelineStatus === "generating") return "generating";
   if (state.pipelineStatus === "alert") return "alert";
+  // P1.15: idle 时如果有未读建议，升级为 has_suggestion 状态（青色 + 慢呼吸）
+  if (state.unreadCount > 0) return "has_suggestion";
   return "idle";
 }
 
@@ -124,17 +136,15 @@ export function FloatingIcon() {
     void window.ovoAPI.floating.setExpanded(sticky).catch(() => {});
   }, [sticky]);
 
-  const handleToggleSticky = useCallback(async () => {
-    if (!isElectron) return;
-    try { await window.ovoAPI.floating.clearUnread(); } catch { /* ignore */ }
-    setSticky((s) => !s);
-  }, []);
-  // 「打开 ovo」按钮——明确意图，才开主窗口
+  // 用户反馈：点击悬浮球应该直接打开主窗口，不再弹 sticky 确认。sticky 卡片完全废弃。
   const handleOpenConsole = async () => {
     if (!isElectron) return;
+    try { await window.ovoAPI.floating.clearUnread(); } catch { /* ignore */ }
     try { await window.ovoAPI.app.toggleConsole(); } catch { /* ignore */ }
     setSticky(false);
   };
+  // 保留 handleToggleSticky 别名兼容旧引用，但行为改为直接开主窗口
+  const handleToggleSticky = handleOpenConsole;
 
   // 球本身的拖动：mousedown → IPC drag-start；pointermove → IPC drag-move；
   // pointerup → drag-end；总位移 < 5px 视为 click（避免拖动末尾误触发 toggle）
@@ -166,6 +176,8 @@ export function FloatingIcon() {
     }
   }, []);
 
+  // P3.1: 拖动结束后显示位置已保存的反馈（scale 弹动 + 短暂 ring）
+  const [justDropped, setJustDropped] = useState(false);
   const handlePointerUp = useCallback(async (e: ReactPointerEvent<HTMLButtonElement>) => {
     const wasDragging = draggedRef.current;
     dragStartScreenRef.current = null;
@@ -174,16 +186,14 @@ export function FloatingIcon() {
     try { await window.ovoAPI.floating.dragEnd(); } catch { /* ignore */ }
     if (!wasDragging) {
       void handleToggleSticky();
+    } else {
+      // P3.1: 拖动结束 → 位置已自动保存（floating.dragEnd 内会落 preferences），给个视觉确认
+      setJustDropped(true);
+      window.setTimeout(() => setJustDropped(false), 600);
     }
   }, [handleToggleSticky]);
 
-  const summaryText = state.summary
-    ? state.summary
-    : state.activeApp
-      ? `${state.activeApp}`
-      : "ovo 待命中";
-  const summarySub = `${timeAgo(state.lastPipelineAt)}${state.unreadCount > 0 ? ` · ${state.unreadCount} 待看` : ""}`;
-  const showCard = sticky;
+  // 用户反馈：sticky 卡片已废弃，点球直接 toggleConsole。summaryText/summarySub 也不再展示
 
   return (
     // 外层根：不再用 webkit-app-region:drag。球本身走 JS 拖动（pointer events + IPC setPosition），
@@ -194,8 +204,12 @@ export function FloatingIcon() {
       className="relative h-full w-full overflow-hidden"
       style={{ background: "transparent" } as CSSProperties}
     >
-      {/* 球：固定 96×96，贴窗口右上角 */}
-      <div className="absolute right-0 top-0 flex h-[96px] w-[96px] items-center justify-center">
+      {/* 球：固定 96×96，贴窗口右上角 — P3.1: justDropped 时短暂 scale 弹动反馈 */}
+      <div
+        className={`absolute right-0 top-0 flex h-[96px] w-[96px] items-center justify-center transition-transform ${
+          justDropped ? "scale-110 duration-150" : "scale-100 duration-300"
+        }`}
+      >
         <button
           type="button"
           onPointerDown={(e) => void handlePointerDown(e)}
@@ -214,13 +228,13 @@ export function FloatingIcon() {
           <SiriOrb visual={visual} palette={palette} />
         </button>
 
-        {/* 高 risk 红色角标，球左上 */}
+        {/* 高 risk 红色角标，球左上 — 用 var(--danger) 在浅/暗主题都正确响应 */}
         {visual === "alert" && (
           <span
-            className="absolute left-2 top-2 flex h-4 w-4 items-center justify-center rounded-full bg-[#ef4444] text-[10px] font-bold text-white"
+            className="absolute left-2 top-2 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--danger)] text-[10px] font-bold text-white"
             style={{
               animation: "ovo-pulse 0.8s ease-in-out infinite",
-              boxShadow: "0 0 6px rgba(239,68,68,0.8)"
+              boxShadow: "0 0 6px rgba(255,59,48,0.8)"
             }}
           >
             !
@@ -244,42 +258,7 @@ export function FloatingIcon() {
       {/* 折叠态没有 tooltip——96×96 窗口装不下，且 hover 弹窗会打扰用户。
           状态通过球的颜色/动画传达；详情走 sticky 大卡。 */}
 
-      {/* 点击 sticky 大卡 —— 在球的左下方（窗口向左下展开 300×288） */}
-      {showCard && (
-        <div
-          className="absolute right-2.5 top-[102px] w-[280px] rounded-xl bg-[rgba(20,20,28,0.95)] p-3 text-white shadow-2xl backdrop-blur-md"
-          style={{ border: "1px solid rgba(255,255,255,0.1)" }}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <p className="min-w-0 flex-1 text-sm font-semibold leading-tight">{summaryText}</p>
-            <button
-              type="button"
-              onClick={() => setSticky(false)}
-              className="flex h-5 w-5 shrink-0 items-center justify-center text-white/40 hover:text-white"
-              title="收起"
-              aria-label="收起"
-            >
-              <XIcon size={12} />
-            </button>
-          </div>
-          <p className="mt-1 text-[10px] text-white/60">{summarySub}</p>
-
-          {state.activeWindowTitle && (
-            <p className="mt-1.5 truncate text-[10px] text-white/50">{state.activeWindowTitle}</p>
-          )}
-
-          <div className="mt-2.5 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void handleOpenConsole()}
-              className="flex-1 rounded-md bg-[#7c8dff] px-3 py-1.5 text-[11px] font-medium hover:bg-[#9aa8ff]"
-            >
-              打开 ovo
-            </button>
-            <span className="text-[10px] text-white/40">点球或拖动可移位</span>
-          </div>
-        </div>
-      )}
+      {/* sticky 大卡已废弃 — 用户反馈"点击悬浮球应直接打开主窗口"。保留 unused state 兼容 */}
 
       <style>{`
         @keyframes ovo-breathe {

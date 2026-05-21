@@ -3,6 +3,7 @@ import { ConsoleSidebar, type ConsolePage } from "./ConsoleSidebar";
 import { OverviewPanel } from "./OverviewPanel";
 import { MemoryPanel } from "./MemoryPanel";
 import { ProcessPanel } from "./ProcessPanel";
+import { OutputsPanel } from "./OutputsPanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { PermissionGate } from "../shared/PermissionGate";
 import { BootstrapWizardGate } from "../Onboarding/BootstrapWizard";
@@ -13,19 +14,34 @@ import { LiveStatusBar } from "./LiveStatusBar";
 export function ConsoleLayout() {
   const [page, setPage] = useState<ConsolePage>("overview");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // A: OverviewPanel 完成态点"查看详情"跨 tab 打开 ActionDetailDrawer
+  const [pendingOpenActionId, setPendingOpenActionId] = useState<string | null>(null);
 
   const handlePageChange = useCallback((newPage: ConsolePage) => {
     setPage(newPage);
     setSelectedId(null);
   }, []);
 
+  const requestOpenAction = useCallback((actionId: string) => {
+    setPendingOpenActionId(actionId);
+    setPage("process");
+  }, []);
+
   const content = useMemo(() => {
-    const ctx = { page, selectedId, searchQuery: "" };
+    const ctx = {
+      page,
+      selectedId,
+      searchQuery: "",
+      requestOpenAction,
+      pendingOpenActionId,
+      consumeOpenAction: () => setPendingOpenActionId(null)
+    };
     if (page === "overview") return <OverviewPanel ctx={ctx} />;
+    if (page === "outputs") return <OutputsPanel />;
     if (page === "process") return <ProcessPanel ctx={ctx} />;
     if (page === "knowledge") return <MemoryPanel ctx={ctx} />;
     return <SettingsPanel ctx={ctx} />;
-  }, [page, selectedId]);
+  }, [page, selectedId, pendingOpenActionId, requestOpenAction]);
 
   // 知识库需要全宽（图谱大）；其他 tab 用 max-w-5xl 居中
   const isFullWidth = page === "knowledge";

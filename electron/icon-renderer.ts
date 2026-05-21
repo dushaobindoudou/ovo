@@ -23,14 +23,18 @@ const GEOM = {
   vStrokeRel: 3.4 / 100
 };
 
-// 配色：深绿 → 墨色背景；浅绿前景；柔光强调
+// B1 / B3 修复（2026-05-17）：删除微信绿色板，迁移到 systemBlue（与 OvoLogo / CSS --accent 一致）
+// 色板对应关系：
+//   bgTop / bgBottom = 深色 navy 渐变（与 systemBlue dark 一致）
+//   glow / pupil / v = systemBlue 各级亮度（与浏览器 OvoLogo vColor 视觉同源）
+//   eye = 白色描边（高对比，icon 在浅/深 menu bar 都清晰可见）
 const COLOR = {
-  bgTop:    { r: 0x10, g: 0x3d, b: 0x28 },
-  bgBottom: { r: 0x05, g: 0x1c, b: 0x10 },
-  glow:     { r: 0x3a, g: 0xff, b: 0xa6, a: 28 },
-  eye:      { r: 0xe6, g: 0xfb, b: 0xed, a: 255 },
-  pupil:    { r: 0x2d, g: 0xa9, b: 0x6e, a: 255 },
-  v:        { r: 0x4a, g: 0xe3, b: 0x9b, a: 255 }
+  bgTop:    { r: 0x10, g: 0x2a, b: 0x4d }, // navy 800（systemBlue 暗化）
+  bgBottom: { r: 0x05, g: 0x14, b: 0x28 }, // navy 950
+  glow:     { r: 0x0a, g: 0x84, b: 0xff, a: 28 }, // systemBlue dark
+  eye:      { r: 0xff, g: 0xff, b: 0xff, a: 255 }, // 纯白描边（OvoLogo on-accent 模式）
+  pupil:    { r: 0x00, g: 0x7a, b: 0xff, a: 255 }, // systemBlue light（即 --accent）
+  v:        { r: 0x40, g: 0x9c, b: 0xff, a: 255 }  // systemBlue 中亮度
 } as const;
 
 function blendPixel(buf: Buffer, idx: number, c: RGBA, cov: number) {

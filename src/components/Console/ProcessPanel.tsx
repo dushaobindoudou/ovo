@@ -7,9 +7,9 @@
  *  · 展开 4 段 section：看屏幕 / 理解 / 执行 / 记忆 / 补关系
  *  · F4-C: 理解段可看到完整 prompt + LLM 原始返回
  */
-import { useEffect, useState, type ComponentType } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { Card } from "../shared/Card";
-import { ChevronDown, ChevronRight, AlertTriangle, Eye, EyeOff, Camera, Brain, Lightbulb, Zap, BookOpen, GitBranch } from "lucide-react";
+import { ChevronDown, ChevronRight, AlertTriangle, Eye, EyeOff, Camera, Brain, Lightbulb, Zap, BookOpen, GitBranch, ChevronUp, ChevronDown as ChevronDown2, X as XIcon } from "lucide-react";
 import { ActionHistoryPanel } from "./ActionHistoryPanel";
 
 const isElectron = typeof window !== "undefined" && !!window.ovoAPI;
@@ -75,7 +75,13 @@ const LINE_BY_STATUS: Record<StageStatus, string> = {
 
 type ProcessView = "actions" | "replay";
 
-export function ProcessPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
+interface ProcessPanelCtx {
+  selectedId: string | null;
+  pendingOpenActionId?: string | null;
+  consumeOpenAction?: () => void;
+}
+
+export function ProcessPanel({ ctx }: { ctx?: ProcessPanelCtx }) {
   const [view, setView] = useState<ProcessView>("actions");
   const [pipelines, setPipelines] = useState<PipelineRow[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -100,6 +106,11 @@ export function ProcessPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
     }
   }, [ctx?.selectedId]);
 
+  // A: OverviewPanel "查看详情" 跨 tab 跳转时强制切到 actions 视图
+  useEffect(() => {
+    if (ctx?.pendingOpenActionId) setView("actions");
+  }, [ctx?.pendingOpenActionId]);
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-1 rounded-md bg-[var(--bg-card)] p-1 w-fit">
@@ -108,7 +119,10 @@ export function ProcessPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
       </div>
 
       {view === "actions" ? (
-        <ActionHistoryPanel />
+        <ActionHistoryPanel
+          initialActionId={ctx?.pendingOpenActionId ?? null}
+          onConsumeInitial={ctx?.consumeOpenAction}
+        />
       ) : (
         <ReplayView
           pipelines={pipelines}
@@ -139,12 +153,25 @@ function ViewTab({ label, active, onClick }: { label: string; active: boolean; o
 function ReplayView({
   pipelines, expandedId, onToggle
 }: { pipelines: PipelineRow[]; expandedId: string | null; onToggle: (id: string) => void }) {
+  // U1 用户反馈：inline 展开让卡片变形难扫读。改成 drawer 模式：
+  //   - 列表项极简（标题 + 时间 + 状态 dot），点击 → drawer 滑入
+  //   - drawer 带"上一条 / 下一条"导航，不打断列表 scroll 上下文
+  void expandedId; void onToggle; // 旧 inline API 暂留参数兼容，本视图不再用
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const activeIdx = useMemo(
+    () => pipelines.findIndex((p) => p.id === activeId),
+    [pipelines, activeId]
+  );
+  const active = activeIdx >= 0 ? pipelines[activeIdx] : null;
+  const hasPrev = activeIdx > 0;
+  const hasNext = activeIdx >= 0 && activeIdx < pipelines.length - 1;
+
   return (
     <div className="space-y-3">
       <div>
         <h2 className="text-lg font-semibold">技术回放</h2>
         <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-          每一次 ovo 看屏幕、想了什么、做了什么的完整回放。点开看详情。
+          每一次 Ovo 看屏幕、想了什么、做了什么的完整推理链。点任一条看详情。
         </p>
       </div>
 
@@ -152,25 +179,115 @@ function ReplayView({
         <Card>
           <div className="py-8 text-center">
             <p className="text-sm text-[var(--text-secondary)]">还没看过你的屏幕</p>
-            <p className="mt-1 text-[11px] text-[var(--text-muted)]">用一会儿 ovo，每次推断都会在这里留底</p>
+            <p className="mt-1 text-[11px] text-[var(--text-muted)]">用一会儿 Ovo，每次推断都会在这里留底</p>
           </div>
         </Card>
       ) : (
-        <div className="space-y-2">
+        <ul className="divide-y divide-[var(--border-light)] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-card)]">
           {pipelines.map((p) => (
-            <PipelineProgressRow
+            <PipelineRowCompact
               key={p.id}
               pipeline={p}
-              expanded={expandedId === p.id}
-              onToggle={() => onToggle(p.id)}
+              onClick={() => setActiveId(p.id)}
             />
           ))}
+        </ul>
+      )}
+
+      {/* U1 drawer — 右侧滑入，覆盖式但带上下条导航 */}
+      {active && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+          style={{ zIndex: 400 }}
+          onClick={() => setActiveId(null)}
+        >
+          <aside
+            className="absolute right-0 top-0 flex h-full w-full max-w-[640px] flex-col bg-[var(--bg-card)] shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* drawer 头部：上一条 / 下一条 / 关闭 */}
+            <header className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] px-4 py-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!hasPrev}
+                  onClick={() => hasPrev && setActiveId(pipelines[activeIdx - 1].id)}
+                  className="rounded p-1 text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-30"
+                  title="上一条（较新）"
+                  aria-label="上一条"
+                >
+                  <ChevronUp size={14} />
+                </button>
+                <button
+                  type="button"
+                  disabled={!hasNext}
+                  onClick={() => hasNext && setActiveId(pipelines[activeIdx + 1].id)}
+                  className="rounded p-1 text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-30"
+                  title="下一条（较旧）"
+                  aria-label="下一条"
+                >
+                  <ChevronDown2 size={14} />
+                </button>
+                <span className="text-[11px] text-[var(--text-muted)]">
+                  {activeIdx + 1} / {pipelines.length}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <p className="truncate text-sm font-medium">{active.summary}</p>
+                <button
+                  type="button"
+                  onClick={() => setActiveId(null)}
+                  className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
+                  aria-label="关闭"
+                >
+                  <XIcon size={14} />
+                </button>
+              </div>
+            </header>
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <PipelineDetailView pipeline={active} />
+            </div>
+          </aside>
         </div>
       )}
     </div>
   );
 }
 
+/** U1 极简列表行 — 不再 inline 展开，点击触发 drawer */
+function PipelineRowCompact({ pipeline, onClick }: { pipeline: PipelineRow; onClick: () => void }) {
+  const isFailed = pipeline.status === "failed";
+  const hasRisk = pipeline.detail.understand.risk === "high" || pipeline.detail.understand.risk === "critical";
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-[var(--bg-card-hover)]"
+      >
+        {/* 状态 dot */}
+        <div className={`h-2 w-2 shrink-0 rounded-full ${
+          isFailed ? "bg-[var(--danger)]" :
+          hasRisk ? "bg-[var(--warning)]" :
+          "bg-[var(--success)]"
+        }`} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm">{pipeline.summary}</p>
+          <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">
+            {formatRelative(pipeline.timestamp)} · 用时 {formatDuration(pipeline.duration)}
+            {isFailed && <span className="ml-1 text-[var(--danger)]">· 失败</span>}
+            {hasRisk && <span className="ml-1 text-[var(--warning)]">· 风险</span>}
+          </p>
+        </div>
+        <ChevronRight size={12} className="shrink-0 text-[var(--text-muted)]" />
+      </button>
+    </li>
+  );
+}
+
+// U1 重构后已不再使用 — PipelineRowCompact 替代了 inline 展开模式
+// 保留函数定义但 eslint-disable，给可能的回滚保留 fallback。下次清理周期可删
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function PipelineProgressRow({
   pipeline, expanded, onToggle
 }: { pipeline: PipelineRow; expanded: boolean; onToggle: () => void }) {

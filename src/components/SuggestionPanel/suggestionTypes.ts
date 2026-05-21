@@ -19,18 +19,24 @@ export interface SuggestionTypeSpec {
   tint: string;
 }
 
-/** 建议类型 → 视觉语言。Toast 与 SuggestionCard 共用，保持一致 */
+/**
+ * 建议类型 → 视觉语言。Toast 与 SuggestionCard 共用，保持一致。
+ *
+ * B2 / B3 修复（2026-05-17）：删除 Ant Design 蓝 #1890ff / 微信绿 #07c160 等竞品色板，
+ * 全部迁移到项目 CSS 变量（systemBlue 主色 + iOS system colors 状态色）。
+ * 这样建议色板与 OvoLogo / FloatingIcon / AnimatedLogo / Tray 完全归一。
+ */
 export const SUGGESTION_TYPE_MAP: Record<string, SuggestionTypeSpec> = {
-  content_help:   { icon: Lightbulb,     label: "内容建议", accent: "#1890ff", tint: "rgba(24,144,255,0.08)" },
-  risk_alert:     { icon: AlertTriangle, label: "风险提醒", accent: "#ff4d4f", tint: "rgba(255,77,79,0.08)" },
-  todo_record:    { icon: ListTodo,      label: "待办",     accent: "#07c160", tint: "rgba(7,193,96,0.08)" },
-  memory_recall:  { icon: BookOpen,      label: "记忆回顾", accent: "#a78bfa", tint: "rgba(167,139,250,0.10)" },
-  topic_suggest:  { icon: MessageCircle, label: "话题",     accent: "#14b8a6", tint: "rgba(20,184,166,0.08)" },
-  doc_summary:    { icon: FileText,      label: "摘要",     accent: "#6366f1", tint: "rgba(99,102,241,0.08)" },
-  emotion_adjust: { icon: Heart,         label: "情绪",     accent: "#ec4899", tint: "rgba(236,72,153,0.08)" },
+  content_help:   { icon: Lightbulb,     label: "内容建议", accent: "var(--accent)",        tint: "var(--accent-dim)" },
+  risk_alert:     { icon: AlertTriangle, label: "风险提醒", accent: "var(--danger)",        tint: "rgba(255,59,48,0.08)" },
+  todo_record:    { icon: ListTodo,      label: "待办",     accent: "var(--success)",       tint: "rgba(52,199,89,0.10)" },
+  memory_recall:  { icon: BookOpen,      label: "记忆回顾", accent: "var(--state-thinking)", tint: "rgba(88,86,214,0.10)" },
+  topic_suggest:  { icon: MessageCircle, label: "话题",     accent: "var(--accent)",        tint: "var(--accent-dim)" },
+  doc_summary:    { icon: FileText,      label: "摘要",     accent: "var(--secondary)",     tint: "rgba(88,86,214,0.08)" },
+  emotion_adjust: { icon: Heart,         label: "情绪",     accent: "var(--warning)",       tint: "rgba(255,149,0,0.08)" },
   // toast 专用：
-  receipt:        { icon: Check,         label: "已完成",   accent: "#07c160", tint: "rgba(7,193,96,0.10)" },
-  offer:          { icon: Zap,           label: "长期协助", accent: "#a78bfa", tint: "rgba(167,139,250,0.10)" }
+  receipt:        { icon: Check,         label: "已完成",   accent: "var(--success)",       tint: "rgba(52,199,89,0.10)" },
+  offer:          { icon: Zap,           label: "长期协助", accent: "var(--state-thinking)", tint: "rgba(88,86,214,0.10)" }
 };
 
 export const DEFAULT_SUGGESTION_SPEC: SuggestionTypeSpec = {

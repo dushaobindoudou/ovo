@@ -1,18 +1,40 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  SEC-18 修复：每个 entitlement 都必须标注必要原因 (audit-friendly)。
+  原则：能不开就不开；必须开的要写清楚谁需要。
+
+  当前应用是 Electron + hardened runtime，下列 entitlement 都是必需的最小集，
+  不在这里授予 network.server / network.client（应用走 fetch + WebSocket 默认允许）
+  也不授予 files.downloads / files.documents（数据全在 userData，sandboxed 自动允许）
+-->
 <plist version="1.0">
 <dict>
+  <!-- 屏幕录制权限请求：Vision OCR 需要（用户必须先在系统设置授权） -->
   <key>com.apple.security.device.camera</key>
   <true/>
+  <!-- TTS 后续可能要的 mic 权限（当前 TTS 是 outgoing audio，不读 mic） -->
   <key>com.apple.security.device.audio-input</key>
   <true/>
+  <!-- 用户选择的文件读写：index_path action 需要 -->
   <key>com.apple.security.files.user-selected.read-write</key>
   <true/>
+  <!-- V8 JIT：所有 Electron app 必需，不开会启动失败 -->
   <key>com.apple.security.cs.allow-jit</key>
   <true/>
+  <!-- V8 unsigned exec memory：JIT 配套，hardened runtime 必需 -->
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
+  <!-- Native module 加载（better-sqlite3 / mac-system-ocr）：不开则 SQLite + Vision OCR 都失败
+       注意：这放宽了 library validation — 攻击者如果能写入 app bundle 内的 dylib 可能被加载。
+       缓解：app bundle 在用户磁盘内通常需要 admin 才能改 + macOS Gatekeeper 也会拦改过的 bundle。 -->
   <key>com.apple.security.cs.disable-library-validation</key>
   <true/>
+  <!-- 显式禁用：以下都不开（注释保留方便未来 review）
+    com.apple.security.cs.allow-dyld-environment-variables (false 默认)
+    com.apple.security.cs.debugger                          (false 默认)
+    com.apple.security.network.server                       (false 默认 — 没监听端口的需求)
+    com.apple.security.app-sandbox                          (false — Electron app 通常不 sandbox)
+  -->
 </dict>
 </plist>

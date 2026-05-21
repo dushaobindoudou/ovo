@@ -7,7 +7,9 @@
  *   - ovo 是否正在思考
  */
 import { useEffect, useState } from "react";
-import { Eye, Brain, Coffee, Type, MousePointer, Pause } from "lucide-react";
+import { Eye, Brain, Coffee, Type, MousePointer, Pause, AlertTriangle, WifiOff } from "lucide-react";
+import { useNetworkWatcher } from "../../hooks/useNetworkWatcher";
+import { sanitizeForDisplay } from "../../utils/sanitizeText";
 
 const isElectron = typeof window !== "undefined" && !!window.ovoAPI;
 
@@ -34,6 +36,8 @@ export function LiveStatusBar() {
   const [activityLabel, setActivityLabel] = useState<string>("");
   const [pausedUntil, setPausedUntil] = useState<number>(0);
   const [, tick] = useState(0);
+  // M8 / 哲学完全离线场景：banner 显示"仅本地功能可用"
+  const { online } = useNetworkWatcher();
 
   useEffect(() => {
     if (!isElectron) return;
@@ -92,10 +96,18 @@ export function LiveStatusBar() {
 
   return (
     <div className={`flex items-center gap-3 border-b border-[var(--border)] px-4 py-1.5 text-[11px] ${
-      isPaused ? "bg-[var(--warning)]/10 text-[var(--warning)]" : "bg-[var(--bg-base)] text-[var(--text-secondary)]"
+      !online ? "bg-[var(--warning)]/15 text-[var(--warning)]" :
+      isPaused ? "bg-[var(--warning)]/10 text-[var(--warning)]" :
+      "bg-[var(--bg-base)] text-[var(--text-secondary)]"
     }`}>
       <span className="flex items-center gap-1.5">
-        {isPaused ? (
+        {!online ? (
+          <>
+            <WifiOff size={11} className="text-[var(--warning)]" />
+            <span className="font-medium">离线模式</span>
+            <span className="text-[var(--text-muted)]">· 仅本地功能可用（云端 AI 不调用）</span>
+          </>
+        ) : isPaused ? (
           <>
             <Pause size={11} />
             <span className="font-medium">ovo 已暂停</span>
@@ -108,12 +120,19 @@ export function LiveStatusBar() {
           </>
         ) : pipelineStatus === "alert" ? (
           <>
-            <span className="text-[var(--danger)]">⚠ 有重要提醒</span>
+            <AlertTriangle size={11} className="text-[var(--danger)]" />
+            <span className="text-[var(--danger)]">有重要提醒</span>
           </>
         ) : (
           <>
-            <Eye size={11} className="text-[var(--text-muted)]" />
-            <span>ovo 在看着</span>
+            <Eye size={11} className="text-[var(--text-muted)] animate-pulse" />
+            {/* P0.7 / P1.9: 显示当前正在观察的应用名 — 让用户感知 Ovo 在真的看屏幕 */}
+            <span>
+              Ovo 在看着
+              {health?.appName && (
+                <span className="ml-1 text-[var(--text-secondary)]">· {sanitizeForDisplay(health.appName, "（应用名异常）", 40)}</span>
+              )}
+            </span>
           </>
         )}
       </span>

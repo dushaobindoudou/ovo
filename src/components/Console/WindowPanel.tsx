@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, BarChart3, Layers } from "lucide-react";
 import { Card } from "../shared/Card";
+import { Empty } from "../shared/Empty";
 import { GlowButton } from "../shared/GlowButton";
 import { Toggle } from "../shared/Toggle";
 import { useWindows } from "../../hooks/useWindows";
@@ -40,11 +41,11 @@ function BufferRow({ item }: BufferRowProps) {
             item.entries.map((entry, i) => (
               <details key={i} className="rounded border border-[var(--border)] bg-[var(--bg-card)] px-2 py-1">
                 <summary className="cursor-pointer text-[var(--text-secondary)]">
-                  [{new Date(entry.timestamp).toLocaleTimeString()}] {entry.text.slice(0, 80) || "(空)"}
+                  [{new Date(entry.timestamp).toLocaleTimeString()}] {entry.text.slice(0, 80) || "无文本"}
                   {entry.text.length > 80 ? "…" : ""}
                 </summary>
                 <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] text-[var(--text-primary)]">
-                  {entry.text || "(空)"}
+                  {entry.text || "无文本"}
                 </pre>
               </details>
             ))
@@ -175,7 +176,7 @@ export function WindowPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
         </p>
         <Card title="捕获统计">
           {captureStats.length === 0 ? (
-            <p className="text-sm text-[var(--text-secondary)]">暂无统计数据，等待捕获服务运行。</p>
+            <Empty icon={BarChart3} title="还没有统计数据" hint="等待捕获服务运行后会出现" />
           ) : (
             <div className="space-y-1.5 text-sm">
               {captureStats.map((row) => (
@@ -205,9 +206,11 @@ export function WindowPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
         </Card>
         <Card title={`OCR 缓冲区 (${buffers.length} 个窗口待处理)`}>
           {buffers.length === 0 ? (
-            <p className="text-sm text-[var(--text-secondary)]">
-              {active ? "暂无 OCR 缓冲——当前活动窗口的下次截图后会出现。" : "暂无活动窗口可监控。"}
-            </p>
+            <Empty
+              icon={Layers}
+              title={active ? "OCR 缓冲为空" : "没有可监控的活动窗口"}
+              hint={active ? "当前活动窗口的下次截图后会出现" : undefined}
+            />
           ) : (
             <div className="space-y-2">
               {buffers.map((item) => (

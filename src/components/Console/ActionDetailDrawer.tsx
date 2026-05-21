@@ -8,8 +8,9 @@
  *   - 完整 pipeline timeline（每个阶段耗时 + 状态）
  */
 import { useEffect, useState } from "react";
-import { X, CheckCircle2, XCircle, Clock, AlertCircle, Loader2 } from "lucide-react";
+import { X, CheckCircle2, XCircle, Clock, AlertCircle, Loader2, ExternalLink } from "lucide-react";
 import type { ActionDetail } from "../../types/ovo";
+import { sanitizeForDisplay } from "../../utils/sanitizeText";
 
 const isElectron = typeof window !== "undefined" && !!window.ovoAPI;
 
@@ -17,6 +18,32 @@ interface Props {
   actionId: string;
   onClose: () => void;
 }
+
+/**
+ * "去现场看"映射 — 用户反馈："我怎么知道笔记/todo/日历是否写上去了？"
+ *
+ * 当前是过渡方案：硬编码 action.type → 验证入口。下个版本计划改造为 builtin skill
+ * 自己声明 verify target，本表会被 registry 替代。
+ *
+ * verifyAt: macOS stock app 名称（走 system:open-app 白名单）
+ * verifyHint: 给用户的人话提示，告诉他打开后该看什么
+ * verifyInternal: 在 Ovo 内部哪个 tab 能查到（log_note / summarize 走这条）
+ */
+const VERIFY_BY_TYPE: Record<string, {
+  label: string;
+  verifyAt?: string;
+  verifyHint?: string;
+  verifyInternal?: "memory-timeline";
+}> = {
+  create_todo:       { label: "去提醒事项查",   verifyAt: "Reminders",       verifyHint: "在提醒事项里看刚加的这一条" },
+  set_reminder:      { label: "去提醒事项查",   verifyAt: "Reminders",       verifyHint: "在提醒事项里看是否有这条提醒" },
+  add_calendar:      { label: "去日历查",       verifyAt: "Calendar",        verifyHint: "在日历里看是否新建了这个事件" },
+  send_email:        { label: "去 Mail 草稿",   verifyAt: "Mail",            verifyHint: "Ovo 只写了 Mail 草稿，需要你在 Mail 应用确认后发送" },
+  send_imessage:     { label: "去 Messages 查", verifyAt: "Messages",        verifyHint: "在 Messages 应用里查发出的消息" },
+  log_note:          { label: "在时间线查看",   verifyInternal: "memory-timeline", verifyHint: "在记忆 → 时间线找 actor=Ovo 的笔记记录" },
+  summarize:         { label: "在时间线查看",   verifyInternal: "memory-timeline", verifyHint: "总结被记到 Ovo 内部知识库" },
+  copy_to_clipboard: { label: "按 Cmd+V 测试",  verifyHint: "已写入系统剪贴板，在任意输入框按 Cmd+V 验证" }
+};
 
 const TYPE_LABEL: Record<string, string> = {
   log_note: "记笔记",
@@ -56,6 +83,21 @@ function statusBadge(status?: string) {
       </span>
     );
   }
+  // 反思 #2 新增状态：drafted / rejected 不是错误，是 Ovo 的"不主动"决策，用中性灰 + 友好文案
+  if (status === "drafted") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--text-muted)]/15 px-2 py-0.5 text-[11px] text-[var(--text-secondary)]">
+        <Clock size={11} /> 草稿台
+      </span>
+    );
+  }
+  if (status === "rejected") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--text-muted)]/15 px-2 py-0.5 text-[11px] text-[var(--text-secondary)]">
+        <Clock size={11} /> 未执行
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-card-hover)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
       {status}
@@ -73,7 +115,7 @@ function formatDateTime(ts?: number): string {
 }
 
 function formatParamValue(v: unknown): string {
-  if (v === null || v === undefined) return "（空）";
+  if (v === null || v === undefined) return "无值";
   if (typeof v === "string") return v.length > 300 ? v.slice(0, 300) + "…" : v;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   try { return JSON.stringify(v, null, 0); } catch { return String(v); }
@@ -153,8 +195,11 @@ export function ActionDetailDrawer({ actionId, onClose }: Props) {
             <Section title="为什么 ovo 想做这个">
               <KV label="应用" value={detail.appName || "—"} />
               {detail.windowTitle && <KV label="窗口" value={detail.windowTitle} />}
-              {detail.intent && <KV label="ovo 觉得你在" value={detail.intent} />}
-              {detail.summary && <KV label="ovo 的总结" value={detail.summary} multiline />}
+              {detail.intent && <KV label="ovo 觉得你在" value={sanitizeForDisplay(detail.intent, "（涉及代码）", 120)} />}
+              {detail.summary && <KV label="ovo 的总结" value={sanitizeForDisplay(detail.summary, "（含代码 / 配置，已隐藏）", 400)} multiline />}
+              {detail.prediction && (
+                <KV label="接下来可能" value={sanitizeForDisplay(detail.prediction, "（暂无明确预测）", 240)} multiline />
+              )}
               {detail.ocrPreview && (
                 <details className="mt-2 rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-2">
                   <summary className="cursor-pointer text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">
@@ -164,6 +209,43 @@ export function ActionDetailDrawer({ actionId, onClose }: Props) {
                 </details>
               )}
             </Section>
+
+            {/* 因果链：同次推理的兄弟动作 + suggestions */}
+            {(detail.siblingActions?.length || detail.siblingSuggestions?.length) ? (
+              <Section title="同次推理 ovo 还想过">
+                {detail.siblingActions?.length ? (
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-[var(--text-muted)]">同批 {detail.siblingActions.length} 个其他动作：</p>
+                    <ul className="space-y-1">
+                      {detail.siblingActions.map((s) => (
+                        <li
+                          key={s.id}
+                          className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-card)] px-2 py-1.5 text-[12px]"
+                        >
+                          <span className="rounded bg-[var(--bg-base)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
+                            {TYPE_LABEL[s.type] ?? s.type}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-[var(--text-primary)]">{sanitizeForDisplay(s.description, "（含代码）", 120) || "—"}</span>
+                          <span className="shrink-0">{statusBadge(s.status)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {detail.siblingSuggestions?.length ? (
+                  <div className={`${detail.siblingActions?.length ? "mt-3" : ""} space-y-1`}>
+                    <p className="text-[11px] text-[var(--text-muted)]">同次提的建议：</p>
+                    <ul className="space-y-1">
+                      {detail.siblingSuggestions.map((s, i) => (
+                        <li key={`sg-${i}`} className="rounded-md border border-[var(--border)] bg-[var(--bg-card)] px-2 py-1.5 text-[12px]">
+                          ▸ {sanitizeForDisplay(s.title, "（建议涉及代码）", 120)}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </Section>
+            ) : null}
 
             {/* 执行参数 */}
             <Section title="ovo 准备的参数">
@@ -196,6 +278,19 @@ export function ActionDetailDrawer({ actionId, onClose }: Props) {
                   <p className="mt-1 text-[11px] text-[var(--text-secondary)]">{detail.error}</p>
                 </div>
               )}
+              {/* 反思 #2: drafted / rejected 用中性"未执行说明"，区别于 error 红框 */}
+              {(detail.status === "drafted" || detail.status === "rejected") && (
+                <div className="mt-2 rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-2 text-[11px] text-[var(--text-secondary)]">
+                  <p className="font-medium text-[var(--text-primary)]">
+                    {detail.status === "drafted" ? "Ovo 准备了一版，没出手" : "Ovo 没出手"}
+                  </p>
+                  <p className="mt-1">
+                    {detail.status === "drafted"
+                      ? "屏幕证据不够明确，Ovo 把它放到了主面板的「草稿台」，等你来定。"
+                      : "Ovo 自己也没把握，按「准确度优先」原则没执行，转成建议存在记忆里。"}
+                  </p>
+                </div>
+              )}
               {detail.output && (
                 <details className="mt-2 rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-2">
                   <summary className="cursor-pointer text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]">
@@ -204,6 +299,9 @@ export function ActionDetailDrawer({ actionId, onClose }: Props) {
                   <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words text-[11px] text-[var(--text-secondary)]">{detail.output}</pre>
                 </details>
               )}
+
+              {/* 用户反馈："我怎么知道结果真的写到系统里了？" → 去现场验证入口 */}
+              <VerifyAtSection type={detail.type} />
             </Section>
 
             {/* Pipeline 时间线 */}
@@ -250,6 +348,71 @@ function KV({ label, value, multiline }: { label: string; value: React.ReactNode
     <div className={`flex ${multiline ? "flex-col" : "items-start"} gap-2 text-[12px]`}>
       <span className="w-24 shrink-0 text-[var(--text-muted)]">{label}</span>
       <span className="min-w-0 flex-1 break-words text-[var(--text-primary)]">{value}</span>
+    </div>
+  );
+}
+
+/**
+ * "去现场看"按钮 — 让用户能独立验证 action 真的去了它该去的地方。
+ * 当前由 VERIFY_BY_TYPE 表硬编码；P0 skill 框架做出来后改由 skill 自己声明 verify target。
+ */
+function VerifyAtSection({ type }: { type?: string }) {
+  const [status, setStatus] = useState<"idle" | "opening" | "ok" | "failed">("idle");
+  const [errMsg, setErrMsg] = useState<string>("");
+  const cfg = type ? VERIFY_BY_TYPE[type] : undefined;
+  if (!cfg) return null;
+
+  const handleOpen = async () => {
+    if (!cfg.verifyAt || !isElectron) return;
+    setStatus("opening");
+    setErrMsg("");
+    try {
+      const res = await window.ovoAPI.system.openApp({ app: cfg.verifyAt });
+      if (res?.ok) {
+        setStatus("ok");
+      } else {
+        setStatus("failed");
+        if (res?.error === "app-not-installed") {
+          setErrMsg(`系统里没装"${cfg.verifyAt}"应用 — 这条记录只在 Ovo 内部留痕了`);
+        } else {
+          setErrMsg(`打开失败：${res?.error ?? "未知"}`);
+        }
+      }
+    } catch (e) {
+      setStatus("failed");
+      setErrMsg(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  return (
+    <div className="mt-3 rounded-md border border-[var(--border)]/60 bg-[var(--bg-card)] p-2.5">
+      <p className="text-[11px] font-medium text-[var(--text-muted)]">想验证 Ovo 真的做了？</p>
+      <p className="mt-1 text-[11px] text-[var(--text-secondary)]">{cfg.verifyHint ?? ""}</p>
+      <div className="mt-2 flex items-center gap-2">
+        {cfg.verifyAt ? (
+          <button
+            type="button"
+            onClick={() => void handleOpen()}
+            disabled={status === "opening"}
+            className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--bg-content)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50"
+          >
+            <ExternalLink size={11} />
+            {status === "opening" ? "正在打开…" : cfg.label}
+          </button>
+        ) : cfg.verifyInternal === "memory-timeline" ? (
+          <span className="text-[11px] text-[var(--text-muted)]">
+            ▸ 切到「记忆 → 时间线」标签页找 actor 为 Ovo 的事件
+          </span>
+        ) : (
+          <span className="text-[11px] text-[var(--text-muted)]">▸ {cfg.label}</span>
+        )}
+      </div>
+      {status === "ok" && cfg.verifyAt && (
+        <p className="mt-1.5 text-[11px] text-[var(--accent)]">✓ 已切到 {cfg.verifyAt}，你应该能在那里看到</p>
+      )}
+      {status === "failed" && (
+        <p className="mt-1.5 text-[11px] text-[var(--danger)]">⚠ {errMsg}</p>
+      )}
     </div>
   );
 }

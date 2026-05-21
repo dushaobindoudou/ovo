@@ -167,13 +167,29 @@ interface NotificationRecord {
 
 type Stream = "actions" | "notifications";
 
-export function ActionHistoryPanel() {
+interface ActionHistoryPanelProps {
+  /** A: 外部（如 OverviewPanel 完成态卡片）请求打开某条 action 详情 */
+  initialActionId?: string | null;
+  /** 父级在我们打开 drawer 后清掉 pending state，避免重复触发 */
+  onConsumeInitial?: () => void;
+}
+
+export function ActionHistoryPanel({ initialActionId, onConsumeInitial }: ActionHistoryPanelProps = {}) {
   const [stream, setStream] = useState<Stream>("actions");
   const [records, setRecords] = useState<ActionRecord[]>([]);
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [filter, setFilter] = useState<"all" | "success" | "pending" | "failed">("all");
   const [loading, setLoading] = useState(true);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
+
+  // A: 外部跨 tab 请求打开特定 actionId
+  useEffect(() => {
+    if (initialActionId) {
+      setStream("actions");
+      setSelectedActionId(initialActionId);
+      onConsumeInitial?.();
+    }
+  }, [initialActionId, onConsumeInitial]);
 
   useEffect(() => {
     if (!isElectron) return;

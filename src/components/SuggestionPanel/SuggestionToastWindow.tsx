@@ -3,6 +3,7 @@ import { X, Volume2, ThumbsUp, Pin, PinOff } from "lucide-react";
 import { useFeedback } from "../../hooks/useFeedback";
 import { useTTS } from "../../hooks/useTTS";
 import { getSuggestionSpec } from "./suggestionTypes";
+import { sanitizeForDisplay } from "../../utils/sanitizeText";
 
 // P1.16: 按内容长度动态计算时长 — 基础 12s + 每字符 80ms，上限 60s
 //        用户点"锁定"按钮可暂停倒计时
@@ -42,7 +43,18 @@ function parseToastPayload(): ToastSuggestion | null {
 export function SuggestionToastWindow() {
   const { submitSuggestionFeedback } = useFeedback();
   const { speak } = useTTS();
-  const item = useMemo(() => parseToastPayload(), []);
+  const item = useMemo(() => {
+    const raw = parseToastPayload();
+    if (!raw) return null;
+    // 用户反馈：弹窗里出现一段 CSS 代码 — 历史脏数据 / 落地点漏清洗。
+    // 兜底：所有可见文本（title / content / detail）渲染前都过 sanitize。
+    return {
+      ...raw,
+      title: sanitizeForDisplay(raw.title, "（标题含代码，已隐藏）", 100),
+      content: sanitizeForDisplay(raw.content, "（内容含代码，已隐藏，请回到屏幕原处查看）", 500),
+      detail: raw.detail ? sanitizeForDisplay(raw.detail, "（详情含代码，已隐藏）", 300) : raw.detail
+    };
+  }, []);
   // P1.16: 按内容长度计算总时长（基础 + 每字符），上限 60s
   const totalMs = useMemo(() => {
     if (!item) return AUTO_CLOSE_BASE_MS;
@@ -270,7 +282,24 @@ export function SuggestionToastWindow() {
             <button
               type="button"
               title="朗读"
-              onClick={() => void speak(`${item.title}. ${item.content}`)}
+              onClick={async () => {
+                // 用户 Bug 反馈：TTS 没声音。原来错误被静默吞，现在显式 alert + 锁定 toast
+                // 不让它自动关闭（pinned），让用户看到错误
+                const res = await speak(`${item.title}. ${item.content}`);
+                if (!res?.ok) {
+                  setPinned(true);
+                  const detail = res?.error ?? "未知错误";
+                  // 友好提示：TTS 失败时告诉用户为什么
+                  const friendly = /未启用/.test(detail)
+                    ? "朗读已关闭，请到「设置 → 语音输出」开启"
+                    : /网络|fetch|ENET|abort/i.test(detail)
+                    ? "网络问题，无法连接到 Edge TTS 服务"
+                    : /autoplay|gesture/i.test(detail)
+                    ? "首次播放需要先点一下窗口任意位置授权"
+                    : detail;
+                  alert(`朗读失败：${friendly}`);
+                }
+              }}
               className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-card-hover)] hover:text-[var(--accent)]"
             >
               <Volume2 size={13} />

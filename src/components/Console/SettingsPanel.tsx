@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Pause, X as XIcon, Trash2, Download, Shield, Clock, AlertTriangle, ShieldCheck, ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
+import { Pause, X as XIcon, Trash2, Download, Shield, Clock, AlertTriangle, ShieldCheck, ChevronDown, ChevronRight, Eye, EyeOff, Check, FileText, Ban, Bot } from "lucide-react";
+import { Empty } from "../shared/Empty";
 import type { ActionType, TrustLevel } from "../../types/ovo";
 import { translateError } from "../../utils/errorTranslator";
 import { Card } from "../shared/Card";
@@ -59,6 +60,13 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getConfig, setHealthCheckEnabled, setHealthCheckInterval, getStats]);
 
+  // SEC-12 / Bug 2 修复：把 ttsEnabled 同步独立成依赖 ttsEnabled 的 effect，
+  // 让 zustand persist 异步加载完成后能正确同步。原来塞在 mount-only effect 里，
+  // 用户切换 Toggle 第一次主进程没收到 → speak 永久拒绝。
+  useEffect(() => {
+    void window.ovoAPI?.tts?.setEnabled?.(ttsEnabled);
+  }, [ttsEnabled]);
+
   // UI-S5: 单页滚动，所有 section 都展示。原 section ctx 不再起作用
   void ctx;
 
@@ -69,12 +77,38 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
         <p className="mt-0.5 text-xs text-[var(--text-muted)]">从重要的开始：先隐私，再外观，最后开发者工具</p>
       </div>
 
+      {/* P1.22: 锚点快捷导航 — 长页面让用户快速跳转 */}
+      <nav className="sticky top-0 z-10 -mx-1 flex flex-wrap gap-1 rounded-md border border-[var(--border)] bg-[var(--bg-base)]/95 px-2 py-1.5 text-[11px] backdrop-blur">
+        {[
+          { id: "section-privacy",  label: "隐私" },
+          { id: "section-appearance", label: "外观" },
+          { id: "section-permissions", label: "权限" },
+          { id: "section-capture", label: "截屏" },
+          { id: "section-tts", label: "朗读" },
+          { id: "section-toast", label: "提醒" },
+          { id: "section-api", label: "AI" },
+          { id: "section-about", label: "关于" }
+        ].map((s) => (
+          <a
+            key={s.id}
+            href={`#${s.id}`}
+            onClick={(e) => {
+              e.preventDefault();
+              document.getElementById(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+            className="rounded px-2 py-1 text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--accent)]"
+          >
+            {s.label}
+          </a>
+        ))}
+      </nav>
+
       {/* 隐私与暂停 — 最重要，第一位 */}
-      <PrivacyView />
+      <div id="section-privacy"><PrivacyView /></div>
 
       {(
         <div className="space-y-3">
-          <Card title="外观">
+          <Card title="外观" id="section-appearance">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
@@ -106,7 +140,7 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
       {(
         <div className="space-y-3">
           {/* 权限状态 */}
-          <Card title="屏幕录制权限">
+          <Card title="屏幕录制权限" id="section-permissions">
             {screenRecordingMissing ? (
               <div className="space-y-2">
                 <div className="rounded-lg border border-[var(--warning)]/40 bg-[var(--warning)]/5 px-3 py-2.5">
@@ -142,7 +176,7 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
           </Card>
 
           {/* 捕获配置 */}
-          <Card title="截屏设置">
+          <Card title="截屏设置" id="section-capture">
             <div className="space-y-3">
               <div className="flex items-center gap-3">
                 <span className="text-sm text-[var(--text-secondary)]">捕获间隔</span>
@@ -204,15 +238,32 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
 
       {(
         <div className="space-y-3">
-          {/* 后端选择 */}
-          <Card title="AI 后端">
-            <div className="space-y-3">
-              <Select value={selectedBackend} onChange={(e) => { const b = e.target.value as typeof selectedBackend; setSelectedBackend(b); void setBackend(b); }}>
+          {/* 后端选择 — P1.23: 切换有提示影响范围，避免误点 */}
+          <Card title="AI 后端" id="section-api">
+            <div className="space-y-2">
+              <Select
+                value={selectedBackend}
+                onChange={(e) => {
+                  const b = e.target.value as typeof selectedBackend;
+                  const labels: Record<string, string> = {
+                    "claude-code": "Claude Code（需本机 claude 命令）",
+                    "openclaw": "OpenClaw（需本机 openclaw 命令）",
+                    "hermes": "Hermes（需本机 hermes 命令）",
+                    "api": "直接 API（云端调用 - 屏幕摘要会发送到 LLM 厂商）"
+                  };
+                  if (!confirm(`切到「${labels[b] ?? b}」？\n\n这会立即影响下一次 Ovo 的思考。`)) return;
+                  setSelectedBackend(b);
+                  void setBackend(b);
+                }}
+              >
                 <option value="claude-code">Claude Code</option>
                 <option value="openclaw">OpenClaw</option>
                 <option value="hermes">Hermes</option>
-                <option value="api">直接 API</option>
+                <option value="api">直接 API（云端）</option>
               </Select>
+              <p className="text-[10px] text-[var(--text-muted)]">
+                Claude Code / OpenClaw / Hermes 走本机命令（完全离线可用）；直接 API 走云端（屏幕摘要会经云端 LLM）。
+              </p>
             </div>
           </Card>
 
@@ -230,21 +281,29 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
           )}
 
           {/* TTS */}
-          <Card title="语音输出">
+          <Card title="语音输出" id="section-tts">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium">启用 Edge TTS</p>
                 <p className="mt-0.5 text-xs text-[var(--text-secondary)]">把 ovo 的建议读出来</p>
-                <p className="mt-1.5 rounded-md bg-[var(--warning)]/10 px-2 py-1 text-[11px] text-[var(--warning)]">
-                  ⚠ 开启后建议文本会发送到 <code>Microsoft Edge TTS</code> 在线服务（含 OCR 摘录片段）。若处理敏感内容请保持关闭。
+                <p className="mt-1.5 flex items-start gap-1.5 rounded-md bg-[var(--warning)]/10 px-2 py-1 text-[11px] text-[var(--warning)]">
+                  <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" />
+                  <span>开启后建议文本会发送到 <code>Microsoft Edge TTS</code> 在线服务（含 OCR 摘录片段）。若处理敏感内容请保持关闭。</span>
                 </p>
               </div>
-              <Toggle checked={ttsEnabled} onChange={setTtsEnabled} />
+              <Toggle
+                checked={ttsEnabled}
+                onChange={(v) => {
+                  setTtsEnabled(v);
+                  // SEC-12: 同步到主进程，否则主进程会拒绝 tts:speak 调用
+                  void window.ovoAPI?.tts?.setEnabled?.(v);
+                }}
+              />
             </div>
           </Card>
 
           {/* 提醒级别（合并了原本重复的两个版本，留三按钮版） */}
-          <Card title="提醒级别">
+          <Card title="提醒级别" id="section-toast">
             <div className="space-y-2 text-sm">
               <p className="text-xs text-[var(--text-secondary)]">
                 屏幕角落弹建议卡片的范围。控制台始终看得到，这里只控制是否弹提醒。
@@ -268,12 +327,13 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
                   </button>
                 ))}
               </div>
-              <p className="text-[10.5px] text-[var(--text-muted)]">
+              <p className="flex items-center gap-1 text-[10.5px] text-[var(--text-muted)]">
+                <Check size={11} className="text-[var(--success)]" />
                 {toastVerbosity === "silent"
-                  ? "✓ 完全不弹，所有建议都进控制台"
+                  ? "完全不弹，所有建议都进控制台"
                   : toastVerbosity === "alerts"
-                    ? "✓ 仅风险预警和需要确认的动作会弹"
-                    : "✓ 所有建议都会弹到屏幕角"}
+                    ? "仅风险预警和需要确认的动作会弹"
+                    : "所有建议都会弹到屏幕角"}
               </p>
             </div>
           </Card>
@@ -340,22 +400,48 @@ function SystemLogsView() {
     <div className="space-y-3">
       <Card title="错误日志（主进程）">
         {errors.length === 0 ? (
-          <p className="text-xs text-[var(--text-muted)]">暂无错误</p>
+          <Empty compact icon={ShieldCheck} title="没有错误" hint="主进程运行正常" />
         ) : (
-          <div className="max-h-[300px] space-y-1 overflow-y-auto text-xs">
-            {errors.map((e, i) => (
-              <div key={i} className="border-b border-[var(--border)] py-1">
-                <span className="text-[var(--danger)]">[{e.level}]</span>{" "}
-                <span className="text-[var(--text-muted)]">{e.source}</span>{" "}
-                <span className="text-[var(--text-secondary)]">{e.message}</span>
-              </div>
-            ))}
-          </div>
+          <>
+            <div className="max-h-[300px] space-y-1 overflow-y-auto text-xs">
+              {errors.map((e, i) => (
+                <div key={i} className="border-b border-[var(--border)] py-1">
+                  <span className="text-[var(--danger)]">[{e.level}]</span>{" "}
+                  <span className="text-[var(--text-muted)]">{e.source}</span>{" "}
+                  <span className="text-[var(--text-secondary)]">{e.message}</span>
+                </div>
+              ))}
+            </div>
+            {/* P2.14: 导出错误日志（人话格式 + raw JSON 副本） */}
+            <button
+              type="button"
+              onClick={() => {
+                // 格式化成 [时间] [级别] [来源] message
+                const lines = errors.map((e) => {
+                  const ts = (e as { timestamp?: string }).timestamp ?? "—";
+                  return `[${ts}] [${e.level.toUpperCase()}] ${e.source} — ${e.message}`;
+                });
+                const text = lines.join("\n");
+                const blob = new Blob([text], { type: "text/plain" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `ovo-error-log-${new Date().toISOString().slice(0, 10)}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              }}
+              className="mt-2 rounded border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent)]"
+            >
+              导出错误日志（.txt）
+            </button>
+          </>
         )}
       </Card>
       <Card title="系统日志（最近 100 条）">
         {logs.length === 0 ? (
-          <p className="text-xs text-[var(--text-muted)]">暂无日志</p>
+          <Empty compact icon={FileText} title="还没有日志" hint="主进程开始活动后会在这里显示" />
         ) : (
           <div className="max-h-[400px] space-y-1 overflow-y-auto text-xs">
             {logs.map((l, i) => (
@@ -432,6 +518,8 @@ function PrivacyView() {
     setNewApp("");
   };
   const removeApp = async (app: string) => {
+    // P1.23: 危险操作二次确认 — 移除黑名单 = 让 Ovo 重新观察这个 app
+    if (!confirm(`确定要让 Ovo 重新观察「${app}」吗？\n\n移除后 Ovo 会再次截屏 / OCR 这个应用的内容。`)) return;
     const next = blacklist.filter((a) => a !== app);
     if (isElectronInternal) await window.ovoAPI.privacy.setBlacklist(next);
     setBlacklist(next);
@@ -487,7 +575,9 @@ function PrivacyView() {
           </p>
           <div className="flex flex-wrap gap-1.5">
             {blacklist.length === 0 ? (
-              <p className="text-xs text-[var(--text-muted)]">（黑名单为空——点下方添加）</p>
+              <div className="w-full">
+                <Empty compact icon={Ban} title="黑名单为空" hint="点下方按钮添加要永远屏蔽的应用" />
+              </div>
             ) : (
               blacklist.map((app) => (
                 <span
@@ -529,6 +619,9 @@ function PrivacyView() {
 
       {/* P0.11 脱敏强度（替换旧的"自动脱敏"说明性卡片） */}
       <RedactionCard />
+
+      {/* DATA-12 脱敏命中统计 */}
+      <RedactionStatsCard />
 
       {/* P0.11 数据管理 — 导出 / 删除所有数据 */}
       <DataManagementCard />
@@ -850,7 +943,13 @@ function DataManagementCard() {
     setExporting(true);
     setExportMsg(null);
     try {
-      const data = await window.ovoAPI.kg.export();
+      // SEC-16: 主进程二次握手 — 第一次拿 token，第二次带 token 才真正执行
+      let data = await window.ovoAPI.kg.export();
+      if (data && typeof data === "object" && "requiresConfirm" in (data as Record<string, unknown>)) {
+        const token = (data as { confirmToken?: string }).confirmToken;
+        if (!token) throw new Error("主进程二次握手 token 缺失");
+        data = await (window.ovoAPI.kg.export as unknown as (p: { confirmToken: string }) => Promise<unknown>)({ confirmToken: token });
+      }
       // 触发浏览器下载（renderer 端 blob）
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -874,7 +973,13 @@ function DataManagementCard() {
     if (deleteText !== "DELETE") return;
     setDeleting(true);
     try {
-      await window.ovoAPI.kg.clear();
+      // SEC-16: 二次握手
+      const first = await window.ovoAPI.kg.clear();
+      if (first && typeof first === "object" && "requiresConfirm" in (first as Record<string, unknown>)) {
+        const token = (first as { confirmToken?: string }).confirmToken;
+        if (!token) throw new Error("主进程二次握手 token 缺失");
+        await (window.ovoAPI.kg.clear as unknown as (p: { confirmToken: string }) => Promise<unknown>)({ confirmToken: token });
+      }
       setShowDeleteConfirm(false);
       setDeleteText("");
       alert("已删除全部数据。建议重启 Ovo 让所有窗口重新加载。");
@@ -1088,7 +1193,12 @@ function PromptEvalView() {
 
       {items.length === 0 && (
         <Card>
-          <p className="py-4 text-center text-xs text-[var(--text-muted)]">暂无自评结果——明天 ovo 第一次自评后会出现，或点上面"立即运行"</p>
+          <Empty
+            compact
+            icon={Bot}
+            title="还没有自评结果"
+            hint={<>明天 ovo 第一次自评后会出现，或点上面"立即运行"</>}
+          />
         </Card>
       )}
     </div>
@@ -1098,7 +1208,7 @@ function PromptEvalView() {
 /* UI-1: 关于（合并自旧 AboutPanel） */
 function AboutView() {
   return (
-    <Card title="关于 ovo">
+    <Card title="关于 ovo" id="section-about">
       <div className="space-y-2 text-sm">
         <p><span className="text-[var(--text-muted)]">版本:</span> v0.1.0</p>
         <p><span className="text-[var(--text-muted)]">平台:</span> macOS</p>
@@ -1256,6 +1366,65 @@ function ApiConfigCard({
 // ============================================================
 // P2.11: API Key 输入 — eye toggle 显示/隐藏
 // ============================================================
+// ============================================================
+// DATA-12: 脱敏命中统计 — 让用户感知 "Ovo 保护了我 N 次"（哲学命中感知轴）
+// ============================================================
+const REDACT_LABELS: Record<string, string> = {
+  api_token: "API token", jwt: "JWT", card_number: "卡号", id_card_cn: "身份证",
+  phone_cn: "手机号", sensitive_email: "敏感邮箱", password_label: "密码字段",
+  private_key: "私钥", env_secret: ".env 密钥", otp_cn: "验证码",
+  email_any: "邮箱", url_any: "URL", file_path: "文件路径",
+  long_number: "数字串", domain_any: "域名", code_block: "代码块", code_inline: "代码片段"
+};
+function RedactionStatsCard() {
+  const [stats, setStats] = useState<{ total: number; byType: Record<string, number> } | null>(null);
+  const refresh = async () => {
+    if (!isElectronInternal) return;
+    try { setStats(await window.ovoAPI.privacy.getRedactionStats()); } catch { /* */ }
+  };
+  useEffect(() => {
+    void refresh();
+    const t = setInterval(() => void refresh(), 10_000);
+    return () => clearInterval(t);
+  }, []);
+
+  if (!stats) return null;
+  const entries = Object.entries(stats.byType).sort((a, b) => b[1] - a[1]).slice(0, 6);
+
+  return (
+    <Card title="Ovo 为你保护了什么">
+      <div className="space-y-2 text-sm">
+        <p className="flex items-center gap-1.5 text-[var(--text-secondary)]">
+          <ShieldCheck size={13} className="text-[var(--success)]" />
+          自启动至今，Ovo 在发送给云端 AI 之前一共擦掉 <strong className="text-[var(--success)]">{stats.total}</strong> 条敏感信息。
+        </p>
+        {entries.length > 0 ? (
+          <div className="grid grid-cols-2 gap-1.5">
+            {entries.map(([type, count]) => (
+              <div key={type} className="flex items-center justify-between rounded border border-[var(--border)] bg-[var(--bg-base)] px-2.5 py-1 text-xs">
+                <span className="text-[var(--text-secondary)]">{REDACT_LABELS[type] ?? type}</span>
+                <span className="font-mono text-[var(--text-primary)]">{count}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[11px] text-[var(--text-muted)]">还没有命中——目前看到的屏幕内容没有触发任何敏感规则。</p>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            if (!isElectronInternal) return;
+            void window.ovoAPI.privacy.resetRedactionStats().then(() => void refresh());
+          }}
+          className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+        >
+          重置计数
+        </button>
+      </div>
+    </Card>
+  );
+}
+
 function ApiKeyInput({ value, onChange, placeholder }: {
   value: string;
   onChange: (v: string) => void;

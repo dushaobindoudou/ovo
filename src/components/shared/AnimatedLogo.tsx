@@ -8,11 +8,13 @@ interface AnimatedLogoProps {
   className?: string;
 }
 
+// B1 / B3 修复：state 色板从写死的微信绿迁到 CSS state token
+// 这样 AnimatedLogo 与 FloatingIcon SiriOrb / LiveStatusBar / Tray 共享同一组状态色
 const stateConfig: Record<LogoState, { name: string; color: string }> = {
-  idle: { name: "待机", color: "#8AA896" },
-  watching: { name: "观察", color: "#07C160" },
-  thinking: { name: "思考", color: "#5B9BD5" },
-  executing: { name: "执行", color: "#07C160" },
+  idle:      { name: "待机", color: "var(--state-idle)" },
+  watching:  { name: "观察", color: "var(--state-watching)" },
+  thinking:  { name: "思考", color: "var(--state-thinking)" },
+  executing: { name: "执行", color: "var(--state-executing)" },
 };
 
 const styleId = "ovo-animated-logo-styles";
@@ -52,7 +54,7 @@ export function AnimatedLogo({ size = 48, state = "idle", className }: AnimatedL
 
   useMemo(() => injectStyles(), []);
 
-  const defaultStroke = "#8AA896";
+  const defaultStroke = "var(--state-idle)";
 
   // State-specific SVG rendering
   const content = useMemo(() => {

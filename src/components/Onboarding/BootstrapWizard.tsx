@@ -289,19 +289,33 @@ export function BootstrapWizard({ onClose }: Props) {
   );
 }
 
-/* 包装：检查首启状态，自动决定是否显示 */
+/* 包装：检查首启状态 + P0.8 启动状态机：必须先权限授权才弹 wizard，避免多层模态叠加 */
 export function BootstrapWizardGate() {
   const [show, setShow] = useState(false);
   const [checked, setChecked] = useState(false);
+  // P0.8：等权限授权完成后再弹 wizard，避免与 PermissionGate 教学弹窗同时出现
+  const [permGranted, setPermGranted] = useState(false);
 
   useEffect(() => {
-    if (!isElectron) { setChecked(true); return; }
+    if (!isElectron) { setChecked(true); setPermGranted(true); return; }
     void window.ovoAPI.prefs.getBootstrapStatus().then((status) => {
       if (!status.done) setShow(true);
       setChecked(true);
     }).catch(() => setChecked(true));
+    // 检查屏幕权限（轮询一次即可，PermissionGate 自己有 3s 轮询）
+    void window.ovoAPI.permissions.getStatus().then((s) => {
+      const granted = (s as { screenRecording?: string }).screenRecording === "granted";
+      setPermGranted(granted);
+    }).catch(() => setPermGranted(false));
+    // 订阅权限状态变更事件
+    const off = window.ovoAPI.on("permissions:status", (payload) => {
+      if (payload?.screen === "granted") setPermGranted(true);
+    });
+    return () => { try { off(); } catch { /* */ } };
   }, []);
 
   if (!checked || !show) return null;
+  // P0.8：权限未授权时不弹 wizard，避免与 PermissionGate 教学弹窗同时出现
+  if (!permGranted) return null;
   return <BootstrapWizard onClose={() => setShow(false)} />;
 }

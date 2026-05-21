@@ -1,10 +1,10 @@
 import type { ComponentType } from "react";
-import { Zap, BookOpen, Settings, History } from "lucide-react";
+import { Zap, BookOpen, Settings, History, Inbox } from "lucide-react";
 import { OvoLogo } from "../shared/OvoLogo";
 
-// UI-S1: 终态 4 tab——现在 / 记忆 / 回放 / 设置
-// 4 个场景：ovo 现在干啥 / ovo 知道我啥 / ovo 历史做了啥 / 调 ovo
-export type ConsolePage = "overview" | "process" | "knowledge" | "settings";
+// UI-S1: 终态 5 tab——现在 / 产出 / 记忆 / 回放 / 设置
+// 用户反馈："Ovo 帮我做的提醒/草稿/笔记我在哪看？" → 加"产出"独立 tab
+export type ConsolePage = "overview" | "outputs" | "process" | "knowledge" | "settings";
 
 interface SidebarProps {
   page: ConsolePage;
@@ -21,6 +21,7 @@ interface Menu {
 
 const allMenus: Menu[] = [
   { id: "overview", label: "现在", tooltip: "Ovo 此刻在看什么、想什么、有什么待办", icon: Zap },
+  { id: "outputs", label: "产出", tooltip: "Ovo 替你做过和即将做的事：提醒 / 日历 / 笔记 / 草稿", icon: Inbox },
   { id: "knowledge", label: "记忆", tooltip: "Ovo 关于你形成的世界模型（实体 + 关系 + 画像）", icon: BookOpen },
   { id: "process", label: "回放", tooltip: "Ovo 过去做过的事 + 每条推理的完整因果链", icon: History },
 ];

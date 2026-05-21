@@ -3,22 +3,19 @@ import { Sparkles } from "lucide-react";
 import { useSuggestions } from "../../hooks/useSuggestions";
 import { SuggestionCard } from "./SuggestionCard";
 import { PendingActionsSection } from "./PendingActionsSection";
+import { useSuggestionStore } from "../../stores/suggestionStore";
 
 export function SuggestionPanel() {
   const { suggestions } = useSuggestions();
-  // 本地"已 dismiss" 用于配合卡片塌陷动画过渡——store 端可保留，UI 不再渲染
-  // P1.29: 暂未持久化（留给 T10）；当前刷新会重置。
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  // P1.29: dismissed 状态已持久化到 zustand store + localStorage
+  const dismissedIds = useSuggestionStore((s) => s.dismissedIds);
+  const markDismissed = useSuggestionStore((s) => s.markDismissed);
   const handleDismiss = useCallback((id: string) => {
-    setDismissed((prev) => {
-      if (prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.add(id);
-      return next;
-    });
-  }, []);
+    markDismissed(id);
+  }, [markDismissed]);
 
-  const visible = suggestions.filter((s) => !dismissed.has(s.id));
+  const dismissedSet = new Set(dismissedIds);
+  const visible = suggestions.filter((s) => !dismissedSet.has(s.id));
   const count = visible.length;
 
   return (

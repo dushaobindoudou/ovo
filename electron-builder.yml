@@ -8,6 +8,9 @@ files:
   - electron/preload.cjs
   - electron/entitlements.mac.plist
   - package.json
+  # C8: verify-real-logs.js 是开发期场景验证脚本，绝不进生产 bundle
+  - "!dist-electron/electron/verify-real-logs.js"
+  - "!dist-electron/scripts/**"
 asarUnpack:
   - node_modules/better-sqlite3/**
   - node_modules/bindings/**
@@ -16,6 +19,7 @@ asarUnpack:
 mac:
   target:
     - dmg
+    - zip   # zip 用于 auto-updater 增量下载（未来 electron-updater 接入）
   icon: build/icon.icns
   hardenedRuntime: true
   gatekeeperAssess: false
@@ -23,7 +27,22 @@ mac:
   entitlementsInherit: electron/entitlements.mac.plist
   category: public.app-category.productivity
   darkModeSupport: true
+  # C6 修复脚手架：以下三个字段配合 env 启用代码签名 + Notarization
+  # 设置 CSC_LINK / CSC_KEY_PASSWORD / APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID
+  # 后构建脚本会自动用 @electron/notarize 提交公证
+  # 在未配置 env 时这些字段被 electron-builder 忽略，dev 构建仍可走（仅自签）
+  identity: null  # 用 env CSC_NAME 覆盖；null = electron-builder 自动从 keychain 找匹配证书
+  notarize: false  # 默认 false 避免本地 dev 构建卡公证；CI 用 env NOTARIZE=true 启用
   extendInfo:
     NSCameraUsageDescription: "ovo 需要访问摄像头以进行屏幕录制和 OCR 文字识别"
     NSMicrophoneUsageDescription: "ovo 需要访问麦克风以进行语音交互"
     NSScreenCaptureDescription: "ovo 需要屏幕录制权限以进行主动式 AI 助手功能"
+    NSHumanReadableCopyright: "© 2026 Ovo · MIT License"
+
+# C7 配套：electron-updater 接入的 publish 配置
+# 启用：env GH_TOKEN（有 repo write 权限的 PAT）+ electron-builder --publish always
+publish:
+  - provider: github
+    owner: dushaobindoudou
+    repo: ovo
+    releaseType: release

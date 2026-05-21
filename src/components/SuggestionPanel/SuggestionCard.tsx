@@ -93,9 +93,11 @@ export function SuggestionCard({ item, onDismiss }: SuggestionCardProps) {
             "group relative flex items-start gap-2.5 rounded-lg border bg-[var(--bg-card)] px-3 py-2.5 transition-colors",
             "hover:bg-[var(--bg-card-hover)]",
             isHighPriority
-              ? "border-[color-mix(in_srgb,var(--accent)_40%,transparent)]"
+              // P1.6: 高优先级 — 整卡片脉动呼吸 + accent 描边强调视觉权重
+              ? "border-[var(--accent)] shadow-[0_0_0_3px_var(--accent-dim)] animate-pulse-subtle"
               : "border-[var(--border)]"
           )}
+          style={isHighPriority ? { animation: "ovo-priority-breathe 2.4s ease-in-out infinite" } : undefined}
         >
           {/* 图标（自带类型颜色） */}
           <div

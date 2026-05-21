@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
-import { RefreshCcw } from "lucide-react";
+import { RefreshCcw, ShieldCheck, ListTodo } from "lucide-react";
 import { Card } from "../shared/Card";
+import { Empty } from "../shared/Empty";
 import { StatusBadge } from "../shared/StatusBadge";
 import { LogViewer } from "../shared/LogViewer";
 import { GlowButton } from "../shared/GlowButton";
@@ -436,7 +437,7 @@ function ErrorLogDetail() {
       </div>
       <Card>
         {errors.length === 0 ? (
-          <p className="text-sm text-[var(--text-secondary)]">暂无错误日志。应用运行正常。</p>
+          <Empty icon={ShieldCheck} title="没有错误日志" hint="应用运行正常" />
         ) : (
           <div className="space-y-2 text-sm">
             {errors.map((entry, i) => (
@@ -541,7 +542,7 @@ function SchedulerDetail() {
       <h2 className="text-lg font-semibold">调度器与告警</h2>
       <Card title="活动任务">
         {tasks.length === 0 ? (
-          <p className="text-sm text-[var(--text-secondary)]">暂无注册任务</p>
+          <Empty compact icon={ListTodo} title="还没有注册任务" />
         ) : (
           <div className="space-y-2 text-sm">
             {tasks.map((task) => (

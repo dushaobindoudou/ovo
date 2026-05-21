@@ -1,5 +1,6 @@
-import { Volume2, Sparkles } from "lucide-react";
+import { Volume2, Sparkles, ListTodo, MessageSquare, Eye } from "lucide-react";
 import { Card } from "../shared/Card";
+import { Empty } from "../shared/Empty";
 import { GlowButton } from "../shared/GlowButton";
 import { StatusBadge } from "../shared/StatusBadge";
 import { usePendingActions } from "../../hooks/usePendingActions";
@@ -79,7 +80,9 @@ function OffersSection() {
                   <GlowButton
                     className="!text-xs"
                     onClick={() => {
-                      // TODO Q5/capability: 接受后注册 capability。当前先记反馈
+                      // M4: capability 注册是哲学第三章承诺，但完整 capability 系统（定时调度 / 触发器 / 自动执行）
+                      // 需要独立 PR；当前先把 accepted 记到反馈表 → feedback-engine 据此提升类似 offer 的评分。
+                      // 用户看到的文案应明确"我感兴趣"，不暗示自动执行。
                       void window.ovoAPI?.suggestion?.feedback?.({
                         suggestionId: offer.id,
                         suggestionType: `offer:${offer.needs_capability ?? offer.frequency}`,
@@ -87,7 +90,7 @@ function OffersSection() {
                       });
                     }}
                   >
-                    要
+                    我感兴趣
                   </GlowButton>
                   <button
                     type="button"
@@ -110,7 +113,7 @@ function OffersSection() {
             ))}
           </div>
         ) : (
-          <p className="text-[10px] text-[var(--text-muted)]">暂无长期服务建议（ovo 还在观察）</p>
+          <Empty compact icon={Eye} title="还没有长期服务建议" hint="ovo 还在观察你的工作模式" />
         )}
       </div>
     </Card>
@@ -132,11 +135,12 @@ export function SuggestionsPanel({ ctx }: { ctx?: { selectedId: string | null } 
         <OffersSection />
         {pending.length === 0 ? (
           <Card>
-            <div className="space-y-3 py-8 text-center">
-              <p className="text-sm text-[var(--text-muted)]">暂无待处理动作</p>
-              <p className="text-xs text-[var(--text-muted)]">ovo 会在检测到可执行动作时通知您</p>
-              <div className="flex justify-center"><SamplePipelineCTA /></div>
-            </div>
+            <Empty
+              icon={ListTodo}
+              title="没有待处理动作"
+              hint="ovo 检测到可执行动作时会在这里通知你"
+            />
+            <div className="mt-3 flex justify-center"><SamplePipelineCTA /></div>
           </Card>
         ) : (
           <div className="space-y-2">
@@ -183,11 +187,12 @@ export function SuggestionsPanel({ ctx }: { ctx?: { selectedId: string | null } 
         <h2 className="text-lg font-semibold">最近建议</h2>
         {suggestions.length === 0 ? (
           <Card>
-            <div className="space-y-3 py-8 text-center">
-              <p className="text-sm text-[var(--text-muted)]">暂无建议记录</p>
-              <p className="text-xs text-[var(--text-muted)]">AI 会根据您的使用习惯生成操作建议</p>
-              <div className="flex justify-center"><SamplePipelineCTA /></div>
-            </div>
+            <Empty
+              icon={MessageSquare}
+              title="还没有建议记录"
+              hint="AI 会根据你的使用习惯生成操作建议"
+            />
+            <div className="mt-3 flex justify-center"><SamplePipelineCTA /></div>
           </Card>
         ) : (
           <div className="space-y-2">

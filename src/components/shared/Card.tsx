@@ -4,11 +4,14 @@ import clsx from "clsx";
 interface CardProps extends PropsWithChildren {
   title?: string;
   className?: string;
+  /** P1.22: 锚点 id — 让 SettingsPanel 等长页面可滚动跳转 */
+  id?: string;
 }
 
-export function Card({ title, className, children }: CardProps) {
+export function Card({ title, className, children, id }: CardProps) {
   return (
     <section
+      id={id}
       className={clsx(
         "rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[var(--shadow-sm)]",
         className
