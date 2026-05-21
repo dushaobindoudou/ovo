@@ -17,6 +17,7 @@ import { useInsights } from "../../hooks/useInsights";
 import { usePendingActions } from "../../hooks/usePendingActions";
 import { useWindowStore } from "../../stores/windowStore";
 import { useWindows } from "../../hooks/useWindows";
+import { sanitizeForDisplay } from "../../utils/sanitizeText";
 
 const isElectron = typeof window !== "undefined" && !!window.ovoAPI;
 
@@ -31,10 +32,48 @@ const FREQ_PRIORITY: Record<string, number> = {
 };
 
 interface OverviewPanelProps {
-  ctx?: { selectedId: string | null };
+  ctx?: {
+    selectedId: string | null;
+    /** A: 让本面板跨 tab 打开 ActionDetailDrawer */
+    requestOpenAction?: (actionId: string) => void;
+  };
 }
 
-export function OverviewPanel({ ctx: _ctx }: OverviewPanelProps) {
+interface CompletedActionEntry {
+  actionId: string;
+  description: string;
+  status: "success" | "failed";
+  error?: string;
+  completedAt: number;
+}
+
+interface DraftEntry {
+  id: string;
+  createdAt: number;
+  actionId: string;
+  actionType: string;
+  description: string;
+  evidenceLevel: string;
+  evidence: string[];
+  groundingReason: string;
+  appName?: string;
+}
+
+const ACTION_TYPE_LABEL: Record<string, string> = {
+  log_note: "记笔记",
+  create_todo: "建待办",
+  copy_to_clipboard: "复制",
+  set_reminder: "设提醒",
+  add_calendar: "加日历",
+  send_email: "发邮件",
+  send_imessage: "发消息",
+  open_url: "打开链接",
+  search_web: "搜索",
+  summarize: "总结",
+  other: "动作"
+};
+
+export function OverviewPanel({ ctx }: OverviewPanelProps) {
   const { latest, history } = useInsights();
   const { active } = useWindowStore();
   const { refresh } = useWindows();
@@ -46,6 +85,100 @@ export function OverviewPanel({ ctx: _ctx }: OverviewPanelProps) {
   const [healthOk, setHealthOk] = useState<boolean>(true);
   const [lastCaptureAt, setLastCaptureAt] = useState<number>(0);
   const [reactedOffers, setReactedOffers] = useState<Map<string, "accepted" | "rejected">>(new Map());
+  // 用户 Bug 修复：点击"确认执行"没视觉反馈 + 失败时看不到错误
+  const [actionBusy, setActionBusy] = useState<Set<string>>(new Set());
+  const [actionError, setActionError] = useState<Map<string, string>>(new Map());
+  // A: 完成态卡片 — 执行完保留 ~30s 给用户"✓ 已完成 [查看详情]"反馈
+  const [completedActions, setCompletedActions] = useState<CompletedActionEntry[]>([]);
+  // 反思 #2: 草稿台 — Ovo 准备好但 evidence 未验证的 action
+  const [drafts, setDrafts] = useState<DraftEntry[]>([]);
+  const [draftBusy, setDraftBusy] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!isElectron) return;
+    const load = () => {
+      void window.ovoAPI.drafts.list(10).then((rows) => {
+        setDrafts((rows ?? []) as DraftEntry[]);
+      }).catch(() => { /* */ });
+    };
+    load();
+    const t = setInterval(load, 6000);
+    return () => clearInterval(t);
+  }, []);
+
+  const handleDraftPromote = useCallback(async (id: string) => {
+    if (draftBusy.has(id)) return;
+    setDraftBusy((p) => new Set(p).add(id));
+    try {
+      await window.ovoAPI.drafts.promote(id);
+      setDrafts((prev) => prev.filter((d) => d.id !== id));
+    } finally {
+      setDraftBusy((p) => { const n = new Set(p); n.delete(id); return n; });
+    }
+  }, [draftBusy]);
+
+  const handleDraftDismiss = useCallback(async (id: string) => {
+    if (draftBusy.has(id)) return;
+    setDraftBusy((p) => new Set(p).add(id));
+    try {
+      await window.ovoAPI.drafts.dismiss(id);
+      setDrafts((prev) => prev.filter((d) => d.id !== id));
+    } finally {
+      setDraftBusy((p) => { const n = new Set(p); n.delete(id); return n; });
+    }
+  }, [draftBusy]);
+
+  const handleConfirmAction = useCallback(async (item: { action: { id: string; description?: string }; pipelineId?: string }) => {
+    const id = item.action.id;
+    if (actionBusy.has(id)) return; // 防双击
+    setActionBusy((prev) => new Set(prev).add(id));
+    setActionError((prev) => {
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+    try {
+      const result = await confirmAction({ action: item.action as never, pipelineId: item.pipelineId });
+      // result 是 ActionResultPayload，成功时 broadcast action:result 会清掉 pending 行
+      // 失败时（包括"动作已失效"）— 也广播了，列表会清，但用户需要看到为什么
+      if (result && result.status === "failed" && result.error) {
+        setActionError((prev) => new Map(prev).set(id, result.error!));
+      }
+      // A: 把刚做完的 action 加进完成态条带（success / failed 都进，cancelled 不进）
+      if (result && (result.status === "success" || result.status === "failed")) {
+        setCompletedActions((prev) => [
+          {
+            actionId: id,
+            description: item.action.description ?? "动作",
+            status: result.status as "success" | "failed",
+            error: result.error,
+            completedAt: Date.now()
+          },
+          ...prev.filter((e) => e.actionId !== id)
+        ].slice(0, 5));
+      }
+    } finally {
+      setActionBusy((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  }, [actionBusy, confirmAction]);
+
+  // A: 完成态条带 30s 后自动清除
+  useEffect(() => {
+    if (completedActions.length === 0) return;
+    const t = setInterval(() => {
+      const cutoff = Date.now() - 30_000;
+      setCompletedActions((prev) => prev.filter((e) => e.completedAt > cutoff));
+    }, 2000);
+    return () => clearInterval(t);
+  }, [completedActions.length]);
+
+  const handleOpenActionDetail = useCallback((actionId: string) => {
+    if (ctx?.requestOpenAction) ctx.requestOpenAction(actionId);
+  }, [ctx]);
   const [showAllPending, setShowAllPending] = useState(false);
   const [, tick] = useState(0);
 
@@ -197,34 +330,50 @@ export function OverviewPanel({ ctx: _ctx }: OverviewPanelProps) {
 
           <div className="space-y-2">
             {/* pending actions */}
-            {pending.slice(0, showAllPending ? undefined : 3).map((item) => (
-              <div key={item.action.id} className="rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-2.5">
-                <p className="text-sm font-medium">{item.action.description}</p>
-                <div className="mt-2 flex gap-2">
-                  <GlowButton className="!text-xs !py-1" onClick={() => void confirmAction({ action: item.action, pipelineId: item.pipelineId })}>确认执行</GlowButton>
-                  <button
-                    type="button"
-                    onClick={() => void cancelAction({ actionId: item.action.id, pipelineId: item.pipelineId })}
-                    className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs text-[var(--text-secondary)] hover:border-[var(--danger)] hover:text-[var(--danger)]"
-                  >
-                    取消
-                  </button>
+            {pending.slice(0, showAllPending ? undefined : 3).map((item) => {
+              const busy = actionBusy.has(item.action.id);
+              const err = actionError.get(item.action.id);
+              return (
+                <div key={item.action.id} className="rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-2.5">
+                  <p className="text-sm font-medium">{sanitizeForDisplay(item.action.description, "（动作描述含代码，已隐藏）", 200)}</p>
+                  {err && (
+                    <p className="mt-1.5 rounded bg-[var(--danger)]/10 px-2 py-1 text-[11px] text-[var(--danger)]">
+                      ⚠ {err}
+                    </p>
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <GlowButton
+                      className="!text-xs !py-1"
+                      disabled={busy}
+                      onClick={() => void handleConfirmAction(item)}
+                    >
+                      {busy ? "执行中…" : "确认执行"}
+                    </GlowButton>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void cancelAction({ actionId: item.action.id, pipelineId: item.pipelineId })}
+                      className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs text-[var(--text-secondary)] hover:border-[var(--danger)] hover:text-[var(--danger)] disabled:opacity-50"
+                    >
+                      取消
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {/* offers */}
             {visibleOffers.slice(0, showAllPending ? undefined : Math.max(0, 3 - pending.length)).map((offer) => (
               <div key={offer.id} className="rounded-lg border border-[var(--border)] bg-[var(--bg-card-hover)] p-2.5">
                 <div className="mb-1 flex items-start justify-between gap-2">
-                  <p className="text-sm font-medium leading-snug">★ {offer.title}</p>
+                  <p className="text-sm font-medium leading-snug">★ {sanitizeForDisplay(offer.title, "（offer 标题含代码）", 80)}</p>
                   <span className="shrink-0 rounded bg-[var(--bg-base)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
                     {FREQ_LABEL[offer.frequency] ?? offer.frequency}
                   </span>
                 </div>
-                <p className="text-xs text-[var(--text-secondary)]">{offer.value_prop}</p>
+                <p className="text-xs text-[var(--text-secondary)]">{sanitizeForDisplay(offer.value_prop, "（offer 详情已隐藏）", 200)}</p>
                 {offer.first_action_preview && (
-                  <p className="mt-1 text-[11px] text-[var(--text-muted)]">▸ {offer.first_action_preview}</p>
+                  <p className="mt-1 text-[11px] text-[var(--text-muted)]">▸ {sanitizeForDisplay(offer.first_action_preview, "", 160)}</p>
                 )}
                 <div className="mt-2 flex gap-2">
                   <GlowButton
@@ -239,6 +388,103 @@ export function OverviewPanel({ ctx: _ctx }: OverviewPanelProps) {
                 </div>
               </div>
             ))}
+          </div>
+        </Card>
+      )}
+
+      {/* ────────── A: 刚完成的动作（30s 内自动消失，给用户"已完成 + 查看详情"反馈） ────────── */}
+      {completedActions.length > 0 && (
+        <Card>
+          <p className="mb-2 text-[11px] uppercase tracking-wider text-[var(--text-muted)]">刚完成</p>
+          <div className="space-y-1.5">
+            {completedActions.map((entry) => (
+              <div
+                key={entry.actionId}
+                className={`flex items-start justify-between gap-2 rounded-lg border px-2.5 py-2 text-[12px] ${
+                  entry.status === "success"
+                    ? "border-[var(--accent)]/30 bg-[var(--accent)]/5"
+                    : "border-[var(--danger)]/30 bg-[var(--danger)]/5"
+                }`}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className={`font-medium ${entry.status === "success" ? "text-[var(--accent)]" : "text-[var(--danger)]"}`}>
+                    {entry.status === "success" ? "✓ 已完成" : "✗ 没做成"}
+                    <span className="ml-2 font-normal text-[var(--text-primary)]">{entry.description}</span>
+                  </p>
+                  {entry.error && (
+                    <p className="mt-1 text-[11px] text-[var(--text-secondary)]">{entry.error}</p>
+                  )}
+                </div>
+                {ctx?.requestOpenAction && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenActionDetail(entry.actionId)}
+                    className="shrink-0 rounded-md border border-[var(--border)] bg-[var(--bg-content)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                  >
+                    查看详情 →
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* ────────── 反思 #2: 草稿台 — Ovo 准备好但没出手 ────────── */}
+      {drafts.length > 0 && (
+        <Card>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-sm font-semibold">Ovo 准备了，你来定（{drafts.length}）</p>
+            <span className="text-[11px] text-[var(--text-muted)]">没证据自动执行 → 等你确认</span>
+          </div>
+          <div className="space-y-1.5">
+            {drafts.slice(0, 5).map((d) => {
+              const busy = draftBusy.has(d.id);
+              return (
+                <div
+                  key={d.id}
+                  className="rounded-lg border border-[var(--border)] bg-[var(--bg-card-hover)] p-2.5 text-[12px]"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-[var(--text-primary)]">
+                        <span className="mr-2 rounded bg-[var(--bg-base)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
+                          {ACTION_TYPE_LABEL[d.actionType] ?? d.actionType}
+                        </span>
+                        {sanitizeForDisplay(d.description, "（动作描述含代码）", 160)}
+                      </p>
+                      {d.evidence.length > 0 && (
+                        <ul className="mt-1 space-y-0.5">
+                          {d.evidence.slice(0, 2).map((ev, i) => (
+                            <li key={i} className="text-[11px] text-[var(--text-secondary)]">
+                              · {sanitizeForDisplay(ev, "（含代码）", 100)}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <p className="mt-1 text-[10px] text-[var(--text-muted)]">{d.groundingReason}</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <GlowButton
+                      className="!text-xs !py-1"
+                      disabled={busy}
+                      onClick={() => void handleDraftPromote(d.id)}
+                    >
+                      {busy ? "执行中…" : "采用并执行"}
+                    </GlowButton>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void handleDraftDismiss(d.id)}
+                      className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs text-[var(--text-secondary)] hover:border-[var(--danger)] hover:text-[var(--danger)] disabled:opacity-50"
+                    >
+                      忽略
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </Card>
       )}
@@ -456,7 +702,7 @@ function PredictionHero({ prediction, intent, role }: PredictionHeroProps) {
           ovo 觉得你接下来…
         </p>
         <p className="text-lg font-medium leading-snug text-[var(--text-primary)]">
-          {prediction}
+          {sanitizeForDisplay(prediction, "（基于屏幕上的代码/配置，暂无具体预测）", 240)}
         </p>
 
         {/* Chips 行：当前意图 / 角色推断 */}
@@ -547,7 +793,8 @@ const COLD_STAGES: Array<{ icon: typeof Camera; text: string; sub: string }> = [
 function ColdStartHero({ captureAgo, activeAppName }: ColdStartHeroProps) {
   const [stageIdx, setStageIdx] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setStageIdx((i) => (i + 1) % COLD_STAGES.length), 2400);
+    // P1.2: 2.4s → 1.2s 切换更快，冷启动期间不让用户长时间盯着同一句
+    const t = setInterval(() => setStageIdx((i) => (i + 1) % COLD_STAGES.length), 1200);
     return () => clearInterval(t);
   }, []);
 

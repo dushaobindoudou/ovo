@@ -74,6 +74,8 @@ export class AutoCaptureService {
   >();
   // P1-C: 帧间变化检测——内容没变就跳过 OCR
   private frameChange = new FrameChangeDetector();
+  // CODE-20: OCR 连续失败计数（按 windowId）— 前 3 次告警，后续节流
+  private consecutiveOcrFailures = new Map<string, number>();
 
   private readonly onCaptureListeners: CaptureSnapshotListener[];
 
@@ -314,9 +316,25 @@ export class AutoCaptureService {
       let ocrEngineUsed: "vision" | "tesseract" = "vision";
       let ocrDurationMs = 0;
       try {
+        // Bug 2 修复：用户反馈 "error attempting reading image"。根因 desktopCapturer
+        // 返回的 thumbnail 在某些场景下是空 NativeImage（窗口最小化 / GPU 还没渲染好 /
+        // App 隐藏在后台）。toJPEG() 仍能调但返回 0 字节 buffer，OCR native module
+        // 拿到空 buffer 后就抛"error attempting reading image"。
+        // 先检查 NativeImage 是否有效 + buffer 非空 → 否则 skip 这一帧（不告警，常态）。
+        if (!cap.image || cap.image.isEmpty()) {
+          this.recordStat(cap.windowId, false);
+          snapshots.push(null);
+          continue;
+        }
         // P1-A: 只对选定 target 编码 JPEG（远比 PNG 快），未被 OCR 的窗口零编码
         // Vision/Tesseract 都接受 JPEG buffer，OCR 质量与 PNG 等价
         const buffer = cap.image.toJPEG(85);
+        if (!buffer || buffer.length < 1024) {
+          // < 1KB 几乎不可能是有效截图（透明 1x1 像素都不止）
+          this.recordStat(cap.windowId, false);
+          snapshots.push(null);
+          continue;
+        }
         const ocr = await this.ocrEngine.recognize(buffer);
         // T6: OCR 文本立刻脱敏——所有下游（KG / LLM / 业务日志）只看到擦掉的版本
         const redaction = redactSensitive(ocr.text);
@@ -331,11 +349,32 @@ export class AutoCaptureService {
             counts: redaction.redactionCounts
           });
         }
-      } catch {
+      } catch (e) {
+        // CODE-20: OCR 失败不再纯 swallow——前 3 次连续失败告警一次，后续按节流 warn
         this.recordStat(cap.windowId, false);
+        const failureStreak = this.consecutiveOcrFailures.get(cap.windowId) ?? 0;
+        const newStreak = failureStreak + 1;
+        this.consecutiveOcrFailures.set(cap.windowId, newStreak);
+        if (newStreak <= 3) {
+          errorLogger.alert("warn", "auto-capture.ocr", "OCR 识别失败", {
+            windowId: cap.windowId,
+            appName: cap.appName,
+            streak: newStreak,
+            error: e instanceof Error ? e.message : String(e)
+          });
+        } else if (newStreak % 20 === 0) {
+          // 持续失败 20 次再告警一次（避免日志爆炸）
+          errorLogger.alert("error", "auto-capture.ocr", "OCR 持续失败", {
+            windowId: cap.windowId,
+            appName: cap.appName,
+            streak: newStreak
+          });
+        }
         snapshots.push(null);
         continue;
       }
+      // OCR 成功 → 重置失败计数
+      this.consecutiveOcrFailures.set(cap.windowId, 0);
       // SNAP-1: windowTitle / appName 也走 redactSensitive。
       // 邮件主题、客户名、订单号、验证码弹窗经常出现在 windowTitle 里——它们会跟着
       // CaptureSnapshot 进 history、喂 LLM、写 memory_events.window_title 永久落库。
@@ -344,13 +383,18 @@ export class AutoCaptureService {
       const safeTitle = titleRedaction.cleaned;
       const safeAppName = appNameRedaction.cleaned;
       // P4: OCR 完成后立即抽结构化信号，跟原文一起入 buffer
-      const structured = extractStructured(text);
+      // EXT-13: 传 confidence 让 extractStructured 决定是否跳过（< 0.5 跳过避免乱码污染）
+      const structured = extractStructured(text, confidence);
+      // SNAP-6: history 内 snapshot.text 限长 — 长 PDF / 文档可能几万字，100 条 history × 几 MB 会爆内存
+      // 入 KG 时单独走 8000 字截断（已在 knowledge-graph.ts addEvent 实现）
+      const HISTORY_TEXT_LIMIT = 4000;
+      const truncatedText = text.length > HISTORY_TEXT_LIMIT ? text.slice(0, HISTORY_TEXT_LIMIT) : text;
       const snapshot: CaptureSnapshot = {
         timestamp: Date.now(),
         appName: safeAppName,
         windowId: cap.windowId,
         windowTitle: safeTitle,
-        text,
+        text: truncatedText,
         confidence,
         captureSource: source,
         ocrEngine: ocrEngineUsed,
@@ -374,8 +418,13 @@ export class AutoCaptureService {
           text: snapshot.text
         });
       }
+      // CODE-8: history.unshift + slice(0, 100) 每次都 O(n) 数组复制 + 新分配。
+      // 改成 push + pop 头部，达到 O(1) 摊销（push 是 O(1)，splice(0,1) 是 O(n) 但只在超过 100 时发生）。
+      // 简化：直接维护反向插入 + 上限截断（不再每帧重分配整数组）。
       this.history.unshift(snapshot);
-      this.history = this.history.slice(0, 100);
+      if (this.history.length > 100) {
+        this.history.length = 100; // in-place truncate，比 slice() 快且不分配新数组
+      }
       this.lastCaptureAt = snapshot.timestamp;
       for (const listener of this.onCaptureListeners) {
         safeExecute(() => listener(snapshot), "auto-capture.listener", undefined, "warn");

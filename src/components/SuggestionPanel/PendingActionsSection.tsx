@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
-import { AlertCircle, Check, ChevronRight, Loader2, RotateCcw, X, Zap, ShieldOff } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertCircle, Check, ChevronRight, Loader2, RotateCcw, X, Zap, ShieldOff, Undo2 } from "lucide-react";
 import { Card } from "../shared/Card";
 import { usePendingActions, type PendingActionItem } from "../../hooks/usePendingActions";
 import { translateError, type TranslatedError } from "../../utils/errorTranslator";
+import { sanitizeForDisplay } from "../../utils/sanitizeText";
 
 const isElectronInternal = typeof window !== "undefined" && !!window.ovoAPI;
 
@@ -34,6 +35,9 @@ function paramLabel(key: string): string {
   return PARAM_LABELS[key] ?? key;
 }
 
+// P1.4 / T10: Gmail 风格 5 秒撤销窗口
+const UNDO_WINDOW_MS = 5000;
+
 export function PendingActionsSection() {
   const { pending, confirmAction, cancelAction, removePending } = usePendingActions();
   const [dialog, setDialog] = useState<PendingActionItem | null>(null);
@@ -48,6 +52,10 @@ export function PendingActionsSection() {
   // P1.27: 长 action cancel + 超时提示
   const [busyStartedAt, setBusyStartedAt] = useState<number>(0);
   const [showSlowHint, setShowSlowHint] = useState(false);
+  // T10 / P1.4: 5 秒撤销窗口 — 用户点"让它做"后给 5 秒可撤销
+  const [undoExpiresAt, setUndoExpiresAt] = useState<number>(0);
+  // 用 ref 让 timer cleanup 拿到稳定句柄
+  const undoTimerRef = useRef<number | null>(null);
 
   const remove = useCallback((actionId: string) => {
     removePending(actionId);
@@ -61,7 +69,45 @@ export function PendingActionsSection() {
     setRetryCount(0);
     setNextRetryAt(0);
     setShowSlowHint(false);
+    // 关闭对话框时清掉撤销窗口
+    if (undoTimerRef.current) {
+      window.clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+    setUndoExpiresAt(0);
   };
+
+  // T10: 触发"5 秒后执行" — UI 显示倒计时，用户可点撤销
+  const startUndoWindow = useCallback(() => {
+    if (!dialog) return;
+    setUndoExpiresAt(Date.now() + UNDO_WINDOW_MS);
+    undoTimerRef.current = window.setTimeout(() => {
+      // 5 秒到了，真正执行
+      undoTimerRef.current = null;
+      setUndoExpiresAt(0);
+      void confirmExecuteImmediate();
+    }, UNDO_WINDOW_MS);
+  // confirmExecuteImmediate 在下方定义，runtime 引用 ok
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialog]);
+
+  // T10: 撤销按钮
+  const handleUndo = useCallback(() => {
+    if (undoTimerRef.current) {
+      window.clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+    setUndoExpiresAt(0);
+  }, []);
+
+  // 卸载时清 timer
+  useEffect(() => {
+    return () => {
+      if (undoTimerRef.current) {
+        window.clearTimeout(undoTimerRef.current);
+      }
+    };
+  }, []);
 
   // P1.27: 执行超过 15 秒时显示"还在处理...想取消吗？"
   useEffect(() => {
@@ -73,7 +119,8 @@ export function PendingActionsSection() {
     return () => window.clearTimeout(t);
   }, [busy]);
 
-  const confirmExecute = useCallback(async () => {
+  // T10 / P1.4: 真正的"执行"逻辑（无延迟）。被 5 秒撤销窗口的 timer 调用 / 重试也调它
+  const confirmExecuteImmediate = useCallback(async () => {
     if (!dialog) return;
     // P1.26: 退避策略 — 已失败 N 次时强制等待
     if (nextRetryAt > Date.now()) {
@@ -114,6 +161,24 @@ export function PendingActionsSection() {
     }
   }, [confirmAction, dialog, remove, retryCount, nextRetryAt]);
 
+  // 用户 Bug 3 反馈："点击确认执行没任何效果"
+  // 根因：之前用 startUndoWindow 包 5 秒延迟，UI 倒计时 + 真正执行在 5 秒后。
+  //   用户 confirm 对话框里点"让它做"已经是显式同意 = 立即执行最自然。
+  //   5 秒撤销机制留给 Lv.3 自动执行场景（用户没确认对话框就执行的情况）。
+  const confirmExecute = useCallback(() => {
+    if (!dialog) return;
+    if (nextRetryAt > Date.now()) {
+      const waitSec = Math.ceil((nextRetryAt - Date.now()) / 1000);
+      setError(translateError(`请等 ${waitSec} 秒后再试 — Ovo 正在退避以避免触发限流`));
+      return;
+    }
+    // 立即执行（不再 startUndoWindow 5 秒等待）
+    void confirmExecuteImmediate();
+  }, [dialog, nextRetryAt, confirmExecuteImmediate]);
+
+  // startUndoWindow 保留但当前没人调；未来 Lv.3 自动执行 toast 撤销用
+  void startUndoWindow;
+
   const handleCancelAction = useCallback(async () => {
     if (!dialog) return;
     setBusy(true);
@@ -153,7 +218,7 @@ export function PendingActionsSection() {
               className="flex items-center justify-between gap-2 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 px-3 py-2 text-sm"
             >
               <span className="min-w-0 flex-1 truncate text-[13px]">
-                {item.action.description || item.action.id}
+                {sanitizeForDisplay(item.action.description, "（动作描述含代码，已隐藏）", 180) || item.action.id}
               </span>
               <button
                 type="button"
@@ -177,11 +242,13 @@ export function PendingActionsSection() {
           retryBlockedUntil={nextRetryAt}
           showSlowHint={showSlowHint}
           busyStartedAt={busyStartedAt}
-          onConfirm={() => void confirmExecute()}
+          undoExpiresAt={undoExpiresAt}
+          onConfirm={confirmExecute}
           onCancel={() => void handleCancelAction()}
           onClose={closeDialog}
-          onRetry={() => { setError(null); void confirmExecute(); }}
+          onRetry={() => { setError(null); void confirmExecuteImmediate(); }}
           onNever={() => { setNeverDialog(dialog); }}
+          onUndo={handleUndo}
         />
       )}
 
@@ -224,7 +291,7 @@ function NeverDialog({ dialog, onClose, onSaved }: {
   const [error, setError] = useState<string | null>(null);
 
   const action = dialog.action;
-  const actionDesc = action.description || `${action.type ?? "动作"}`;
+  const actionDesc = sanitizeForDisplay(action.description, "（动作描述含代码）", 160) || `${action.type ?? "动作"}`;
 
   const handleSave = async () => {
     if (!isElectronInternal) return;
@@ -354,34 +421,40 @@ interface ConfirmDialogProps {
   retryBlockedUntil: number;
   showSlowHint: boolean;
   busyStartedAt: number;
+  undoExpiresAt: number;
   onConfirm: () => void;
   onCancel: () => void;
   onClose: () => void;
   onRetry: () => void;
   onNever: () => void;
+  onUndo: () => void;
 }
 
-function ConfirmDialog({ dialog, busy, error, retryCount, retryBlockedUntil, showSlowHint, busyStartedAt, onConfirm, onCancel, onClose, onRetry, onNever }: ConfirmDialogProps) {
-  // P1.27 / P1.26: 实时 tick 让"还要等几秒"和"已等 X 秒"显示流畅
+function ConfirmDialog({ dialog, busy, error, retryCount, retryBlockedUntil, showSlowHint, busyStartedAt, undoExpiresAt, onConfirm, onCancel, onClose, onRetry, onNever, onUndo }: ConfirmDialogProps) {
+  // P1.27 / P1.26 / T10: 实时 tick 让倒计时显示流畅
   const [, tick] = useState(0);
   useEffect(() => {
-    if (!busy && retryBlockedUntil <= Date.now()) return;
-    const t = window.setInterval(() => tick((n) => n + 1), 500);
+    if (!busy && retryBlockedUntil <= Date.now() && undoExpiresAt <= Date.now()) return;
+    const t = window.setInterval(() => tick((n) => n + 1), 100);
     return () => window.clearInterval(t);
-  }, [busy, retryBlockedUntil]);
+  }, [busy, retryBlockedUntil, undoExpiresAt]);
 
   const now = Date.now();
   const retryWaitSec = Math.max(0, Math.ceil((retryBlockedUntil - now) / 1000));
   const elapsedSec = busyStartedAt > 0 ? Math.floor((now - busyStartedAt) / 1000) : 0;
   const retryExhausted = retryCount >= 4;
+  // T10: 5 秒撤销窗口剩余时间 + 进度
+  const undoRemainingMs = Math.max(0, undoExpiresAt - now);
+  const inUndoWindow = undoRemainingMs > 0;
+  const undoProgress = inUndoWindow ? undoRemainingMs / 5000 : 0;
 
   const params = dialog.action.params ?? {};
   const paramEntries = Object.entries(params);
   // PHIL-1: 玻璃管家三层叙述结构（看见 / 想做 / 因为）
   // action 自身只有 description + params；"看见"和"因为"目前从 action.description 拆，
   // 待主进程后续把 ctx (windowTitle / intent / observation) 附在 action:pending 事件里时可强化
-  const wantTo = dialog.action.description || "执行一个动作";
-  const reason = dialog.action.reason || ""; // 如果 AgentAction 类型有 reason 字段则显示
+  const wantTo = sanitizeForDisplay(dialog.action.description, "（动作描述含代码，已隐藏）", 200) || "执行一个动作";
+  const reason = sanitizeForDisplay(dialog.action.reason, "", 200); // 如果 AgentAction 类型有 reason 字段则显示
 
   return (
     <div
@@ -453,13 +526,37 @@ function ConfirmDialog({ dialog, busy, error, retryCount, retryBlockedUntil, sho
           </div>
         )}
 
-        {/* 错误提示 —— translateError 后的「为什么 + 怎么办」 */}
+        {/* 错误提示 —— translateError 后的「为什么 + 怎么办」+ P0.13 action 按钮 */}
         {error && (
           <div className="mb-3 flex items-start gap-2 rounded-lg border border-[var(--danger)]/30 bg-[var(--danger)]/5 p-3 text-[12px]">
             <AlertCircle size={14} className="mt-0.5 shrink-0 text-[var(--danger)]" />
             <div className="min-w-0 flex-1">
               <p className="font-medium text-[var(--danger)]">{error.title}</p>
               <p className="mt-1 whitespace-pre-wrap text-[11px] leading-relaxed text-[var(--text-secondary)]">{error.detail}</p>
+              {/* P0.13: 显示 errorTranslator 提供的"怎么办"按钮 */}
+              {error.action && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const a = error.action!;
+                    if (!isElectronInternal) return;
+                    if (a.type === "open-permissions") {
+                      const target = a.target === "screen" || a.target === "camera" || a.target === "microphone"
+                        ? a.target : "screen";
+                      void window.ovoAPI.permissions.openSettings({ target });
+                    } else if (a.type === "open-settings") {
+                      // 切到"设置" tab — 跨窗口通信靠 hash route
+                      window.location.hash = "#console";
+                    } else if (a.type === "external-link" && a.target) {
+                      // 外部链接（罕见）— 用 ovoAPI 没暴露 shell.openExternal，先 console
+                      console.info("open external:", a.target);
+                    }
+                  }}
+                  className="mt-2 rounded-md border border-[var(--danger)]/40 px-2.5 py-1 text-[11px] text-[var(--danger)] hover:bg-[var(--danger)]/10"
+                >
+                  {error.action.label}
+                </button>
+              )}
               {error.raw && error.raw !== error.detail && (
                 <details className="mt-2">
                   <summary className="cursor-pointer text-[10px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]">技术细节</summary>
@@ -513,6 +610,32 @@ function ConfirmDialog({ dialog, busy, error, retryCount, retryBlockedUntil, sho
                 </button>
               </>
             )
+          ) : inUndoWindow ? (
+            // T10 / P1.4: 5 秒撤销窗口 — Gmail 风格
+            <div className="flex flex-1 items-center gap-3">
+              <div className="flex-1">
+                <div className="mb-1 flex items-center justify-between text-[11px]">
+                  <span className="font-medium text-[var(--accent)]">
+                    {Math.ceil(undoRemainingMs / 1000)} 秒后执行
+                  </span>
+                  <span className="text-[var(--text-muted)]">点撤销可取消</span>
+                </div>
+                <div className="h-1 overflow-hidden rounded-full bg-[var(--border)]">
+                  <div
+                    className="h-full bg-[var(--accent)] transition-[width]"
+                    style={{ width: `${undoProgress * 100}%` }}
+                  />
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onUndo}
+                className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white hover:bg-[var(--accent-hover)]"
+              >
+                <Undo2 size={13} />
+                撤销
+              </button>
+            </div>
           ) : (
             <>
               <button
@@ -577,7 +700,7 @@ function ConfirmDialog({ dialog, busy, error, retryCount, retryBlockedUntil, sho
 }
 
 function formatParamValue(v: unknown): string {
-  if (v === null || v === undefined) return "（空）";
+  if (v === null || v === undefined) return "无值";
   if (typeof v === "string") return v;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   try { return JSON.stringify(v); } catch { return String(v); }

@@ -94,6 +94,19 @@ export function getActiveRedactionLevel(): RedactionLevel {
   return currentLevel;
 }
 
+// DATA-12: 累计脱敏命中统计 — 用户可在 PrivacyView 看到"Ovo 保护了你 N 次"
+const cumulativeCounts: Record<string, number> = {};
+let cumulativeTotal = 0;
+
+export function getRedactionStats(): { total: number; byType: Record<string, number> } {
+  return { total: cumulativeTotal, byType: { ...cumulativeCounts } };
+}
+
+export function resetRedactionStats(): void {
+  for (const k of Object.keys(cumulativeCounts)) delete cumulativeCounts[k];
+  cumulativeTotal = 0;
+}
+
 /**
  * 对一段 OCR 文本应用全部脱敏规则。
  * 返回脱敏后的文本 + 各类型命中次数。
@@ -125,6 +138,12 @@ export function redactSensitive(input: string, level?: RedactionLevel): Sensitiv
       text = before;
       break;
     }
+  }
+
+  // DATA-12: 累计统计
+  for (const [type, hit] of Object.entries(counts)) {
+    cumulativeCounts[type] = (cumulativeCounts[type] ?? 0) + hit;
+    cumulativeTotal += hit;
   }
 
   return { cleaned: text, redactionCounts: counts, hadAny: Object.keys(counts).length > 0 };

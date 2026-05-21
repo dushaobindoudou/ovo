@@ -24,7 +24,10 @@ export type TrustLevel = 0 | 1 | 2 | 3 | 4;
 export const DEFAULT_TRUST_LEVELS: Record<ActionType, TrustLevel> = {
   log_note: 3,
   create_todo: 3,
-  copy_to_clipboard: 3,
+  // copy_to_clipboard：剪贴板是用户私有空间，Ovo 不能未经允许写入。
+  // 默认 2（必须用户点"确认执行"才会真的复制）— 避免 LLM 看到屏幕上的代码
+  // 就自作主张帮用户复制，破坏用户原剪贴板内容。
+  copy_to_clipboard: 2,
   search: 2,
   summarize: 2,
   set_reminder: 2,
@@ -61,6 +64,8 @@ export interface UserPreferences {
   retentionDays?: number;
   /** 脱敏强度（P0.11）— basic / strict / paranoid */
   redactionLevel?: "basic" | "strict" | "paranoid";
+  /** TTS 是否启用（SEC-12 默认 false — 用户必须显式开启才会把 LLM 输出发给 Edge TTS） */
+  ttsEnabled?: boolean;
 }
 
 // T2: 默认黑名单——开箱即保护敏感场景
@@ -197,6 +202,15 @@ class PreferencesStore {
   }
   getRedactionLevel(): "basic" | "strict" | "paranoid" {
     return this.cache.redactionLevel ?? "basic";
+  }
+
+  /** TTS enabled（SEC-12 默认 false） — 主进程持久化，主进程 init 就能正确初始 ttsEngine */
+  setTtsEnabled(enabled: boolean) {
+    this.cache = { ...this.cache, ttsEnabled: !!enabled };
+    this.persist();
+  }
+  getTtsEnabled(): boolean {
+    return !!this.cache.ttsEnabled;
   }
 
   private persist() {

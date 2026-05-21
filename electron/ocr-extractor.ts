@@ -19,14 +19,19 @@ export interface StructuredSignals {
   hashtags: string[];
 }
 
-const URL_RE = /https?:\/\/[^\s)<>'"`]+/g;
-const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-// 价格: 货币符号 / ISO 代码 + 数字（含千位分隔和小数）；或纯数字 + 单位（USD/CNY/BTC/ETH）
-const PRICE_RE = /(?:\$|￥|¥|€|£|US\$|HK\$|CNY|USD|EUR|JPY|RMB)\s?[\d]+(?:[,，][\d]{3})*(?:\.\d+)?|\d+(?:[,，]\d{3})*(?:\.\d+)?\s?(?:BTC|ETH|USDT|USD|CNY|RMB|EUR|GBP|JPY|元|美元|港币)/g;
-const FILE_PATH_RE = /(?:^|\s)((?:\/Users\/|~\/|\.{1,2}\/|[A-Z]:\\)[A-Za-z0-9_./\\-]{2,}\.[A-Za-z0-9]{1,8})/g;
-const DATE_RE = /\b(?:\d{4}[-/年]\d{1,2}[-/月]\d{1,2}日?|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b/g;
+// EXT-3 修复：trailing 标点（句末的 . , ; : ! ? ）不应被 URL 吞掉
+const URL_RE = /https?:\/\/[^\s)<>'"`]+[^\s)<>'"`.,;:!?]/g;
+// EXT-4 修复：支持 user+tag@host 和更复杂的 local part（quoted local part 仍不支持但少见）
+const EMAIL_RE = /[a-zA-Z0-9._%+\-!#$&*]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+// EXT-5: 价格 — 增加 KRW / INR / MYR / IDR / THB / TWD / 万 / w 后缀；US$1k / ¥1.5w 等
+const PRICE_RE = /(?:\$|￥|¥|€|£|US\$|HK\$|CNY|USD|EUR|JPY|GBP|RMB|KRW|INR|MYR|IDR|THB|TWD|₩|₹|₽)\s?[\d]+(?:[,，][\d]{3})*(?:\.\d+)?[kKwW万]?|\d+(?:[,，]\d{3})*(?:\.\d+)?\s?(?:BTC|ETH|USDT|USD|CNY|RMB|EUR|GBP|JPY|KRW|INR|MYR|IDR|THB|TWD|韩元|卢比|令吉|盾|铢|新台币|元|美元|港币|日元|英镑|欧元|人民币)/g;
+// EXT-6: 路径不再强制扩展名 — 目录路径也能抓；扩展系统目录（/opt /etc /var /tmp /Applications）
+const FILE_PATH_RE = /(?:^|\s)((?:\/Users\/|\/Applications\/|\/opt\/|\/etc\/|\/var\/|\/tmp\/|\/System\/|~\/|\.{1,2}\/|[A-Z]:\\)[A-Za-z0-9_./\\-]{2,80}(?:\.[A-Za-z0-9]{1,8})?)/g;
+// EXT-7: 日期 — 增加 ISO 时间戳 + 中文相对日期（今天/明天/昨天/下周三 等）
+const DATE_RE = /\b(?:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:?\d{2})?|\d{4}[-/年]\d{1,2}[-/月]\d{1,2}日?|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b|(?:今天|明天|后天|昨天|前天|本周|下周|上周)(?:[一二三四五六日天])?/g;
 const IP_RE = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
-const HASHTAG_RE = /#[一-龥A-Za-z0-9_]{2,30}/g;
+// EXT-9: 增加日韩 hashtag
+const HASHTAG_RE = /#[一-龥ぁ-んァ-ヶ가-힣A-Za-z0-9_]{2,30}/g;
 
 /** 可能是代码：包含连续的 () {} ; = 操作符 + 缩进 / 大括号密度 */
 const CODE_HINT_RE = /[{};=()<>[\]]/g;
@@ -54,6 +59,8 @@ function detectHeadings(text: string): string[] {
     // 标题特征：3-60 字符、不以标点结尾、字母占多数、有大写字母 / 中文实词
     if (line.length < 3 || line.length > 60) continue;
     if (/[。！？.!?,;]$/.test(line)) continue;
+    // EXT-10: 排除"// ALL CAPS" 这类注释（前缀 // 或 # 或 /* 都不算 heading）
+    if (/^(\/\/|#|\/\*|\*\s)/.test(line)) continue;
     const letters = line.match(/[A-Za-z一-龥]/g)?.length ?? 0;
     if (letters < line.length * 0.5) continue;
     // 全大写英文短句 / 中文 + 中英文混合都算
@@ -63,7 +70,8 @@ function detectHeadings(text: string): string[] {
       upperRatio > 0.5 ||                                    // 全大写英文
       /^第[一二三四五六七八九十百千]+[章节部分]/.test(line) || // "第三章 X"
       /^\d+\.\s+\S/.test(line) ||                            // "1. 标题"
-      /^[一二三四五六七八九十]+、/.test(line);                // "一、标题"
+      /^[一二三四五六七八九十]+、/.test(line) ||              // "一、标题"
+      /^#{1,6}\s+\S/.test(line);                              // Markdown # 标题
     if (isLikelyHeading) out.push(line);
   }
   return uniqueTrim(out, 8);
@@ -76,7 +84,15 @@ function detectCodeSnippets(text: string): string[] {
   let bufScore = 0;
   const flush = () => {
     if (buf.length >= 2 && bufScore >= 4) {
-      out.push(buf.join("\n").slice(0, 240));
+      // EXT-11: 上限从 240 → 600，并尽量在行尾截断，避免标识符被切一半
+      const joined = buf.join("\n");
+      if (joined.length <= 600) {
+        out.push(joined);
+      } else {
+        // 找 600 字符附近的换行边界回退
+        const cut = joined.lastIndexOf("\n", 600);
+        out.push(joined.slice(0, cut > 200 ? cut : 600));
+      }
     }
     buf = [];
     bufScore = 0;
@@ -112,13 +128,16 @@ function matchAll(text: string, re: RegExp, limit = 10): string[] {
   return uniqueTrim(out, limit);
 }
 
-export function extractStructured(text: string): StructuredSignals {
-  if (!text || text.length < 5) {
-    return {
-      urls: [], emails: [], prices: [], codeSnippets: [],
-      headings: [], filePaths: [], dates: [], ipAddrs: [], hashtags: []
-    };
-  }
+/**
+ * EXT-13: confidence 加权 — OCR confidence < 0.5 时跳过 regex（避免乱码导致虚假信号 + 浪费 CPU）
+ */
+export function extractStructured(text: string, confidence?: number): StructuredSignals {
+  const empty = {
+    urls: [], emails: [], prices: [], codeSnippets: [],
+    headings: [], filePaths: [], dates: [], ipAddrs: [], hashtags: []
+  };
+  if (!text || text.length < 5) return empty;
+  if (typeof confidence === "number" && confidence > 0 && confidence < 0.5) return empty;
   return {
     urls: matchAll(text, URL_RE),
     emails: matchAll(text, EMAIL_RE),

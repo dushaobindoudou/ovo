@@ -122,6 +122,10 @@ export class OCREngine {
 
   async recognize(image: Buffer): Promise<OCRResult> {
     const started = Date.now();
+    // Bug 2 防御：调用方应已检查，这里再兜一层 — 空 buffer 直接返回空结果不进 native
+    if (!image || image.length < 256) {
+      return { text: "", confidence: 0, blocks: [], engine: "vision", durationMs: 0 };
+    }
     // 主路径：Vision OCR
     if (process.platform === "darwin" && !this.forceFallback) {
       const MacOCR = await this.tryLoadVision();
