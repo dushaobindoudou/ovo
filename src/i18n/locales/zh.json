@@ -112,6 +112,7 @@
     "ttsNetwork": "网络问题，无法连接到 Edge TTS 服务",
     "ttsFirstPlay": "首次播放需要先点一下窗口任意位置授权",
     "ttsFailed": "朗读失败：{{reason}}",
+    "ttsEnablePrompt": "朗读默认是关闭的。开启后，要朗读的文本会发送到 Microsoft Edge TTS 在线服务（含 OCR 摘录片段）。现在开启并朗读吗？",
     "actionWants": "Ovo 想{{verb}}",
     "verb": {
       "send_email": "发送邮件",

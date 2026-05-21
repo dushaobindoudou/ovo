@@ -112,6 +112,7 @@
     "ttsNetwork": "Network issue, can't reach Edge TTS service",
     "ttsFirstPlay": "First playback needs a click anywhere in the window to authorize",
     "ttsFailed": "Read-aloud failed: {{reason}}",
+    "ttsEnablePrompt": "Read-aloud is off by default. When enabled, the text to read is sent to the Microsoft Edge TTS online service (including OCR excerpts). Enable and read now?",
     "actionWants": "Ovo wants to {{verb}}",
     "verb": {
       "send_email": "send an email",

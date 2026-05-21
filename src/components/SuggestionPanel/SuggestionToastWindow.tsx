@@ -327,14 +327,22 @@ export function SuggestionToastWindow() {
               type="button"
               title={t("toast.read")}
               onClick={async () => {
-                // 用户 Bug 反馈：TTS 没声音。原来错误被静默吞，现在显式 alert + 锁定 toast
-                // 不让它自动关闭（pinned），让用户看到错误
-                const res = await speak(`${item.title}. ${item.content}`);
+                const text = `${item.title}. ${item.content}`;
+                let res = await speak(text);
+                // R1: TTS 默认关。首次点朗读若因"未启用"失败 → 一键征询开启（而非干瘪报错），
+                //     同意后即时开启并重试朗读。
+                if (!res?.ok && /未启用|disabled|not enabled/i.test(res?.error ?? "")) {
+                  if (confirm(t("toast.ttsEnablePrompt"))) {
+                    try { await window.ovoAPI?.tts?.setEnabled?.(true); } catch { /* */ }
+                    res = await speak(text);
+                  } else {
+                    return; // 用户拒绝开启，安静退出
+                  }
+                }
                 if (!res?.ok) {
-                  setPinned(true);
+                  setPinned(true); // 锁定 toast 不自动关，让用户看到错误
                   const detail = res?.error ?? t("toast.ttsUnknownError");
-                  // 友好提示：TTS 失败时告诉用户为什么
-                  const friendly = /未启用/.test(detail)
+                  const friendly = /未启用|disabled/i.test(detail)
                     ? t("toast.ttsDisabled")
                     : /网络|fetch|ENET|abort/i.test(detail)
                     ? t("toast.ttsNetwork")
