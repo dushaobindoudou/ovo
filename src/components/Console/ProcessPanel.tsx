@@ -8,6 +8,7 @@
  *  · F4-C: 理解段可看到完整 prompt + LLM 原始返回
  */
 import { useEffect, useMemo, useState, type ComponentType } from "react";
+import { useTranslation } from "react-i18next";
 import { Card } from "../shared/Card";
 import { ChevronDown, ChevronRight, AlertTriangle, Eye, EyeOff, Camera, Brain, Lightbulb, Zap, BookOpen, GitBranch, ChevronUp, ChevronDown as ChevronDown2, X as XIcon } from "lucide-react";
 import { ActionHistoryPanel } from "./ActionHistoryPanel";
@@ -82,6 +83,7 @@ interface ProcessPanelCtx {
 }
 
 export function ProcessPanel({ ctx }: { ctx?: ProcessPanelCtx }) {
+  const { t } = useTranslation();
   const [view, setView] = useState<ProcessView>("actions");
   const [pipelines, setPipelines] = useState<PipelineRow[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -114,8 +116,8 @@ export function ProcessPanel({ ctx }: { ctx?: ProcessPanelCtx }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-1 rounded-md bg-[var(--bg-card)] p-1 w-fit">
-        <ViewTab label="动作清单" active={view === "actions"} onClick={() => setView("actions")} />
-        <ViewTab label="技术回放" active={view === "replay"} onClick={() => setView("replay")} />
+        <ViewTab label={t("process.tabActions")} active={view === "actions"} onClick={() => setView("actions")} />
+        <ViewTab label={t("process.tabReplay")} active={view === "replay"} onClick={() => setView("replay")} />
       </div>
 
       {view === "actions" ? (
@@ -153,6 +155,7 @@ function ViewTab({ label, active, onClick }: { label: string; active: boolean; o
 function ReplayView({
   pipelines, expandedId, onToggle
 }: { pipelines: PipelineRow[]; expandedId: string | null; onToggle: (id: string) => void }) {
+  const { t } = useTranslation();
   // U1 用户反馈：inline 展开让卡片变形难扫读。改成 drawer 模式：
   //   - 列表项极简（标题 + 时间 + 状态 dot），点击 → drawer 滑入
   //   - drawer 带"上一条 / 下一条"导航，不打断列表 scroll 上下文
@@ -169,17 +172,17 @@ function ReplayView({
   return (
     <div className="space-y-3">
       <div>
-        <h2 className="text-lg font-semibold">技术回放</h2>
+        <h2 className="text-lg font-semibold">{t("process.replayTitle")}</h2>
         <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-          每一次 Ovo 看屏幕、想了什么、做了什么的完整推理链。点任一条看详情。
+          {t("process.replaySubtitle")}
         </p>
       </div>
 
       {pipelines.length === 0 ? (
         <Card>
           <div className="py-8 text-center">
-            <p className="text-sm text-[var(--text-secondary)]">还没看过你的屏幕</p>
-            <p className="mt-1 text-[11px] text-[var(--text-muted)]">用一会儿 Ovo，每次推断都会在这里留底</p>
+            <p className="text-sm text-[var(--text-secondary)]">{t("process.emptyTitle")}</p>
+            <p className="mt-1 text-[11px] text-[var(--text-muted)]">{t("process.emptyHint")}</p>
           </div>
         </Card>
       ) : (
@@ -213,8 +216,8 @@ function ReplayView({
                   disabled={!hasPrev}
                   onClick={() => hasPrev && setActiveId(pipelines[activeIdx - 1].id)}
                   className="rounded p-1 text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-30"
-                  title="上一条（较新）"
-                  aria-label="上一条"
+                  title={t("process.prevNewer")}
+                  aria-label={t("process.prev")}
                 >
                   <ChevronUp size={14} />
                 </button>
@@ -223,8 +226,8 @@ function ReplayView({
                   disabled={!hasNext}
                   onClick={() => hasNext && setActiveId(pipelines[activeIdx + 1].id)}
                   className="rounded p-1 text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-30"
-                  title="下一条（较旧）"
-                  aria-label="下一条"
+                  title={t("process.nextOlder")}
+                  aria-label={t("process.next")}
                 >
                   <ChevronDown2 size={14} />
                 </button>
@@ -238,7 +241,7 @@ function ReplayView({
                   type="button"
                   onClick={() => setActiveId(null)}
                   className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
-                  aria-label="关闭"
+                  aria-label={t("process.close")}
                 >
                   <XIcon size={14} />
                 </button>
@@ -340,6 +343,7 @@ function PipelineProgressRow({
 }
 
 function PipelineDetailView({ pipeline }: { pipeline: PipelineRow }) {
+  const { t } = useTranslation();
   const { detail, status, timestamp } = pipeline;
   const u = detail.understand;
   const a = detail.act;
@@ -354,7 +358,7 @@ function PipelineDetailView({ pipeline }: { pipeline: PipelineRow }) {
   return (
     <div className="space-y-3 border-t border-[var(--border)] p-4">
       {/* ① 看到了什么 */}
-      <PipelineSection Icon={Camera} title="ovo 看到了什么" tint="info">
+      <PipelineSection Icon={Camera} title={t("process.sectionSaw")} tint="info">
         <div className="space-y-1.5 text-[13px] leading-relaxed">
           <p>
             <span className="text-[var(--text-muted)]">{formatRelative(timestamp)}看了 </span>
@@ -376,7 +380,7 @@ function PipelineDetailView({ pipeline }: { pipeline: PipelineRow }) {
                   className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)]"
                 >
                   {showFullOcr ? <EyeOff size={11} /> : <Eye size={11} />}
-                  {showFullOcr ? "收起 OCR 原文" : "看 OCR 原文"}
+                  {showFullOcr ? t("process.ocrCollapse") : t("process.ocrExpand")}
                 </button>
               )}
               {showFullOcr && c.ocrPreview && (
@@ -386,21 +390,21 @@ function PipelineDetailView({ pipeline }: { pipeline: PipelineRow }) {
               )}
             </div>
           ) : (
-            <p className="text-[var(--text-muted)]">没识别出文字</p>
+            <p className="text-[var(--text-muted)]">{t("process.ocrNone")}</p>
           )}
         </div>
       </PipelineSection>
 
       {/* ② 进 AI 的内容 + AI 输出原文（透明日志） */}
       {(u.promptPreview || u.rawResponse) && (
-        <PipelineSection Icon={Brain} title="给 AI 的内容 / AI 的回复" tint="ai">
+        <PipelineSection Icon={Brain} title={t("process.sectionPrompt")} tint="ai">
           <button
             type="button"
             onClick={() => setShowRaw((v) => !v)}
             className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)]"
           >
             {showRaw ? <EyeOff size={11} /> : <Eye size={11} />}
-            {showRaw ? "收起完整 prompt 与响应" : "展开看 prompt 与响应（隐私透明）"}
+            {showRaw ? t("process.promptCollapse") : t("process.promptExpand")}
           </button>
           {showRaw && (
             <div className="mt-2 space-y-2">
@@ -422,7 +426,7 @@ function PipelineDetailView({ pipeline }: { pipeline: PipelineRow }) {
       )}
 
       {/* ③ AI 决策：意图 / 角色 / 动作 / 记忆 */}
-      <PipelineSection Icon={Lightbulb} title="AI 的判断与决策" tint="accent">
+      <PipelineSection Icon={Lightbulb} title={t("process.sectionJudge")} tint="accent">
         <div className="space-y-1.5 text-[13px] leading-relaxed">
           {status === "failed" && !u.intent && (
             <p className="text-[var(--danger)]">理解失败，没看明白</p>

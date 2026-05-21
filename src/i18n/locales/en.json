@@ -91,6 +91,27 @@
     "toastHintAlerts": "Only risk alerts and actions needing confirmation pop",
     "toastHintAll": "All suggestions pop to the screen corner"
   },
+  "process": {
+    "tabActions": "Actions",
+    "tabReplay": "Tech replay",
+    "replayTitle": "Tech replay",
+    "replaySubtitle": "The full reasoning chain of every time Ovo looked at the screen, thought, and acted. Tap any to see details.",
+    "emptyTitle": "Haven't seen your screen yet",
+    "emptyHint": "Use Ovo for a while; every inference is logged here",
+    "prevNewer": "Previous (newer)",
+    "prev": "Previous",
+    "nextOlder": "Next (older)",
+    "next": "Next",
+    "close": "Close",
+    "sectionSaw": "What ovo saw",
+    "sectionPrompt": "Sent to AI / AI reply",
+    "sectionJudge": "AI's judgment & decisions",
+    "ocrCollapse": "Collapse OCR text",
+    "ocrExpand": "View OCR text",
+    "ocrNone": "No text recognized",
+    "promptCollapse": "Collapse full prompt & response",
+    "promptExpand": "Expand prompt & response (privacy transparency)"
+  },
   "memory": {
     "title": "Memory",
     "remembered": "ovo remembers {{n}} things",
