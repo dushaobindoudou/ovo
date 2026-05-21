@@ -131,3 +131,48 @@ Vision OCR 在 macOS 12+ 才稳定。如果用户 macOS 11 或 native module 编
 ---
 
 **结论**：用户明确反馈的 16 个问题，15 个已彻底修复并通过 typecheck + lint + build，1 个（U9）需要用户截图或精确定位才能继续推进。
+
+---
+
+# 2026-05-21 会话：多轮自审（R2–R4）+ 修复记录
+
+> `/loop 30m` 用户/产品/技术三视角循环审查，每轮在上轮基础上深入。
+
+## ✅ 本会话已修复并验证（typecheck + lint + build + hermes 冒烟全绿）
+
+| 项 | 文件 | 修复 |
+|---|---|---|
+| 动作"等确认"过多 | `preferences-store.ts` `agent-response-normalize.ts` | 可逆动作→Lv.3 自动；仅 send_email/iMessage/index_path/other 保留确认；REQUIRE_CONFIRM_TYPES 从 8 收窄到 3 |
+| `claude -p` 噪音 | `agent-bridge.ts` | claude-code 从探测摘除 + callByBackend 分支直接抛错（双保险）；默认 hermes |
+| 钥匙串反复弹窗 | `secrets-store.ts` | 加密模式判定：dev/未打包→明文不弹；签名构建→钥匙串；env OVO_DISABLE_KEYCHAIN/OVO_FORCE_ENCRYPTION |
+| **T8 反向校准** | `knowledge-graph.ts` `adaptive-prompt.ts` `ipc/pipeline.ts` `ipc-handlers.ts` | evidence_inflation 表(schema v4) + 弃用草稿/取消 action 时 bump(7天衰减) + 合成 prompt 注入"请保守"。闭合自学习环 |
+| **R3-1（关键根因）** | `agent-response-normalize.ts` `evidence-grounder.ts` | parseAction 之前丢弃 evidence_level/evidence → 所有 action 判 unverified 全进草稿台。已修：解析两字段 + groundEvidence 对"未声明 evidence_level"回退信任等级。**用户"很难用/全是采纳"的根因** |
+| **可执行 action toast** | `SuggestionToastWindow.tsx` `main.ts` `ipc/_shared.ts` `ipc-handlers.ts` | 待确认动作每个弹浮窗带"执行/忽略"，直接调 action.confirm/cancel({actionId})，90s 超时 |
+| KG 拆分（增量1） | `kg/migrations.ts` `knowledge-graph.ts` | 接通 migrations.ts(补 actor/drafts/inflation 3迁移+版本升4)，删 ~380 行内联 bootstrap 死代码 + 发散 schema 版本号。3220→2838 行 |
+
+## ✅ 已修复（接上批，2026-05-21 续）
+
+| ID | 问题 | 修复 | 文件 |
+|---|---|---|---|
+| **R4-1** | 抢屏动作静默自动执行 | open_url/open_app/search_web 改回 Lv.2 确认（弹 action toast 一键执行） | `preferences-store.ts:38-43` |
+| **R2-2** | 草稿永不过期 | kg-daily-gc 接入 `kg.expireOldDrafts()` | `ipc/schedulers.ts` |
+| **R2-1** | 草稿 promote 绕过确认 | send/iMessage/index_path 类 promote 改为注册 pending + 弹"执行"浮窗最终确认；可逆动作仍直执行 | `ipc/kg.ts:147+` `_shared.ts` `ipc-handlers.ts` |
+| **U-clear** | "清理数据不好用" | 根因=preload kg.clear 只调一次握手没回传 token→永远 no-op。修：preload 包装自动两步握手 + clearAll 补删 drafts/evidence_inflation | `preload.cjs:212` `knowledge-graph.ts clearAll` |
+| **R5-1** | action toast 多张重叠(slot 全=0) + 无去重刷屏 | 独立 getNextActionSlot 纵向堆叠(最多4行) + 按 (type:desc) 2分钟去重 + 同 actionId 不重复弹 | `main.ts` enqueueActions/openActionToast |
+| **R6-2** | synthesis prompt requireConfirm 规则让 LLM 给 set_reminder/add_calendar 标 requireConfirm:true→架空 R4-1 Lv.3 自动 | line 464 清单对齐 REQUIRE_CONFIRM_TYPES(send_email/send_imessage/index_path)，其余交信任等级 | `adaptive-prompt.ts:464` |
+| **R6-1** | （修正：原判 P1 有误）缺 evidence 字段的 buildAdaptivePrompt 是死代码无调用方；生产 synthesis prompt 字段正确 | 删除死代码 buildAdaptivePrompt(−179行) | `adaptive-prompt.ts` |
+
+## 🔲 待办问题（按价值排序）
+
+| ID | 优先级 | 问题 | 修复方向 | 文件:行号 |
+|---|---|---|---|---|
+| **R4-2** | P2（设计） | Lv.3 自动执行的 5s 撤销 startUndoWindow 死代码，自动执行不可撤销（R4-1 后仅可逆动作自动，撤销需求降低） | receipt toast 加"撤销"按钮 5s 回滚 | `action-executor.ts` `PendingActionsSection.tsx:179` |
+| ~~R3-2~~ | ✅ 已修 | evidence-grounder 中文 n-gram | CJK 检测→中文 3字 gram/步长1/短串≤4严格子串；拉丁保持 6字/步长3。行为测试：完整/部分中文 grounded，编造仍 unverified（反幻觉保留） | `evidence-grounder.ts:62` |
+| **#2** | 延后 | entities/relationships 字段加密 | 等 Apple 签名（未签名前加密休眠）；aliases 不能加密(破坏匹配) | `knowledge-graph.ts` |
+| **E1** | 工程债 | KG 仍 2838 行，可继续抽 DraftStore/InflationStore/LogStore | 增量抽 Store（migrations 已抽完） | `knowledge-graph.ts` |
+
+## 术语统一（待办）
+浮窗三套语义：建议"采纳"=点赞反馈 / 动作"执行"=真执行 / 草稿"采用"=promote。建议统一：建议→"有用/不感兴趣"，动作→"执行/采用"。
+
+## ⚠️ 需用户 `pnpm dev` 重启验证
+KG schema bootstrap（better-sqlite3 Electron ABI 无法纯 node 验）、R3-1 自动执行效果、action toast、keychain 是否还弹、relation-inference 不再报 claude -p。
