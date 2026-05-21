@@ -51,9 +51,12 @@ export interface GraphContext {
  * 不输出 offers/actions/suggestions（让 Pass 2 干这些）。
  */
 export function buildObservationPrompt(buffer: WindowBuffer, graphContext: GraphContext, personality: string): string {
+  // 防 prompt 膨胀（修复 Pass 1 偶发 60s 超时）：OCR 活动块只取最近 6 帧、每帧 ≤700 字。
+  // 多帧累积全量注入会让 prompt 上万字 → hermes 慢 → 超时；最近几帧已足够表达"当前在看什么"。
   const activity = `### 窗口: ${buffer.appName} - ${buffer.windowTitle}\n` +
     buffer.entries
-      .map((entry) => `[${new Date(entry.timestamp).toISOString()}] ${entry.text.slice(0, 800)}`)
+      .slice(-6)
+      .map((entry) => `[${new Date(entry.timestamp).toISOString()}] ${entry.text.slice(0, 700)}`)
       .join("\n");
 
   // P4: 把 buffer 各条目的结构化信号合并去重，给 LLM 一段干净的"已识别关键信号"

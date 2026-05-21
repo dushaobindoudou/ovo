@@ -505,7 +505,8 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
       promptLength: obsPrompt.length,
       passes: 2
     });
-    const obsResponse = await agentBridge.call({ prompt: obsPrompt, outputFormat: "json", timeout: 60_000 });
+    // 观察 prompt 最大、hermes 走网络偶有延迟尖峰 → 90s 余量（prompt 已收窄，正常远低于此）
+    const obsResponse = await agentBridge.call({ prompt: obsPrompt, outputFormat: "json", timeout: 90_000 });
 
     if (!obsResponse.ok || !obsResponse.parsed) {
       const agentOutput = {
