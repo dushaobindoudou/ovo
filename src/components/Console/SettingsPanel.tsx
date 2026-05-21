@@ -190,10 +190,10 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
           </Card>
 
           {/* 捕获配置 */}
-          <Card title="截屏设置" id="section-capture">
+          <Card title={t("settingsPanel.capture")} id="section-capture">
             <div className="space-y-3">
               <div className="flex items-center gap-3">
-                <span className="text-sm text-[var(--text-secondary)]">捕获间隔</span>
+                <span className="text-sm text-[var(--text-secondary)]">{t("settingsPanel.captureInterval")}</span>
                 <Select
                   value={captureInterval}
                   onChange={(e) => {
@@ -203,12 +203,12 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
                   }}
                 >
                   {[1, 3, 5, 10, 15, 30, 60].map((seconds) => (
-                    <option key={seconds} value={seconds}>{seconds} 秒</option>
+                    <option key={seconds} value={seconds}>{t("settingsPanel.seconds", { n: seconds })}</option>
                   ))}
                 </Select>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-sm text-[var(--text-secondary)]">AI 思考间隔</span>
+                <span className="text-sm text-[var(--text-secondary)]">{t("settingsPanel.aiInterval")}</span>
                 <Select
                   value={agentInterval}
                   onChange={(e) => {
@@ -218,30 +218,30 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
                   }}
                 >
                   {[5, 10, 15, 30, 60, 120, 300].map((seconds) => (
-                    <option key={seconds} value={seconds}>{seconds} 秒</option>
+                    <option key={seconds} value={seconds}>{t("settingsPanel.seconds", { n: seconds })}</option>
                   ))}
                 </Select>
-                <span className="text-xs text-[var(--text-muted)]">看到屏幕之后多久叫 AI 分析一次</span>
+                <span className="text-xs text-[var(--text-muted)]">{t("settingsPanel.aiIntervalHint")}</span>
               </div>
-              <GlowButton className="!text-xs" onClick={() => void takeScreenshot()}>验证截图权限</GlowButton>
+              <GlowButton className="!text-xs" onClick={() => void takeScreenshot()}>{t("settingsPanel.verifyScreenshot")}</GlowButton>
             </div>
           </Card>
 
           {/* 健康检查 — P1.24 jargon 翻译：自检 → 健康检查 */}
-          <Card title="健康检查">
+          <Card title={t("settingsPanel.health")}>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium">开启自动健康检查</p>
-                  <p className="text-xs text-[var(--text-secondary)]">定期验证截图 / OCR / AI 后端是否正常</p>
+                  <p className="text-sm font-medium">{t("settingsPanel.healthEnable")}</p>
+                  <p className="text-xs text-[var(--text-secondary)]">{t("settingsPanel.healthHint")}</p>
                 </div>
                 <Toggle checked={healthCheckEnabled} onChange={(enabled) => { setHealthCheckEnabled(enabled); void setConfig({ enabled }); }} />
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-sm text-[var(--text-secondary)]">检查频率</span>
+                <span className="text-sm text-[var(--text-secondary)]">{t("settingsPanel.healthFreq")}</span>
                 <Select value={healthCheckInterval} onChange={(e) => { const v = Number(e.target.value); setHealthCheckInterval(v); void setConfig({ intervalSeconds: v }); }}>
                   {[30, 60, 120, 300].map((seconds) => (
-                    <option key={seconds} value={seconds}>{seconds} 秒</option>
+                    <option key={seconds} value={seconds}>{t("settingsPanel.seconds", { n: seconds })}</option>
                   ))}
                 </Select>
               </div>
@@ -253,19 +253,19 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
       {(
         <div className="space-y-3">
           {/* 后端选择 — P1.23: 切换有提示影响范围，避免误点 */}
-          <Card title="AI 后端" id="section-api">
+          <Card title={t("settingsPanel.aiBackend")} id="section-api">
             <div className="space-y-2">
               <Select
                 value={selectedBackend}
                 onChange={(e) => {
                   const b = e.target.value as typeof selectedBackend;
                   const labels: Record<string, string> = {
-                    "claude-code": "Claude Code（需本机 claude 命令）",
-                    "openclaw": "OpenClaw（需本机 openclaw 命令）",
-                    "hermes": "Hermes（需本机 hermes 命令）",
-                    "api": "直接 API（云端调用 - 屏幕摘要会发送到 LLM 厂商）"
+                    "claude-code": t("settingsPanel.backendLabelClaude"),
+                    "openclaw": t("settingsPanel.backendLabelOpenclaw"),
+                    "hermes": t("settingsPanel.backendLabelHermes"),
+                    "api": t("settingsPanel.backendLabelApi")
                   };
-                  if (!confirm(`切到「${labels[b] ?? b}」？\n\n这会立即影响下一次 Ovo 的思考。`)) return;
+                  if (!confirm(t("settingsPanel.backendSwitchConfirm", { label: labels[b] ?? b }))) return;
                   setSelectedBackend(b);
                   void setBackend(b);
                 }}
@@ -273,10 +273,10 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
                 <option value="claude-code">Claude Code</option>
                 <option value="openclaw">OpenClaw</option>
                 <option value="hermes">Hermes</option>
-                <option value="api">直接 API（云端）</option>
+                <option value="api">{t("settingsPanel.backendApiCloud")}</option>
               </Select>
               <p className="text-[10px] text-[var(--text-muted)]">
-                Claude Code / OpenClaw / Hermes 走本机命令（完全离线可用）；直接 API 走云端（屏幕摘要会经云端 LLM）。
+                {t("settingsPanel.backendHint")}
               </p>
             </div>
           </Card>
@@ -295,14 +295,14 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
           )}
 
           {/* TTS */}
-          <Card title="语音输出" id="section-tts">
+          <Card title={t("settingsPanel.tts")} id="section-tts">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">启用 Edge TTS</p>
-                <p className="mt-0.5 text-xs text-[var(--text-secondary)]">把 ovo 的建议读出来</p>
+                <p className="text-sm font-medium">{t("settingsPanel.ttsEnable")}</p>
+                <p className="mt-0.5 text-xs text-[var(--text-secondary)]">{t("settingsPanel.ttsHint")}</p>
                 <p className="mt-1.5 flex items-start gap-1.5 rounded-md bg-[var(--warning)]/10 px-2 py-1 text-[11px] text-[var(--warning)]">
                   <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" />
-                  <span>开启后建议文本会发送到 <code>Microsoft Edge TTS</code> 在线服务（含 OCR 摘录片段）。若处理敏感内容请保持关闭。</span>
+                  <span>{t("settingsPanel.ttsWarn")}</span>
                 </p>
               </div>
               <Toggle
@@ -317,10 +317,10 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
           </Card>
 
           {/* 提醒级别（合并了原本重复的两个版本，留三按钮版） */}
-          <Card title="提醒级别" id="section-toast">
+          <Card title={t("settingsPanel.toast")} id="section-toast">
             <div className="space-y-2 text-sm">
               <p className="text-xs text-[var(--text-secondary)]">
-                屏幕角落弹建议卡片的范围。控制台始终看得到，这里只控制是否弹提醒。
+                {t("settingsPanel.toastHint")}
               </p>
               <div className="flex gap-2">
                 {(["silent", "alerts", "all"] as const).map((v) => (
@@ -337,17 +337,17 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
                         : "border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]"
                     }`}
                   >
-                    {v === "silent" ? "静默" : v === "alerts" ? "仅预警（推荐）" : "全部"}
+                    {v === "silent" ? t("settingsPanel.toastSilent") : v === "alerts" ? t("settingsPanel.toastAlerts") : t("settingsPanel.toastAll")}
                   </button>
                 ))}
               </div>
               <p className="flex items-center gap-1 text-[10.5px] text-[var(--text-muted)]">
                 <Check size={11} className="text-[var(--success)]" />
                 {toastVerbosity === "silent"
-                  ? "完全不弹，所有建议都进控制台"
+                  ? t("settingsPanel.toastHintSilent")
                   : toastVerbosity === "alerts"
-                    ? "仅风险预警和需要确认的动作会弹"
-                    : "所有建议都会弹到屏幕角"}
+                    ? t("settingsPanel.toastHintAlerts")
+                    : t("settingsPanel.toastHintAll")}
               </p>
             </div>
           </Card>
