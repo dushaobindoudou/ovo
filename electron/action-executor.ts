@@ -47,6 +47,23 @@ export class ActionExecutor {
     private readonly kg?: KnowledgeGraphEngine
   ) {}
 
+  // R4-2: 最近一次自动复制的"撤销快照"——存复制前的旧剪贴板，供回执 toast 在窗口内恢复。
+  private lastClipboardUndo: { actionId: string; prev: string; at: number } | null = null;
+
+  /** R4-2: 撤销最近一次剪贴板复制——把剪贴板恢复成复制前的内容。30s 内有效。 */
+  undoClipboard(actionId: string): { ok: boolean } {
+    const u = this.lastClipboardUndo;
+    if (!u || u.actionId !== actionId || Date.now() - u.at > 30_000) return { ok: false };
+    try {
+      const electron = loadElectron();
+      electron?.clipboard?.writeText?.(u.prev);
+      this.lastClipboardUndo = null;
+      return { ok: true };
+    } catch {
+      return { ok: false };
+    }
+  }
+
   async execute(action: AgentAction, ctx: ActionExecutionContext = {}): Promise<ActionResult> {
     const started = Date.now();
     const type = action.type ?? "other";
@@ -393,7 +410,10 @@ export class ActionExecutor {
           error: "Electron clipboard API 不可用（可能在非 Electron 环境）"
         };
       }
+      // R4-2: 写入前捕获旧剪贴板，存起来供 5s 撤销窗（复制回执的"撤销"按钮恢复它）
+      const prevClipboard = electron.clipboard.readText();
       electron.clipboard.writeText(text);
+      this.lastClipboardUndo = { actionId: action.id, prev: prevClipboard, at: Date.now() };
       // 验证写入成功 — 读回来对比
       const readBack = electron.clipboard.readText();
       if (readBack !== text) {

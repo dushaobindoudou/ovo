@@ -103,6 +103,7 @@
     "execute": "Run",
     "ignore": "Ignore",
     "gotIt": "Got it",
+    "undo": "Undo",
     "want": "Yes",
     "dontWant": "No",
     "adopt": "Useful",

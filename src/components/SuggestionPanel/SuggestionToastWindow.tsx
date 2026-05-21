@@ -21,9 +21,12 @@ interface ToastSuggestion {
   priority?: number;
   /** "action" = 可执行动作 toast（带执行/忽略按钮）；缺省 = 建议/邀约/回执 */
   kind?: "suggestion" | "action";
-  /** kind=action 时：主进程 registry 里的 actionId（confirm/cancel 只需它）*/
+  /** kind=action 时：主进程 registry 里的 actionId（confirm/cancel 只需它）；
+   *  receipt 且 undoable 时：撤销复制用的 actionId */
   actionId?: string;
   pipelineId?: string;
+  /** R4-2: 复制回执可撤销 */
+  undoable?: boolean;
 }
 
 function parseToastPayload(): ToastSuggestion | null {
@@ -253,13 +256,29 @@ export function SuggestionToastWindow() {
                 </button>
               </>
             ) : isReceipt ? (
-              <button
-                type="button"
-                className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:border-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                onClick={() => window.close()}
-              >
-                {t("toast.gotIt")}
-              </button>
+              <>
+                {item.undoable && item.actionId && (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                    onClick={() => {
+                      void window.ovoAPI.action
+                        .undoClipboard(item.actionId!)
+                        .catch(() => { /* */ })
+                        .finally(() => window.close());
+                    }}
+                  >
+                    {t("toast.undo")}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:border-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                  onClick={() => window.close()}
+                >
+                  {t("toast.gotIt")}
+                </button>
+              </>
             ) : isOffer ? (
               <>
                 <button

@@ -217,6 +217,11 @@ export function registerPipelineHandlers(deps: IpcHandlerDeps) {
     }
   );
 
+  // R4-2: 撤销最近一次自动复制（恢复复制前的剪贴板）
+  ipcMain.handle("action:undo-clipboard", (_event, actionId: string) =>
+    actionExecutor.undoClipboard(String(actionId ?? ""))
+  );
+
   // pipeline:* 日志查询 / 评分 / 清空
   ipcMain.handle("pipeline:get-recent", (_event, limit = 20) => pipelineLogger.getRecent(limit));
   ipcMain.handle("pipeline:get-detail", (_event, id: string) => pipelineLogger.getById(id));

@@ -112,6 +112,10 @@ export interface AgentSuggestion {
   content: string;
   detail?: string;
   priority: number;
+  /** R4-2: 该回执对应的 actionId（撤销复制用）*/
+  actionId?: string;
+  /** R4-2: 回执是否可撤销（目前仅 copy_to_clipboard）*/
+  undoable?: boolean;
 }
 
 export type EntityType =

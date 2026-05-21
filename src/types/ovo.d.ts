@@ -80,6 +80,7 @@ export type OvoInvokeChannel =
   | "suggestion:feedback"
   | "action:confirm"
   | "action:cancel"
+  | "action:undo-clipboard"
   | "drafts:list"
   | "drafts:promote"
   | "drafts:dismiss"
@@ -669,6 +670,7 @@ export interface OvoAPI {
     confirm: (payload: { actionId?: string; action?: any; pipelineId?: string }) => Promise<any>;
     cancel: (payload: { actionId: string; pipelineId?: string }) => Promise<any>;
     getDetail: (actionId: string) => Promise<ActionDetail | null>;
+    undoClipboard: (actionId: string) => Promise<{ ok: boolean }>;
   };
   drafts: {
     list: (limit?: number) => Promise<Array<{

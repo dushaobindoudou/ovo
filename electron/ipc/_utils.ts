@@ -157,7 +157,9 @@ export function buildActionReceipts(actions: AgentAction[], results: ActionResul
         type: "receipt",
         title: mt("receipt.copied"),
         content,
-        priority: 100
+        priority: 100,
+        actionId: r.actionId, // R4-2: 让回执 toast 能"撤销"这次复制
+        undoable: true
       });
       continue;
     }
