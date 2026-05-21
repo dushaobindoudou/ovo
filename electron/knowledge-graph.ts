@@ -14,6 +14,11 @@ const MEMORY_CONTENT_MAX_CHARS = 8000;
 const MEMORY_SUMMARY_MAX_CHARS = 1000;
 const MEMORY_TITLE_MAX_CHARS = 200;
 
+// 产出物策展：这些 action 不是"用户能用的成品"——log_note 是内部归档，
+// open_url/search_web 是导航动作而非交付物。产出物页只展真正的交付物
+// （草稿/总结/提醒/待办/日历/复制内容），归档与导航留在「动作清单」里。
+const NON_DELIVERABLE_OUTPUT_TYPES = new Set(["log_note", "open_url", "search_web"]);
+
 /** 同义词表：用于实体去重的人工映射，lowercase 键 → 规范化名称。 */
 const ENTITY_SYNONYMS: Record<string, string> = {
   "vs code": "visual studio code",
@@ -2563,10 +2568,12 @@ export class KnowledgeGraphEngine {
           const firstResult = results[0] ?? {};
           const status = String(firstResult.status ?? r.status ?? "");
           if (status !== "success") continue;
+          const ctype = String(firstResult.type ?? "other");
+          if (NON_DELIVERABLE_OUTPUT_TYPES.has(ctype)) continue; // 策展：跳过归档/导航
           seen.add(actionId);
           out.push({
             actionId,
-            type: String(firstResult.type ?? "other"),
+            type: ctype,
             description: String(inp.description ?? ""),
             status,
             timestamp: r.start_time,
@@ -2583,10 +2590,12 @@ export class KnowledgeGraphEngine {
           if (!result) continue;
           const status = String(result.status ?? "");
           if (status !== "success") continue;
+          const atype = String(a.type ?? "other");
+          if (NON_DELIVERABLE_OUTPUT_TYPES.has(atype)) continue; // 策展：跳过归档/导航
           seen.add(actionId);
           out.push({
             actionId,
-            type: String(a.type ?? "other"),
+            type: atype,
             description: String(a.description ?? ""),
             status,
             timestamp: r.start_time,

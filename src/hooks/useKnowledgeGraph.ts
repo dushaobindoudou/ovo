@@ -33,7 +33,12 @@ export function useKnowledgeGraph() {
   }, []);
   const exportGraph = useCallback(async () => {
     if (!isElectron) return null;
-    try { return await window.ovoAPI.kg.export(); } catch { return null; }
+    try {
+      // kg.export 经二次握手返回 { ok, data }；解包出 data，导出的 JSON 才干净
+      const res = await window.ovoAPI.kg.export() as { ok?: boolean; data?: unknown } | null;
+      if (res && typeof res === "object" && "data" in res) return res.data ?? null;
+      return res;
+    } catch { return null; }
   }, []);
   // KG-D: 用户主权
   const setPinned = useCallback(async (entityId: string, pinned: boolean) => {

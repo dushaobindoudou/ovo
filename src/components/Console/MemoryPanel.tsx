@@ -358,13 +358,13 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <div className="relative">
-            <Search size={14} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+          <div className="relative w-52">
+            <Search size={13} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="搜你想找的人 / 项目 / 主题"
-              className="!pl-7"
+              placeholder="搜索人 / 项目 / 主题"
+              className="!h-8 !py-1 !pl-7 !text-[13px]"
             />
           </div>
 
