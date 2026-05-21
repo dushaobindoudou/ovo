@@ -59,13 +59,13 @@ export class AgentBridge {
   private lastError: string | null = null;
 
   async detectAvailableBackends() {
-    // 用户反馈（2026-05-21）：不要有任何 `claude -p` 调用——它噪音大、并且我们
-    // 默认就用 hermes。这里直接把 claude-code 从探测里摘掉，使它永远不会进入
-    // available / candidateBackends，于是 callByBackend 的 claude-code 分支（claude -p）
-    // 永远不可达。hermes 默认 + openclaw / api 作 fallback。
+    // 后端探测：只探测验证过的本地后端。
+    // - claude-code：摘除（不要 `claude -p` 噪音，分支已抛错）
+    // - openclaw（2026-05-22 放弃）：集成从未跑通——命令格式是无依据假设、且 docs 把它
+    //   描述为 HTTP 代理而代码是 CLI execa，二者矛盾。在确认真实集成形态前不探测、不可选。
+    // 默认 hermes；api 作 fallback。
     const checks: Array<{ backend: AgentBackend; cmd: string }> = [
-      { backend: "hermes", cmd: "hermes" },
-      { backend: "openclaw", cmd: "openclaw" }
+      { backend: "hermes", cmd: "hermes" }
     ];
     const available: AgentBackend[] = [];
     const env = execEnv();
@@ -242,15 +242,12 @@ export class AgentBridge {
       // 用户明确要求：不要有任何 `claude -p` 调用（噪音大 + 非默认后端）。
       // detectAvailableBackends 已不再探测 claude-code，正常不会走到这里；这道硬保险
       // 防止任何残留路径（旧持久化的 preferred / 直接 callByBackend）再拉起 claude CLI。
-      throw new Error("claude-code 后端已禁用（不使用 claude -p），请用 hermes / openclaw / api");
+      throw new Error("claude-code 后端已禁用（不使用 claude -p），请用 hermes / api");
     }
     if (backend === "openclaw") {
-      const { stdout } = await execa(
-        bin("openclaw", "openclaw"),
-        ["agent", "--non-interactive", "--message", request.prompt, "--format", "json"],
-        { timeout, env }
-      );
-      return stdout;
+      // 2026-05-22 放弃：openclaw 集成从未跑通（命令格式无依据 + docs 说 HTTP 代理与
+      // 此处 CLI 实现矛盾）。在确认真实集成形态前直接拒绝，避免误导性失败。
+      throw new Error("openclaw 后端暂不支持（集成未验证），请用 hermes / api");
     }
     if (backend === "hermes") {
       // -Q quiet 模式：抑制 banner/spinner/tool previews，只输出最终响应。

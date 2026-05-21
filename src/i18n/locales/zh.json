@@ -72,7 +72,7 @@
     "healthFreq": "检查频率",
     "aiBackend": "AI 后端",
     "backendApiCloud": "直接 API（云端）",
-    "backendHint": "Claude Code / OpenClaw / Hermes 走本机命令（完全离线可用）；直接 API 走云端（屏幕摘要会经云端 LLM）。",
+    "backendHint": "Hermes 走本机命令（完全离线可用，推荐）；直接 API 走云端（屏幕摘要会经云端 LLM）。",
     "backendSwitchConfirm": "切到「{{label}}」？\n\n这会立即影响下一次 Ovo 的思考。",
     "backendLabelClaude": "Claude Code（需本机 claude 命令）",
     "backendLabelOpenclaw": "OpenClaw（需本机 openclaw 命令）",

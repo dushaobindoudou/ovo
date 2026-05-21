@@ -133,28 +133,15 @@ You pay your chosen vendor directly. Ovo never sees your billing. We recommend s
 
 ---
 
-## 4. OpenClaw
+## 4. OpenClaw（已放弃 / 暂不支持）
 
-OpenClaw is a local proxy / orchestration layer that can route to multiple providers. Ovo speaks to it via HTTP.
-
-### Why pick this
-
-- Abstracts multiple providers behind one endpoint
-- Useful if you already run OpenClaw for other purposes
-- Routing decisions (which model for which task) handled by the proxy
-
-### Setup
-
-1. **Install and run OpenClaw** locally (see [OpenClaw documentation](https://github.com/openclaw/openclaw); endpoint typically `http://localhost:<port>`)
-2. **In Ovo**: Settings → AI Backend → select **OpenClaw** → Save
-3. Ovo will use OpenClaw's default config — model routing, auth, etc. handled by OpenClaw itself
-
-### Trade-offs
-
-- **+** One config to maintain
-- **+** Easy to swap underlying providers
-- **−** Extra hop (OpenClaw → vendor), small latency cost
-- **−** Trust requirement on OpenClaw to not log/leak your prompts (it's local, so the surface is small)
+> 2026-05-22：OpenClaw 后端已下线。原先这份文档把它描述为 HTTP 本地代理，但代码里
+> 是未经验证的 CLI 调用（`openclaw agent --non-interactive ...`），两者矛盾且从未跑通过。
+> 在确认 OpenClaw 真实集成形态（CLI vs HTTP、子命令、输出格式）之前，它不在后端探测里、
+> UI 不可选、调用会被拒绝。请使用 **Hermes**（本地、已验证）或 **Direct API**。
+>
+> 若未来要恢复：先核实真实接口，再在 `electron/agent-bridge.ts` 重写 openclaw 分支并补
+> 输出 normalizer，然后改回本节文档。
 
 ---
 

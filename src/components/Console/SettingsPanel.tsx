@@ -265,8 +265,6 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
                 onChange={(e) => {
                   const b = e.target.value as typeof selectedBackend;
                   const labels: Record<string, string> = {
-                    "claude-code": t("settingsPanel.backendLabelClaude"),
-                    "openclaw": t("settingsPanel.backendLabelOpenclaw"),
                     "hermes": t("settingsPanel.backendLabelHermes"),
                     "api": t("settingsPanel.backendLabelApi")
                   };
@@ -275,8 +273,7 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
                   void setBackend(b);
                 }}
               >
-                <option value="claude-code">Claude Code</option>
-                <option value="openclaw">OpenClaw</option>
+                {/* 只列验证过的后端。claude-code(claude -p 噪音)/openclaw(集成未跑通) 已下掉 */}
                 <option value="hermes">Hermes</option>
                 <option value="api">{t("settingsPanel.backendApiCloud")}</option>
               </Select>

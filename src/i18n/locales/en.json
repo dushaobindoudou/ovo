@@ -72,7 +72,7 @@
     "healthFreq": "Check frequency",
     "aiBackend": "AI backend",
     "backendApiCloud": "Direct API (cloud)",
-    "backendHint": "Claude Code / OpenClaw / Hermes run via local commands (fully offline); Direct API uses the cloud (screen summaries go to the cloud LLM).",
+    "backendHint": "Hermes runs via a local command (fully offline, recommended); Direct API uses the cloud (screen summaries go to the cloud LLM).",
     "backendSwitchConfirm": "Switch to “{{label}}”?\n\nThis takes effect on Ovo's next thought.",
     "backendLabelClaude": "Claude Code (needs local claude command)",
     "backendLabelOpenclaw": "OpenClaw (needs local openclaw command)",
