@@ -83,6 +83,7 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
       {/* P1.22: 锚点快捷导航 — 长页面让用户快速跳转 */}
       <nav className="sticky top-0 z-10 -mx-1 flex flex-wrap gap-1 rounded-md border border-[var(--border)] bg-[var(--bg-base)]/95 px-2 py-1.5 text-[11px] backdrop-blur">
         {[
+          { id: "section-language", label: "语言/Language" },
           { id: "section-privacy",  label: t("settingsPanel.navPrivacy") },
           { id: "section-appearance", label: t("settingsPanel.navAppearance") },
           { id: "section-permissions", label: t("settingsPanel.navPermissions") },
@@ -106,7 +107,22 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
         ))}
       </nav>
 
-      {/* 隐私与暂停 — 最重要，第一位 */}
+      {/* 语言 — 放最顶部，双语标题让任何语言下都能一眼找到 */}
+      <Card title="语言 / Language" id="section-language">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">{t("settings.languageTitle")} / Language</p>
+            <p className="text-xs text-[var(--text-secondary)]">{t("settings.languageHint")}</p>
+          </div>
+          <Select value={language} onChange={(e) => setLanguage(e.target.value as AppLanguage)}>
+            <option value="system">{t("settings.system")}</option>
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+          </Select>
+        </div>
+      </Card>
+
+      {/* 隐私与暂停 — 最重要 */}
       <div id="section-privacy"><PrivacyView /></div>
 
       {(
@@ -122,17 +138,6 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
                   <option value="light">{t("settingsPanel.themeLight")}</option>
                   <option value="dark">{t("settingsPanel.themeDark")}</option>
                   <option value="system">{t("settingsPanel.themeSystem")}</option>
-                </Select>
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">{t("settings.languageTitle")}</p>
-                  <p className="text-xs text-[var(--text-secondary)]">{t("settings.languageHint")}</p>
-                </div>
-                <Select value={language} onChange={(e) => setLanguage(e.target.value as AppLanguage)}>
-                  <option value="system">{t("settings.system")}</option>
-                  <option value="zh">{t("settings.zh")}</option>
-                  <option value="en">{t("settings.en")}</option>
                 </Select>
               </div>
             </div>
