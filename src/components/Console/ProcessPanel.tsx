@@ -361,16 +361,16 @@ function PipelineDetailView({ pipeline }: { pipeline: PipelineRow }) {
       <PipelineSection Icon={Camera} title={t("process.sectionSaw")} tint="info">
         <div className="space-y-1.5 text-[13px] leading-relaxed">
           <p>
-            <span className="text-[var(--text-muted)]">{formatRelative(timestamp)}看了 </span>
-            <span className="font-medium">{c.appName || "屏幕"}</span>
+            <span className="text-[var(--text-muted)]">{t("process.sawAt", { time: formatRelative(timestamp) })}</span>
+            <span className="font-medium">{c.appName || t("process.screenFallback")}</span>
             {c.windowTitle && <span className="text-[var(--text-muted)]"> · {c.windowTitle}</span>}
           </p>
           {c.charCount > 0 ? (
             <div className="space-y-1">
               <p className="text-[var(--text-muted)]">
-                OCR 抓到 <span className="text-[var(--text-secondary)]">{c.charCount}</span> 字
+                {t("process.ocrCapturedPre")}<span className="text-[var(--text-secondary)]">{c.charCount}</span>{t("process.ocrCapturedUnit")}
                 {c.ocrPreview && c.charCount > c.ocrPreview.length && (
-                  <span> · 下方仅显示前 {c.ocrPreview.length} 字</span>
+                  <span>{t("process.ocrPreviewNote", { n: c.ocrPreview.length })}</span>
                 )}
               </p>
               {c.ocrPreview && (
@@ -410,13 +410,13 @@ function PipelineDetailView({ pipeline }: { pipeline: PipelineRow }) {
             <div className="mt-2 space-y-2">
               {u.promptPreview && (
                 <div>
-                  <p className="mb-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">→ 发给 AI 的 prompt</p>
+                  <p className="mb-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">{t("process.promptToAi")}</p>
                   <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-[var(--border)] bg-[var(--bg-base)] p-2 font-mono text-[10px] text-[var(--text-secondary)]">{u.promptPreview}</pre>
                 </div>
               )}
               {u.rawResponse && (
                 <div>
-                  <p className="mb-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">← AI 回复原文</p>
+                  <p className="mb-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">{t("process.aiReply")}</p>
                   <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-[var(--border)] bg-[var(--bg-base)] p-2 font-mono text-[10px] text-[var(--text-secondary)]">{u.rawResponse}</pre>
                 </div>
               )}
@@ -429,48 +429,48 @@ function PipelineDetailView({ pipeline }: { pipeline: PipelineRow }) {
       <PipelineSection Icon={Lightbulb} title={t("process.sectionJudge")} tint="accent">
         <div className="space-y-1.5 text-[13px] leading-relaxed">
           {status === "failed" && !u.intent && (
-            <p className="text-[var(--danger)]">理解失败，没看明白</p>
+            <p className="text-[var(--danger)]">{t("process.understandFailed")}</p>
           )}
           {u.intent && (
             <p>
-              <span className="text-[var(--text-muted)]">觉得你在 </span>
+              <span className="text-[var(--text-muted)]">{t("process.thinkYouDoing")}</span>
               <span className="font-medium">{u.intent}</span>
             </p>
           )}
           {u.role && (
             <p>
-              <span className="text-[var(--text-muted)]">觉得你是 </span>
+              <span className="text-[var(--text-muted)]">{t("process.thinkYouAre")}</span>
               <span className="font-medium">{u.role}</span>
               {u.roleConfidence > 0 && (
-                <span className="text-[var(--text-muted)]"> · {(u.roleConfidence * 100).toFixed(0)}% 把握</span>
+                <span className="text-[var(--text-muted)]">{t("process.confidencePct", { n: (u.roleConfidence * 100).toFixed(0) })}</span>
               )}
             </p>
           )}
           {u.latentIntent && (
             <p>
-              <span className="text-[var(--text-muted)]">长期目标 </span>
+              <span className="text-[var(--text-muted)]">{t("process.longGoal")}</span>
               <span>{u.latentIntent}</span>
             </p>
           )}
           {u.prediction && (
             <p>
-              <span className="text-[var(--text-muted)]">猜你接下来 </span>
+              <span className="text-[var(--text-muted)]">{t("process.guessNext")}</span>
               <span>{u.prediction}</span>
             </p>
           )}
           {u.risk && u.risk !== "none" && (
             <p className={`flex items-center gap-1.5 ${u.risk === "high" || u.risk === "critical" ? "text-[var(--danger)]" : "text-[var(--warning)]"}`}>
               <AlertTriangle size={12} className="shrink-0" />
-              {({ low: "一点点风险", medium: "中等风险", high: "较高风险", critical: "严重风险" } as Record<string, string>)[u.risk] ?? `${u.risk} 风险`}
+              {({ low: t("process.riskLow"), medium: t("process.riskMedium"), high: t("process.riskHigh"), critical: t("process.riskCritical") } as Record<string, string>)[u.risk] ?? t("process.riskOther", { risk: u.risk })}
             </p>
           )}
           {(a.executed > 0 || a.pending > 0) && (
             <p className="flex items-start gap-1.5">
               <Zap size={12} className="mt-1 shrink-0 text-[var(--text-muted)]" />
               <span>
-                {a.executed > 0 && <span className="text-[var(--text-muted)]">完成 {a.executed} 个动作</span>}
-                {a.executed > 0 && a.pending > 0 && <span className="text-[var(--text-muted)]">，</span>}
-                {a.pending > 0 && <span className="text-[var(--text-muted)]">{a.pending} 个等你确认</span>}
+                {a.executed > 0 && <span className="text-[var(--text-muted)]">{t("process.doneActions", { n: a.executed })}</span>}
+                {a.executed > 0 && a.pending > 0 && <span className="text-[var(--text-muted)]">{t("process.comma")}</span>}
+                {a.pending > 0 && <span className="text-[var(--text-muted)]">{t("process.pendingConfirm", { n: a.pending })}</span>}
                 {a.items.length > 0 && (
                   <span className="text-[var(--text-muted)]">: {a.items.slice(0, 3).map((it) => `${it.status} ${it.description}`).join("；")}</span>
                 )}
@@ -481,9 +481,9 @@ function PipelineDetailView({ pipeline }: { pipeline: PipelineRow }) {
             <p className="flex items-center gap-1.5 text-[var(--text-muted)]">
               <Lightbulb size={12} className="shrink-0" />
               <span>
-                {u.offerCount > 0 && `提议 ${u.offerCount} 条长期服务`}
-                {u.offerCount > 0 && u.suggestionCount > 0 && "，"}
-                {u.suggestionCount > 0 && `${u.suggestionCount} 条小建议`}
+                {u.offerCount > 0 && t("process.offerLong", { n: u.offerCount })}
+                {u.offerCount > 0 && u.suggestionCount > 0 && t("process.comma")}
+                {u.suggestionCount > 0 && t("process.suggSmall", { n: u.suggestionCount })}
               </span>
             </p>
           )}
@@ -491,10 +491,10 @@ function PipelineDetailView({ pipeline }: { pipeline: PipelineRow }) {
             <p className="flex items-center gap-1.5">
               <BookOpen size={12} className="shrink-0 text-[var(--text-muted)]" />
               <span>
-                <span className="text-[var(--text-muted)]">记下 </span>
-                {r.newEntities > 0 && `${r.newEntities} 个新概念`}
+                <span className="text-[var(--text-muted)]">{t("process.recordedPre")}</span>
+                {r.newEntities > 0 && t("process.newConcepts", { n: r.newEntities })}
                 {r.newEntities > 0 && r.newRelationships > 0 && " / "}
-                {r.newRelationships > 0 && `${r.newRelationships} 个新关联`}
+                {r.newRelationships > 0 && t("process.newRelations", { n: r.newRelationships })}
               </span>
             </p>
           )}
@@ -502,10 +502,10 @@ function PipelineDetailView({ pipeline }: { pipeline: PipelineRow }) {
             <p className="flex items-center gap-1.5">
               <GitBranch size={12} className="shrink-0 text-[var(--text-muted)]" />
               <span>
-                <span className="text-[var(--text-muted)]">补 </span>
-                {rel.added > 0 && <span>+{rel.added} 新关系</span>}
+                <span className="text-[var(--text-muted)]">{t("process.relatePre")}</span>
+                {rel.added > 0 && <span>{t("process.relNew", { n: rel.added })}</span>}
                 {rel.added > 0 && rel.reinforced > 0 && " / "}
-                {rel.reinforced > 0 && <span>{rel.reinforced} 条加强</span>}
+                {rel.reinforced > 0 && <span>{t("process.relReinforced", { n: rel.reinforced })}</span>}
               </span>
             </p>
           )}
