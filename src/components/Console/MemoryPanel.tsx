@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Pin, PinOff, Trash2, Maximize2, Minimize2, Sparkles, X, Search, MoreHorizontal, Download, UserCircle } from "lucide-react";
 import { Card } from "../shared/Card";
 import { Empty } from "../shared/Empty";
@@ -31,23 +32,6 @@ interface EntityDetail {
   eventCount: number;
 }
 
-const TYPE_LABEL: Record<string, string> = {
-  person: "人物",
-  project: "项目",
-  document: "文档",
-  concept: "概念",
-  organization: "组织",
-  location: "地点",
-  application: "应用",
-  application_file: "文件",
-  behavior_pattern: "行为模式",
-  watchlist: "关注",
-  interest_profile: "角色画像",
-  learning_graph: "学习图",
-  action_type: "动作",
-  insight_summary: "洞察"
-};
-
 function formatRelative(ts: number): string {
   if (!ts) return "—";
   const diff = Date.now() - ts;
@@ -58,6 +42,7 @@ function formatRelative(ts: number): string {
 }
 
 export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
+  const { t: tr } = useTranslation();
   const {
     searchEntities, analyzePersonality, getStats, getGraph, getEvents,
     clear, exportGraph, setPinned, deleteEntity, getEntityDetail
@@ -209,7 +194,7 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
   };
 
   const handleClear = async () => {
-    if (!window.confirm("确定要清空全部知识图谱（实体/关系/事件/Pipeline）吗？此操作不可撤销。")) return;
+    if (!window.confirm(tr("memory.clearConfirm"))) return;
     setBusy(true);
     try {
       await clear();
@@ -326,10 +311,10 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
       {/* 顶部条 —— 干净，主操作（搜索/模式）显眼，工程师按钮进 ⋯ 菜单 */}
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--border)] px-4 py-3">
         <div className="flex items-baseline gap-2">
-          <h2 className="text-lg font-semibold">记忆</h2>
+          <h2 className="text-lg font-semibold">{tr("memory.title")}</h2>
           {stats && (
             <span className="text-[11px] text-[var(--text-muted)]">
-              ovo 记住了 {stats.entities} 件事
+              {tr("memory.remembered", { n: stats.entities })}
             </span>
           )}
         </div>
@@ -347,12 +332,12 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
                   : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               }`}
               title={
-                m === "timeline" ? "Ovo 按时间帮你记录的事 — 我做过什么 / 别人说了什么" :
-                m === "profile" ? "Ovo 对你的理解 — 角色 / 关心的话题 / 项目" :
-                "实体关系图谱（高级）— 概念之间怎么关联"
+                m === "timeline" ? tr("memory.tipTimeline") :
+                m === "profile" ? tr("memory.tipProfile") :
+                tr("memory.tipGraph")
               }
             >
-              {m === "timeline" ? "时间线" : m === "profile" ? "画像" : "图谱"}
+              {m === "timeline" ? tr("memory.viewTimeline") : m === "profile" ? tr("memory.viewProfile") : tr("memory.viewGraph")}
             </button>
           ))}
         </div>
@@ -363,7 +348,7 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="搜索人 / 项目 / 主题"
+              placeholder={tr("memory.searchPlaceholder")}
               className="!h-8 !py-1 !pl-7 !text-[13px]"
             />
           </div>
@@ -386,22 +371,22 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
               <div className="absolute right-0 top-[calc(100%+4px)] z-30 w-56 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-card)] shadow-[var(--shadow-lg)]">
                 <MoreMenuItem
                   icon={fullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-                  label={fullscreen ? "退出全屏" : "图谱全屏"}
-                  hint="ESC 也可退出"
+                  label={fullscreen ? tr("memory.moreExitFullscreen") : tr("memory.moreEnterFullscreen")}
+                  hint={tr("memory.moreEscHint")}
                   onClick={() => { setMoreOpen(false); setFullscreen(!fullscreen); }}
                 />
                 <div className="my-1 h-px bg-[var(--border)]" />
                 <MoreMenuItem
                   icon={<Download size={13} />}
-                  label="导出记忆"
-                  hint="保存为本机 JSON"
+                  label={tr("memory.moreExport")}
+                  hint={tr("memory.moreExportHint")}
                   onClick={() => { setMoreOpen(false); void handleExport(); }}
                   disabled={busy}
                 />
                 <MoreMenuItem
                   icon={<Trash2 size={13} />}
-                  label="清空全部记忆"
-                  hint="不可撤销，请慎用"
+                  label={tr("memory.moreClear")}
+                  hint={tr("memory.moreClearHint")}
                   danger
                   onClick={() => { setMoreOpen(false); void handleClear(); }}
                   disabled={busy}
@@ -438,7 +423,7 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
                   : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)]"
               }`}
             >
-              {TYPE_LABEL[t] ?? t}
+              {tr(`entityType.${t}`, t)}
             </button>
           ))}
           {selectedId && (
@@ -470,8 +455,8 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
                 <Sparkles size={13} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-base font-semibold">ovo 对你的理解</p>
-                <p className="text-[11px] text-[var(--text-muted)]">点任何一项告诉 ovo 这条对不对，会越来越准</p>
+                <p className="text-base font-semibold">{tr("memory.understanding")}</p>
+                <p className="text-[11px] text-[var(--text-muted)]">{tr("memory.understandingHint")}</p>
               </div>
             </div>
             {/* P1.18 / P0.6 修复：3 列网格 → 单列纵向"故事卡"（Granola 风格）
@@ -480,8 +465,8 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
               {/* 角色 — 通常 1-3 个，单卡显示，避免堆叠 */}
               {myProfile.roles.length > 0 && (
                 <StorySection
-                  title="Ovo 觉得你扮演这些角色"
-                  emptyHint="还在学习中…"
+                  title={tr("memory.rolesTitle")}
+                  emptyHint={tr("memory.learning")}
                   items={myProfile.roles}
                   onSelect={setSelectedId}
                 />
@@ -489,8 +474,8 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
               {/* 兴趣 — 数量多，用 chip + 单列 */}
               {myProfile.interests.length > 0 && (
                 <StorySection
-                  title="你最常关心的话题"
-                  emptyHint="还在学习中…"
+                  title={tr("memory.interestsTitle")}
+                  emptyHint={tr("memory.learning")}
                   items={myProfile.interests}
                   onSelect={setSelectedId}
                 />
@@ -498,8 +483,8 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
               {/* 项目 */}
               {myProfile.projects.length > 0 && (
                 <StorySection
-                  title="你正在投入的项目"
-                  emptyHint="还没识别到项目"
+                  title={tr("memory.projectsTitle")}
+                  emptyHint={tr("memory.noProjects")}
                   items={myProfile.projects}
                   onSelect={setSelectedId}
                 />
@@ -507,19 +492,19 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
               {/* F3: 角色为空时单独引导填"我是谁"（不要等 3 项全空才提示） */}
               {myProfile.roles.length === 0 && (
                 <div className="rounded-lg border border-dashed border-[var(--border)] bg-[var(--bg-base)] p-3 text-center">
-                  <p className="text-[12px] font-medium text-[var(--text-primary)]">Ovo 还不知道你是谁</p>
-                  <p className="mt-1 text-[11px] text-[var(--text-muted)]">告诉它你的角色 / 当前主项目 / 感兴趣的领域，它能更准</p>
+                  <p className="text-[12px] font-medium text-[var(--text-primary)]">{tr("memory.unknownYou")}</p>
+                  <p className="mt-1 text-[11px] text-[var(--text-muted)]">{tr("memory.unknownYouHint")}</p>
                   <button
                     type="button"
                     onClick={() => setShowWizardManual(true)}
                     className="mt-2 inline-flex items-center gap-1 rounded-md bg-[var(--accent)] px-3 py-1 text-[11px] font-medium text-white hover:bg-[var(--accent-hover)]"
                   >
-                    告诉 Ovo 我是谁
+                    {tr("memory.tellWhoIAm")}
                   </button>
                 </div>
               )}
               {myProfile.roles.length === 0 && myProfile.interests.length === 0 && myProfile.projects.length === 0 && (
-                <p className="text-center text-[var(--text-muted)]">Ovo 还在学习中——再用一会儿，它会更懂你。</p>
+                <p className="text-center text-[var(--text-muted)]">{tr("memory.stillLearning")}</p>
               )}
             </div>
           </div>
@@ -537,7 +522,7 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-[var(--border)] bg-[var(--bg-card)]">
           {filteredGraph.nodes.length === 0 ? (
             <p className="flex flex-1 items-center justify-center p-12 text-center text-sm text-[var(--text-secondary)]">
-              {query || typeFilter ? "没有匹配的 entity" : "图谱还没数据，先用 ovo 观察一段时间"}
+              {query || typeFilter ? tr("memory.noMatch") : tr("memory.graphNoData")}
             </p>
           ) : (
             <KnowledgeGraphCanvas
@@ -589,6 +574,7 @@ function EntityListView({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
+  const { t: tr } = useTranslation();
   return (
     <>
       <div className="shrink-0 border-b border-[var(--border)] px-3 py-2 text-[11px] text-[var(--text-muted)]">
@@ -619,7 +605,7 @@ function EntityListView({
                 )}
               </div>
               <span className="shrink-0 rounded bg-[var(--bg-base)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
-                {TYPE_LABEL[e.type] ?? e.type}
+                {tr(`entityType.${e.type}`, e.type)}
               </span>
               {typeof e.qualityScore === "number" && (
                 <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${
@@ -650,6 +636,7 @@ function EntityDetailView({
   onDelete: () => void;
   onJump: (id: string) => void;
 }) {
+  const { t: tr } = useTranslation();
   if (!detail.entity) return null;
   const e = detail.entity;
   // KG-E: 关系按方向 + relation 类型分组，让"实体 → 关系 → 关联实体"层次清晰
@@ -669,7 +656,7 @@ function EntityDetailView({
             <p className="text-base font-semibold leading-tight">{e.name}</p>
             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
               <span className="rounded bg-[var(--bg-base)] px-1.5 py-0.5 text-[var(--text-muted)]">
-                {TYPE_LABEL[e.type] ?? e.type}
+                {tr(`entityType.${e.type}`, e.type)}
               </span>
               <span className={`rounded px-1.5 py-0.5 ${
                 e.qualityScore >= 0.7 ? "bg-[var(--accent-dim)] text-[var(--accent)]" :
@@ -744,7 +731,7 @@ function EntityDetailView({
                           >
                             {r.otherName}
                             <span className="ml-1 text-[10px] text-[var(--text-muted)]">
-                              {TYPE_LABEL[r.otherType] ?? r.otherType}
+                              {tr(`entityType.${r.otherType}`, r.otherType)}
                             </span>
                           </button>
                         ))}
