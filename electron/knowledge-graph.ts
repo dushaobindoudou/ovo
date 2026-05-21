@@ -8,6 +8,8 @@ import { redactSensitive } from "./sensitive-filter.js";
 import { secretsStore } from "./secrets-store.js";
 import { safeExecute } from "./safe-execute.js";
 import { bootstrap as bootstrapSchema, getSchemaVersionInfo as schemaVersionInfo } from "./kg/migrations.js";
+import * as draftsStore from "./kg/drafts-store.js";
+import type { DraftRow } from "./kg/drafts-store.js";
 
 // NEW-1 + DATA-7: memory_events.content 入库截断长度（足够保留上下文，避免无界增长）
 const MEMORY_CONTENT_MAX_CHARS = 8000;
@@ -2610,247 +2612,35 @@ export class KnowledgeGraphEngine {
     return out;
   }
 
-  // ============================================================================
-  // 草稿台 (drafts) CRUD —— 反思 #2 第三种状态：Ovo 准备好但没出手的 action
-  // ============================================================================
-
-  /**
-   * 添加一条草稿（inferred 但 evidence 验证未通过的 action 落这里）
-   */
-  addDraft(payload: {
-    id: string;
-    actionId: string;
-    actionType: string;
-    description: string;
-    params: Record<string, unknown>;
-    evidenceLevel: string;
-    evidence: string[];
-    groundingStatus: string;
-    groundingReason: string;
-    appName?: string;
-    windowTitle?: string;
-    pipelineId?: string;
-  }): void {
-    this.db.prepare(
-      `INSERT OR REPLACE INTO drafts
-       (id, created_at, pipeline_id, action_id, action_type, description, params,
-        evidence_level, evidence, grounding_status, grounding_reason,
-        app_name, window_title, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`
-    ).run(
-      payload.id,
-      Date.now(),
-      payload.pipelineId ?? null,
-      payload.actionId,
-      payload.actionType,
-      payload.description,
-      JSON.stringify(payload.params ?? {}),
-      payload.evidenceLevel,
-      JSON.stringify(payload.evidence ?? []),
-      payload.groundingStatus,
-      payload.groundingReason,
-      payload.appName ?? null,
-      payload.windowTitle ?? null
-    );
+  // ── 草稿台 + 反向校准：实现在 kg/drafts-store.ts，这里薄委托（调用方零改动）──
+  addDraft(payload: Parameters<typeof draftsStore.addDraft>[1]): void {
+    draftsStore.addDraft(this.db, payload);
   }
-
-  /**
-   * 列出最近 N 条仍 pending 的草稿（用于主面板"草稿台"展示）
-   */
-  listDrafts(limit = 20): Array<{
-    id: string;
-    createdAt: number;
-    actionId: string;
-    actionType: string;
-    description: string;
-    params: Record<string, unknown>;
-    evidenceLevel: string;
-    evidence: string[];
-    groundingStatus: string;
-    groundingReason: string;
-    appName?: string;
-    windowTitle?: string;
-    pipelineId?: string;
-  }> {
-    const rows = this.db.prepare(
-      `SELECT id, created_at, pipeline_id, action_id, action_type, description, params,
-              evidence_level, evidence, grounding_status, grounding_reason,
-              app_name, window_title
-         FROM drafts
-        WHERE status = 'pending'
-        ORDER BY created_at DESC
-        LIMIT ?`
-    ).all(limit) as Array<{
-      id: string; created_at: number; pipeline_id: string | null;
-      action_id: string; action_type: string; description: string;
-      params: string; evidence_level: string; evidence: string;
-      grounding_status: string; grounding_reason: string;
-      app_name: string | null; window_title: string | null;
-    }>;
-    return rows.map((r) => ({
-      id: r.id,
-      createdAt: r.created_at,
-      actionId: r.action_id,
-      actionType: r.action_type,
-      description: r.description,
-      params: ((): Record<string, unknown> => {
-        try { return JSON.parse(r.params ?? "{}") as Record<string, unknown>; } catch { return {}; }
-      })(),
-      evidenceLevel: r.evidence_level,
-      evidence: ((): string[] => {
-        try { return JSON.parse(r.evidence ?? "[]") as string[]; } catch { return []; }
-      })(),
-      groundingStatus: r.grounding_status,
-      groundingReason: r.grounding_reason,
-      appName: r.app_name ?? undefined,
-      windowTitle: r.window_title ?? undefined,
-      pipelineId: r.pipeline_id ?? undefined
-    }));
+  listDrafts(limit = 20): DraftRow[] {
+    return draftsStore.listDrafts(this.db, limit);
   }
-
-  /**
-   * 用户点"采用"：把草稿读出来后，调用方应再走 action-executor 真执行。
-   * 这里只负责把 status 标 promoted，不执行 action 本身。
-   */
-  promoteDraft(id: string): { ok: boolean; draft?: ReturnType<KnowledgeGraphEngine["listDrafts"]>[number] } {
-    const all = this.db.prepare(
-      `SELECT id, created_at, pipeline_id, action_id, action_type, description, params,
-              evidence_level, evidence, grounding_status, grounding_reason,
-              app_name, window_title
-         FROM drafts WHERE id = ? AND status = 'pending'`
-    ).get(id) as undefined | {
-      id: string; created_at: number; pipeline_id: string | null;
-      action_id: string; action_type: string; description: string;
-      params: string; evidence_level: string; evidence: string;
-      grounding_status: string; grounding_reason: string;
-      app_name: string | null; window_title: string | null;
-    };
-    if (!all) return { ok: false };
-    this.db.prepare("UPDATE drafts SET status = 'promoted' WHERE id = ?").run(id);
-    return {
-      ok: true,
-      draft: {
-        id: all.id,
-        createdAt: all.created_at,
-        actionId: all.action_id,
-        actionType: all.action_type,
-        description: all.description,
-        params: ((): Record<string, unknown> => {
-          try { return JSON.parse(all.params ?? "{}") as Record<string, unknown>; } catch { return {}; }
-        })(),
-        evidenceLevel: all.evidence_level,
-        evidence: ((): string[] => {
-          try { return JSON.parse(all.evidence ?? "[]") as string[]; } catch { return []; }
-        })(),
-        groundingStatus: all.grounding_status,
-        groundingReason: all.grounding_reason,
-        appName: all.app_name ?? undefined,
-        windowTitle: all.window_title ?? undefined,
-        pipelineId: all.pipeline_id ?? undefined
-      }
-    };
+  promoteDraft(id: string): { ok: boolean; draft?: DraftRow } {
+    return draftsStore.promoteDraft(this.db, id);
   }
-
-  /**
-   * 用户点"忽略"：标 dismissed。
-   * T8 反向校准：用户主动弃用一个 Ovo 准备好的草稿，是"你在这个场景夸大了 evidence"
-   * 的强信号 → bump evidence_inflation，让该场景下次合成更保守。
-   */
   dismissDraft(id: string): { ok: boolean } {
-    // 先取出草稿的 (app, action_type) 用于反向校准，再标 dismissed
-    const row = this.db.prepare(
-      "SELECT app_name, action_type FROM drafts WHERE id = ? AND status = 'pending'"
-    ).get(id) as { app_name: string | null; action_type: string | null } | undefined;
-    const r = this.db.prepare("UPDATE drafts SET status = 'dismissed' WHERE id = ? AND status = 'pending'").run(id);
-    if (r.changes > 0 && row) {
-      try {
-        this.bumpInflation({ appName: row.app_name ?? undefined, actionType: row.action_type ?? undefined });
-      } catch { /* 反向校准失败不阻断 dismiss */ }
-    }
-    return { ok: r.changes > 0 };
+    // dismiss 时回调 bumpInflation 做反向校准（T8）
+    return draftsStore.dismissDraft(this.db, id, (ctx) => this.bumpInflation(ctx));
   }
-
-  /**
-   * R5-2：把 promoted 的草稿退回 pending。
-   * 用于 send 类草稿 promote → 转待确认而非直执行的场景：promoteDraft 已先标 promoted，
-   * 但动作还没真执行（在等用户确认）。退回 pending 后，若用户忽略确认浮窗，草稿仍留在
-   * 草稿台不丢失（避免"孤儿草稿"）。
-   */
   revertDraft(id: string): { ok: boolean } {
-    const r = this.db.prepare("UPDATE drafts SET status = 'pending' WHERE id = ? AND status = 'promoted'").run(id);
-    return { ok: r.changes > 0 };
+    return draftsStore.revertDraft(this.db, id);
   }
-
-  /**
-   * 清理过期草稿（默认 7 天）—— 自动化运维，避免无限增长
-   */
-  expireOldDrafts(olderThanMs = 7 * 24 * 3600 * 1000): { expired: number } {
-    const cutoff = Date.now() - olderThanMs;
-    const r = this.db.prepare(
-      "UPDATE drafts SET status = 'expired' WHERE status = 'pending' AND created_at < ?"
-    ).run(cutoff);
-    return { expired: r.changes };
+  expireOldDrafts(olderThanMs?: number): { expired: number } {
+    return draftsStore.expireOldDrafts(this.db, olderThanMs);
   }
-
-  // ============================================================================
-  // 反向校准 evidence_inflation —— 反思 #2 / T8
-  //   用户拒绝（弃用草稿 / 取消 action）→ bump score；合成 prompt 在该场景注入保守提示。
-  //   score 在读取时按时间衰减（半衰期 7 天），用户行为变了就自我纠正。
-  // ============================================================================
-
-  /** 反向校准的衰减半衰期（毫秒）。7 天前的一次拒绝，权重衰减到一半。 */
-  private static readonly INFLATION_HALFLIFE_MS = 7 * 24 * 3600 * 1000;
-
-  /**
-   * 用户拒绝某 (app, action_type[, intent]) 组合时累加夸大分。
-   * 用 UPSERT：已存在则 score += delta 并刷新 last_at。
-   */
   bumpInflation(ctx: { appName?: string; actionType?: string; intent?: string }, delta = 1): void {
-    const app = ctx.appName ?? "";
-    const type = ctx.actionType ?? "";
-    const intent = ctx.intent ?? "";
-    // app + type 至少要有一个，否则这条校准毫无定位价值，跳过
-    if (!app && !type) return;
-    const now = Date.now();
-    this.db.prepare(
-      `INSERT INTO evidence_inflation (id, app_name, action_type, intent, score, last_at)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(app_name, action_type, intent)
-       DO UPDATE SET score = score + ?, last_at = ?`
-    ).run(this.id("infl"), app, type, intent, delta, now, delta, now);
+    draftsStore.bumpInflation(this.db, (p) => this.id(p), ctx, delta);
   }
-
-  /**
-   * 取出当前场景（app + intent）下、衰减后仍 >= threshold 的夸大记录。
-   * 返回给合成 prompt 用于注入"请保守"软约束。
-   */
   getInflationWarnings(
     ctx: { appName?: string; intent?: string },
     threshold = 3,
     limit = 5
   ): Array<{ appName: string; actionType: string; intent: string; effectiveScore: number }> {
-    const app = ctx.appName ?? "";
-    const intent = ctx.intent ?? "";
-    const rows = this.db.prepare(
-      `SELECT app_name, action_type, intent, score, last_at
-         FROM evidence_inflation
-        WHERE (app_name = ? OR app_name = '')
-          AND (intent = ? OR intent = '')`
-    ).all(app, intent) as Array<{
-      app_name: string; action_type: string; intent: string; score: number; last_at: number;
-    }>;
-    const now = Date.now();
-    const out: Array<{ appName: string; actionType: string; intent: string; effectiveScore: number }> = [];
-    for (const r of rows) {
-      const ageMs = Math.max(0, now - r.last_at);
-      const decay = Math.pow(0.5, ageMs / KnowledgeGraphEngine.INFLATION_HALFLIFE_MS);
-      const effectiveScore = r.score * decay;
-      if (effectiveScore >= threshold) {
-        out.push({ appName: r.app_name, actionType: r.action_type, intent: r.intent, effectiveScore });
-      }
-    }
-    out.sort((a, b) => b.effectiveScore - a.effectiveScore);
-    return out.slice(0, limit);
+    return draftsStore.getInflationWarnings(this.db, ctx, threshold, limit);
   }
 
   /** Close the database connection - should be called on app quit */
