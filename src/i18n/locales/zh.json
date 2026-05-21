@@ -1,0 +1,23 @@
+{
+  "nav": {
+    "overview": "现在",
+    "outputs": "产出",
+    "knowledge": "记忆",
+    "process": "回放",
+    "settings": "设置"
+  },
+  "navTip": {
+    "overview": "Ovo 此刻在看什么、想什么、有什么待办",
+    "outputs": "Ovo 替你做过和即将做的事：提醒 / 日历 / 笔记 / 草稿",
+    "knowledge": "Ovo 关于你形成的世界模型（实体 + 关系 + 画像）",
+    "process": "Ovo 过去做过的事 + 每条推理的完整因果链",
+    "settings": "信任分级 / 隐私 / AI 后端 / 外观"
+  },
+  "settings": {
+    "languageTitle": "语言",
+    "languageHint": "界面显示语言（中文 / English）",
+    "system": "跟随系统",
+    "zh": "中文",
+    "en": "English"
+  }
+}

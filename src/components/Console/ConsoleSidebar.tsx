@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import { Zap, BookOpen, Settings, History, Inbox } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { OvoLogo } from "../shared/OvoLogo";
 
 // UI-S1: 终态 5 tab——现在 / 产出 / 记忆 / 回放 / 设置
@@ -11,23 +12,21 @@ interface SidebarProps {
   onChange: (page: ConsolePage) => void;
 }
 
-// P1.5: 加 tooltip 解释每个 tab 是什么
+// P1.5: tooltip 解释每个 tab。i18n：label/tooltip 走 nav.<id> / navTip.<id> 翻译键
 interface Menu {
   id: ConsolePage;
-  label: string;
-  tooltip: string;
   icon: ComponentType<{ size?: number }>;
 }
 
 const allMenus: Menu[] = [
-  { id: "overview", label: "现在", tooltip: "Ovo 此刻在看什么、想什么、有什么待办", icon: Zap },
-  { id: "outputs", label: "产出", tooltip: "Ovo 替你做过和即将做的事：提醒 / 日历 / 笔记 / 草稿", icon: Inbox },
-  { id: "knowledge", label: "记忆", tooltip: "Ovo 关于你形成的世界模型（实体 + 关系 + 画像）", icon: BookOpen },
-  { id: "process", label: "回放", tooltip: "Ovo 过去做过的事 + 每条推理的完整因果链", icon: History },
+  { id: "overview", icon: Zap },
+  { id: "outputs", icon: Inbox },
+  { id: "knowledge", icon: BookOpen },
+  { id: "process", icon: History },
 ];
 
 const toolMenus: Menu[] = [
-  { id: "settings", label: "设置", tooltip: "信任分级 / 隐私 / AI 后端 / 外观", icon: Settings },
+  { id: "settings", icon: Settings },
 ];
 
 export function ConsoleSidebar({ page, onChange }: SidebarProps) {
@@ -67,12 +66,15 @@ interface SidebarItemProps {
 
 function SidebarItem({ menu, active, onClick }: SidebarItemProps) {
   const Icon = menu.icon;
+  const { t } = useTranslation();
+  const label = t(`nav.${menu.id}`);
+  const tooltip = t(`navTip.${menu.id}`);
   return (
     <button
       type="button"
       onClick={onClick}
-      title={menu.tooltip}
-      aria-label={`${menu.label} — ${menu.tooltip}`}
+      title={tooltip}
+      aria-label={`${label} — ${tooltip}`}
       className="group flex w-[60px] flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition-colors"
     >
       <span
@@ -91,7 +93,7 @@ function SidebarItem({ menu, active, onClick }: SidebarItemProps) {
             : "text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]"
         }`}
       >
-        {menu.label}
+        {label}
       </span>
     </button>
   );

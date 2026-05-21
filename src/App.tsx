@@ -5,6 +5,7 @@ import { SuggestionToastWindow } from "./components/SuggestionPanel/SuggestionTo
 import { ConsoleLayout } from "./components/Console/ConsoleLayout";
 import { useSettingsStore, getResolvedTheme } from "./stores/settingsStore";
 import { useNetworkWatcher } from "./hooks/useNetworkWatcher";
+import { applyLanguage } from "./i18n";
 
 const isElectron = typeof window !== "undefined" && !!window.ovoAPI;
 
@@ -20,6 +21,7 @@ function reportRendererError(message: string, context: Record<string, unknown>) 
 function App() {
   const [hash, setHash] = useState(() => window.location.hash || "#console");
   const theme = useSettingsStore((s) => s.theme);
+  const language = useSettingsStore((s) => s.language);
   const [mounted, setMounted] = useState(false);
   // T13 / M8: 监听 navigator.onLine 并上报到主进程（每个 renderer 上报一次足够）
   useNetworkWatcher();
@@ -64,6 +66,19 @@ function App() {
     document.documentElement.dataset.theme = resolved;
     setMounted(true);
   }, [theme]);
+
+  // i18n：同步语言到 i18next（含 system 解析）
+  useEffect(() => {
+    applyLanguage(language);
+  }, [language]);
+
+  // 监听系统语言变化（仅 language=system 时）
+  useEffect(() => {
+    if (language !== "system") return;
+    const handler = () => applyLanguage("system");
+    window.addEventListener("languagechange", handler);
+    return () => window.removeEventListener("languagechange", handler);
+  }, [language]);
 
   // 监听系统主题变化
   useEffect(() => {

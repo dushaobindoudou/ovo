@@ -1,0 +1,23 @@
+{
+  "nav": {
+    "overview": "Now",
+    "outputs": "Outputs",
+    "knowledge": "Memory",
+    "process": "Replay",
+    "settings": "Settings"
+  },
+  "navTip": {
+    "overview": "What Ovo is seeing, thinking, and has queued right now",
+    "outputs": "What Ovo did and will do for you: reminders / calendar / notes / drafts",
+    "knowledge": "Ovo's world model of you (entities + relations + profile)",
+    "process": "What Ovo has done + the full causal chain of each inference",
+    "settings": "Trust levels / privacy / AI backend / appearance"
+  },
+  "settings": {
+    "languageTitle": "Language",
+    "languageHint": "Interface display language (中文 / English)",
+    "system": "Follow system",
+    "zh": "中文",
+    "en": "English"
+  }
+}

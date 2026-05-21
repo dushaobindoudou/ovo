@@ -2,9 +2,12 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 export type ThemeMode = "light" | "dark" | "system";
+export type AppLanguage = "zh" | "en" | "system";
 
 export interface SettingsState {
   theme: ThemeMode;
+  /** 界面语言：zh / en / system（跟随系统 locale）。i18n P0。 */
+  language: AppLanguage;
   captureInterval: number;
   agentInterval: number;
   monitoredWindows: string[];
@@ -22,6 +25,7 @@ export interface SettingsState {
   /** R9: 开发者模式——关闭时藏起 流水线 tab + 系统/业务日志 + Prompt 自评，给非技术用户更干净 */
   developerMode: boolean;
   setTheme: (theme: ThemeMode) => void;
+  setLanguage: (language: AppLanguage) => void;
   setCaptureInterval: (seconds: number) => void;
   setAgentInterval: (seconds: number) => void;
   setMonitoredWindows: (keys: string[]) => void;
@@ -49,6 +53,7 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       theme: "system",
+      language: "system",
       captureInterval: 5,
       agentInterval: 5,
       monitoredWindows: [],
@@ -69,6 +74,7 @@ export const useSettingsStore = create<SettingsState>()(
       healthCheckInterval: 60,
       developerMode: false,
       setTheme: (theme) => set({ theme }),
+      setLanguage: (language) => set({ language }),
       setCaptureInterval: (captureInterval) => set({ captureInterval }),
       setAgentInterval: (agentInterval) => set({ agentInterval }),
       setMonitoredWindows: (monitoredWindows) => set({ monitoredWindows }),

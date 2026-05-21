@@ -8,7 +8,8 @@ import { Select } from "../shared/Select";
 import { Toggle } from "../shared/Toggle";
 import { Input } from "../shared/Input";
 import { GlowButton } from "../shared/GlowButton";
-import { useSettingsStore, type ThemeMode } from "../../stores/settingsStore";
+import { useTranslation } from "react-i18next";
+import { useSettingsStore, type ThemeMode, type AppLanguage } from "../../stores/settingsStore";
 import { useAgentBridge } from "../../hooks/useAgentBridge";
 import { useCapture } from "../../hooks/useCapture";
 import { useHealth } from "../../hooks/useHealth";
@@ -23,8 +24,10 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
     healthCheckInterval, setHealthCheckInterval,
     apiBaseUrl, apiKey, apiModel, setApiBaseUrl, setApiKey, setApiModel,
     toastVerbosity, setToastVerbosity,
-    developerMode, setDeveloperMode
+    developerMode, setDeveloperMode,
+    language, setLanguage
   } = useSettingsStore();
+  const { t } = useTranslation();
   const { setBackend, setApiConfig } = useAgentBridge();
   const {
     takeScreenshot,
@@ -119,6 +122,17 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
                   <option value="light">浅色</option>
                   <option value="dark">暗黑</option>
                   <option value="system">跟随系统</option>
+                </Select>
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">{t("settings.languageTitle")}</p>
+                  <p className="text-xs text-[var(--text-secondary)]">{t("settings.languageHint")}</p>
+                </div>
+                <Select value={language} onChange={(e) => setLanguage(e.target.value as AppLanguage)}>
+                  <option value="system">{t("settings.system")}</option>
+                  <option value="zh">{t("settings.zh")}</option>
+                  <option value="en">{t("settings.en")}</option>
                 </Select>
               </div>
             </div>
