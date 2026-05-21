@@ -10,6 +10,7 @@
  * 砍掉：原来的 NowView/FeedView/WindowsView/HealthView 4 sub-view
  */
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { Sparkles, Pause, Play, Eye, ChevronDown, ChevronUp, Camera, Brain, Compass, Trash2 } from "lucide-react";
 import { Card } from "../shared/Card";
 import { GlowButton } from "../shared/GlowButton";
@@ -21,11 +22,12 @@ import { sanitizeForDisplay } from "../../utils/sanitizeText";
 
 const isElectron = typeof window !== "undefined" && !!window.ovoAPI;
 
-const FREQ_LABEL: Record<string, string> = {
-  daily: "每天",
-  weekly: "每周",
-  "event-driven": "触发式",
-  "one-shot": "一次"
+// 频率 label 走 i18n（overview.freq*）；仅保留排序优先级映射
+const FREQ_I18N_KEY: Record<string, string> = {
+  daily: "overview.freqDaily",
+  weekly: "overview.freqWeekly",
+  "event-driven": "overview.freqEventDriven",
+  "one-shot": "overview.freqOneShot"
 };
 const FREQ_PRIORITY: Record<string, number> = {
   daily: 1.0, weekly: 0.9, "event-driven": 0.8, "one-shot": 0.7
@@ -59,21 +61,8 @@ interface DraftEntry {
   appName?: string;
 }
 
-const ACTION_TYPE_LABEL: Record<string, string> = {
-  log_note: "记笔记",
-  create_todo: "建待办",
-  copy_to_clipboard: "复制",
-  set_reminder: "设提醒",
-  add_calendar: "加日历",
-  send_email: "发邮件",
-  send_imessage: "发消息",
-  open_url: "打开链接",
-  search_web: "搜索",
-  summarize: "总结",
-  other: "动作"
-};
-
 export function OverviewPanel({ ctx }: OverviewPanelProps) {
+  const { t } = useTranslation();
   const { latest, history } = useInsights();
   const { active } = useWindowStore();
   const { refresh } = useWindows();
@@ -149,7 +138,7 @@ export function OverviewPanel({ ctx }: OverviewPanelProps) {
         setCompletedActions((prev) => [
           {
             actionId: id,
-            description: item.action.description ?? "动作",
+            description: item.action.description ?? t("actionType.other"),
             status: result.status as "success" | "failed",
             error: result.error,
             completedAt: Date.now()
@@ -164,7 +153,7 @@ export function OverviewPanel({ ctx }: OverviewPanelProps) {
         return next;
       });
     }
-  }, [actionBusy, confirmAction]);
+  }, [actionBusy, confirmAction, t]);
 
   // A: 完成态条带 30s 后自动清除
   useEffect(() => {
@@ -295,7 +284,7 @@ export function OverviewPanel({ ctx }: OverviewPanelProps) {
             <span className="inline-flex items-center gap-1">
               <span>·</span>
               <Brain size={11} />
-              {latest.intent ? "已理解" : "已推断"}
+              {latest.intent ? t("overview.understood") : t("overview.inferred")}
             </span>
           )}
           {totalPending > 0 && (
@@ -315,14 +304,14 @@ export function OverviewPanel({ ctx }: OverviewPanelProps) {
       {totalPending > 0 && (
         <Card>
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-sm font-semibold">等你处理（{totalPending}）</p>
+            <p className="text-sm font-semibold">{t("overview.pendingTitle", { n: totalPending })}</p>
             {totalPending > 3 && (
               <button
                 type="button"
                 onClick={() => setShowAllPending(!showAllPending)}
                 className="text-xs text-[var(--text-muted)] hover:text-[var(--accent)]"
               >
-                {showAllPending ? "收起" : "展开全部"}
+                {showAllPending ? t("overview.collapse") : t("overview.expandAll")}
                 {showAllPending ? <ChevronUp size={11} className="inline ml-0.5" /> : <ChevronDown size={11} className="inline ml-0.5" />}
               </button>
             )}
@@ -335,7 +324,7 @@ export function OverviewPanel({ ctx }: OverviewPanelProps) {
               const err = actionError.get(item.action.id);
               return (
                 <div key={item.action.id} className="rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-2.5">
-                  <p className="text-sm font-medium">{sanitizeForDisplay(item.action.description, "（动作描述含代码，已隐藏）", 200)}</p>
+                  <p className="text-sm font-medium">{sanitizeForDisplay(item.action.description, t("overview.descCodeHidden"), 200)}</p>
                   {err && (
                     <p className="mt-1.5 rounded bg-[var(--danger)]/10 px-2 py-1 text-[11px] text-[var(--danger)]">
                       ⚠ {err}
@@ -347,7 +336,7 @@ export function OverviewPanel({ ctx }: OverviewPanelProps) {
                       disabled={busy}
                       onClick={() => void handleConfirmAction(item)}
                     >
-                      {busy ? "执行中…" : "确认执行"}
+                      {busy ? t("overview.executing") : t("overview.confirmExecute")}
                     </GlowButton>
                     <button
                       type="button"
@@ -366,12 +355,12 @@ export function OverviewPanel({ ctx }: OverviewPanelProps) {
             {visibleOffers.slice(0, showAllPending ? undefined : Math.max(0, 3 - pending.length)).map((offer) => (
               <div key={offer.id} className="rounded-lg border border-[var(--border)] bg-[var(--bg-card-hover)] p-2.5">
                 <div className="mb-1 flex items-start justify-between gap-2">
-                  <p className="text-sm font-medium leading-snug">★ {sanitizeForDisplay(offer.title, "（offer 标题含代码）", 80)}</p>
+                  <p className="text-sm font-medium leading-snug">★ {sanitizeForDisplay(offer.title, t("overview.offerTitleCodeHidden"), 80)}</p>
                   <span className="shrink-0 rounded bg-[var(--bg-base)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
-                    {FREQ_LABEL[offer.frequency] ?? offer.frequency}
+                    {t(FREQ_I18N_KEY[offer.frequency] ?? "", offer.frequency)}
                   </span>
                 </div>
-                <p className="text-xs text-[var(--text-secondary)]">{sanitizeForDisplay(offer.value_prop, "（offer 详情已隐藏）", 200)}</p>
+                <p className="text-xs text-[var(--text-secondary)]">{sanitizeForDisplay(offer.value_prop, t("overview.offerDetailHidden"), 200)}</p>
                 {offer.first_action_preview && (
                   <p className="mt-1 text-[11px] text-[var(--text-muted)]">▸ {sanitizeForDisplay(offer.first_action_preview, "", 160)}</p>
                 )}
@@ -379,12 +368,12 @@ export function OverviewPanel({ ctx }: OverviewPanelProps) {
                   <GlowButton
                     className="!text-xs !py-1"
                     onClick={() => reactOffer(offer.id, "accepted", offer)}
-                  >要</GlowButton>
+                  >{t("overview.want")}</GlowButton>
                   <button
                     type="button"
                     className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs text-[var(--text-secondary)]"
                     onClick={() => reactOffer(offer.id, "rejected", offer)}
-                  >不要</button>
+                  >{t("overview.dontWant")}</button>
                 </div>
               </div>
             ))}
@@ -395,7 +384,7 @@ export function OverviewPanel({ ctx }: OverviewPanelProps) {
       {/* ────────── A: 刚完成的动作（30s 内自动消失，给用户"已完成 + 查看详情"反馈） ────────── */}
       {completedActions.length > 0 && (
         <Card>
-          <p className="mb-2 text-[11px] uppercase tracking-wider text-[var(--text-muted)]">刚完成</p>
+          <p className="mb-2 text-[11px] uppercase tracking-wider text-[var(--text-muted)]">{t("overview.justDone")}</p>
           <div className="space-y-1.5">
             {completedActions.map((entry) => (
               <div
@@ -408,7 +397,7 @@ export function OverviewPanel({ ctx }: OverviewPanelProps) {
               >
                 <div className="min-w-0 flex-1">
                   <p className={`font-medium ${entry.status === "success" ? "text-[var(--accent)]" : "text-[var(--danger)]"}`}>
-                    {entry.status === "success" ? "✓ 已完成" : "✗ 没做成"}
+                    {entry.status === "success" ? t("overview.done") : t("overview.failed")}
                     <span className="ml-2 font-normal text-[var(--text-primary)]">{entry.description}</span>
                   </p>
                   {entry.error && (
@@ -434,8 +423,8 @@ export function OverviewPanel({ ctx }: OverviewPanelProps) {
       {drafts.length > 0 && (
         <Card>
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-sm font-semibold">Ovo 准备了，你来定（{drafts.length}）</p>
-            <span className="text-[11px] text-[var(--text-muted)]">没证据自动执行 → 等你确认</span>
+            <p className="text-sm font-semibold">{t("overview.draftsTitle", { n: drafts.length })}</p>
+            <span className="text-[11px] text-[var(--text-muted)]">{t("overview.draftsSubtitle")}</span>
           </div>
           <div className="space-y-1.5">
             {drafts.slice(0, 5).map((d) => {
@@ -449,15 +438,15 @@ export function OverviewPanel({ ctx }: OverviewPanelProps) {
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-[var(--text-primary)]">
                         <span className="mr-2 rounded bg-[var(--bg-base)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
-                          {ACTION_TYPE_LABEL[d.actionType] ?? d.actionType}
+                          {t(`actionType.${d.actionType}`, d.actionType)}
                         </span>
-                        {sanitizeForDisplay(d.description, "（动作描述含代码）", 160)}
+                        {sanitizeForDisplay(d.description, t("overview.draftDescCodeHidden"), 160)}
                       </p>
                       {d.evidence.length > 0 && (
                         <ul className="mt-1 space-y-0.5">
                           {d.evidence.slice(0, 2).map((ev, i) => (
                             <li key={i} className="text-[11px] text-[var(--text-secondary)]">
-                              · {sanitizeForDisplay(ev, "（含代码）", 100)}
+                              · {sanitizeForDisplay(ev, t("overview.evidenceCodeHidden"), 100)}
                             </li>
                           ))}
                         </ul>
@@ -471,7 +460,7 @@ export function OverviewPanel({ ctx }: OverviewPanelProps) {
                       disabled={busy}
                       onClick={() => void handleDraftPromote(d.id)}
                     >
-                      {busy ? "执行中…" : "采用并执行"}
+                      {busy ? t("overview.executing") : t("overview.adoptExecute")}
                     </GlowButton>
                     <button
                       type="button"
