@@ -20,11 +20,44 @@ import { app, safeStorage } from "electron";
 interface SecretsFile {
   apiBaseUrl?: string;
   apiModel?: string;
-  /** safeStorage.encryptString 输出的 Buffer，base64 编码后落盘 */
+  /** safeStorage.encryptString 输出的 Buffer，base64 编码后落盘（real 加密模式） */
   apiKeyCipher?: string;
+  /** 明文模式（dev / 未签名构建）下的 API key。仅在本机 dev 场景使用 */
+  apiKeyPlain?: string;
 }
 
 const FILE_NAME = "secrets.json";
+
+/**
+ * 是否启用真正的钥匙串加密。
+ *
+ * 背景（用户反馈 2026-05-21）：macOS 上 safeStorage 每次访问 "ovo Safe Storage"
+ * 钥匙串项都可能弹窗要密码。dev 构建 / 未签名打包构建的代码签名不稳定，钥匙串的
+ * "始终允许" 授权存不住，于是**每次启动反复弹窗**，严重打断开发。
+ *
+ * 取舍：
+ *   - 已签名的正式打包构建 → 用钥匙串加密（弹一次，始终允许后不再弹），at-rest 安全
+ *   - dev / 未打包 → 明文模式，完全不碰钥匙串 → 不弹窗（dev 机器是开发者自己的，可接受）
+ *   - 逃生开关：OVO_DISABLE_KEYCHAIN=1 强制明文；OVO_FORCE_ENCRYPTION=1 强制加密
+ *
+ * 结果缓存——一次决策，避免重复 isEncryptionAvailable() 调用。
+ */
+let cachedRealEncryption: boolean | null = null;
+function keychainEncryptionEnabled(): boolean {
+  if (cachedRealEncryption !== null) return cachedRealEncryption;
+  if (process.env.OVO_DISABLE_KEYCHAIN === "1") { cachedRealEncryption = false; return false; }
+  if (process.env.OVO_FORCE_ENCRYPTION === "1") { cachedRealEncryption = true; return true; }
+  let decided = false;
+  try {
+    // app.isPackaged：dev / electron 直跑时为 false → 明文，不弹窗。
+    // isEncryptionAvailable()：仅探测框架是否可用，本身不弹窗（弹窗来自 encrypt/decrypt）。
+    decided = app.isPackaged && safeStorage.isEncryptionAvailable();
+  } catch {
+    decided = false;
+  }
+  cachedRealEncryption = decided;
+  return decided;
+}
 
 function filePath() {
   return path.join(app.getPath("userData"), FILE_NAME);
@@ -46,20 +79,19 @@ function writeRaw(data: SecretsFile) {
 }
 
 export const secretsStore = {
-  /** 系统是否能加密存储（safeStorage 可用） */
+  /** 系统是否能加密存储（钥匙串可用且当前为加密模式） */
   isEncryptionAvailable(): boolean {
-    try {
-      return safeStorage.isEncryptionAvailable();
-    } catch {
-      return false;
-    }
+    return keychainEncryptionEnabled();
   },
 
   /** 拿 API key 明文。**只在主进程内部调用**，绝不能通过 IPC 暴露给 renderer */
   getApiKey(): string | null {
     const data = readRaw();
+    if (!keychainEncryptionEnabled()) {
+      // 明文模式：直接读 apiKeyPlain（不碰钥匙串，不弹窗）
+      return data.apiKeyPlain ?? null;
+    }
     if (!data.apiKeyCipher) return null;
-    if (!this.isEncryptionAvailable()) return null;
     try {
       const buf = Buffer.from(data.apiKeyCipher, "base64");
       return safeStorage.decryptString(buf);
@@ -68,13 +100,20 @@ export const secretsStore = {
     }
   },
 
-  /** 写入 API key。renderer 可调（一次性 setter）；写入后 cipher 落盘 */
+  /** 写入 API key。renderer 可调（一次性 setter）；按当前模式落盘 */
   setApiKey(key: string): boolean {
-    if (!this.isEncryptionAvailable()) return false;
+    const data = readRaw();
+    if (!keychainEncryptionEnabled()) {
+      // 明文模式：存 apiKeyPlain，清掉残留 cipher 避免歧义
+      data.apiKeyPlain = key;
+      delete data.apiKeyCipher;
+      writeRaw(data);
+      return true;
+    }
     try {
       const buf = safeStorage.encryptString(key);
-      const data = readRaw();
       data.apiKeyCipher = buf.toString("base64");
+      delete data.apiKeyPlain;
       writeRaw(data);
       return true;
     } catch {
@@ -86,13 +125,15 @@ export const secretsStore = {
   clearApiKey(): boolean {
     const data = readRaw();
     delete data.apiKeyCipher;
+    delete data.apiKeyPlain;
     writeRaw(data);
     return true;
   },
 
   /** 是否已配置 key（不返回明文） */
   hasApiKey(): boolean {
-    return !!readRaw().apiKeyCipher;
+    const data = readRaw();
+    return !!(data.apiKeyCipher || data.apiKeyPlain);
   },
 
   /** 给 renderer 的"masked"展示：sk-xxx****abc */
@@ -133,7 +174,7 @@ export const secretsStore = {
    */
   encryptField(plain: string): string {
     if (!plain) return plain;
-    if (!this.isEncryptionAvailable()) return plain; // 失败兜底：保持原状不入加密
+    if (!keychainEncryptionEnabled()) return plain; // 明文模式：原样落盘，不碰钥匙串
     try {
       const buf = safeStorage.encryptString(plain);
       return `enc:v1:${buf.toString("base64")}`;
@@ -144,8 +185,10 @@ export const secretsStore = {
 
   decryptField(stored: string): string {
     if (!stored) return stored;
-    if (!stored.startsWith("enc:v1:")) return stored; // 老数据明文，直接返回
-    if (!this.isEncryptionAvailable()) return "[无法解密：safeStorage 不可用]";
+    if (!stored.startsWith("enc:v1:")) return stored; // 老数据/明文模式写入的原文，直接返回
+    // 明文模式下遇到历史 enc:v1: 数据：不调用 safeStorage（否则又弹窗），返回占位。
+    // 这些通常是之前在加密模式下写的 OCR 历史，dev 下不可读可接受。
+    if (!keychainEncryptionEnabled()) return "[加密历史数据：当前为明文模式，不解密]";
     try {
       const buf = Buffer.from(stored.slice(7), "base64");
       return safeStorage.decryptString(buf);
