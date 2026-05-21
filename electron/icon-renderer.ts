@@ -109,6 +109,21 @@ function insideStroke(x: number, y: number, p1: [number, number], p2: [number, n
 }
 
 /**
+ * 通道修复：nativeImage.createFromBuffer 在 macOS 把原始 buffer 当 **BGRA** 解析，
+ * 而本文件按直觉的 RGBA 填充。不交换的话 systemBlue(0,122,255) 会显示成橙(255,122,0)、
+ * navy 显示成棕——这正是"图标色调跟主界面不一致"的真因（2026-05-21 修）。
+ * 写入图像前原地交换每像素的 R/B 字节。
+ */
+function rgbaToBGRA(buf: Buffer): Buffer {
+  for (let i = 0; i + 3 < buf.length; i += 4) {
+    const r = buf[i];
+    buf[i] = buf[i + 2];
+    buf[i + 2] = r;
+  }
+  return buf;
+}
+
+/**
  * 应用图标（dock/dmg/about）。size 推荐 512 或 1024。
  * 渲染开销：512 约 200ms，1024 约 800ms。仅启动时调一次。
  */
@@ -184,7 +199,7 @@ export function renderAppIcon(size: number): NativeImage {
   fillAA(buf, size, size, COLOR.v, (x, y) => insideStroke(x, y, p1, p2, vw), segBbox(p1, p2));
   fillAA(buf, size, size, COLOR.v, (x, y) => insideStroke(x, y, p2, p3, vw), segBbox(p2, p3));
 
-  return nativeImage.createFromBuffer(buf, { width: size, height: size });
+  return nativeImage.createFromBuffer(rgbaToBGRA(buf), { width: size, height: size });
 }
 
 /**
@@ -218,7 +233,7 @@ export function renderTrayIcon(): NativeImage {
     return buf;
   };
 
-  const img = nativeImage.createFromBuffer(make(baseSize), { width: baseSize, height: baseSize });
+  const img = nativeImage.createFromBuffer(rgbaToBGRA(make(baseSize)), { width: baseSize, height: baseSize });
   // 加 retina 表示，让 retina 显示器下不模糊
   try {
     img.addRepresentation({

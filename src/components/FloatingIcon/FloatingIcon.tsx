@@ -26,19 +26,20 @@ type Visual = "idle" | "thinking" | "generating" | "alert" | "error" | "has_sugg
 //   不解析 CSS var()（只有 style 属性会）。这里的 hex 值必须与 src/index.css :root 的
 //   --state-* / --info / --warning / --danger CSS 变量保持一致，是品牌色板的"SVG 镜像"。
 //
-//   归一映射：
-//     idle           → --state-idle           (#8e8e93 -> 这里 #34d399 保留视觉柔和度)
-//     has_suggestion → 青色 (新增 P1.15)
-//     thinking       → --state-thinking       (#5856d6)
-//     generating     → --warning              (#ff9500 / #fbbf24 视觉等效)
-//     alert / error  → --danger               (#ff3b30 / #ef4444 视觉等效)
+//   归一映射（2026-05-21 品牌统一：静息/识别态 → systemBlue，与主界面 --accent
+//   #007aff/#0a84ff + 应用图标同源；仅保留"功能性状态色"以传达语义）：
+//     idle           → systemBlue (#0a84ff)  ← 品牌主色，与主界面/图标一致
+//     has_suggestion → systemBlue 偏亮 (#409cff) ← 同色系，仅亮度区分"有新建议"
+//     thinking       → --state-thinking       (#5856d6 systemIndigo，工作中的语义信号)
+//     generating     → --warning              (#ff9500，生成中的语义信号)
+//     alert / error  → --danger               (#ff3b30，警告/错误必须红，不可统一为蓝)
 //
 //   暗色 mode 视觉差异已通过 :root[data-theme="dark"] 在 index.css 处理（state-* 自动切换）；
 //   FloatingIcon 自身是独立 BrowserWindow 也继承 data-theme，未来重构时把 hex → useEffect+
 //   getComputedStyle 读 CSS var 即可完全归一（性能开销 < 1ms 不值得引入 useState 复杂度）
 const PALETTE: Record<Visual, { glow: string; ring: string; accent: string; cycle: number }> = {
-  idle:           { glow: "#34d399", ring: "#34d39966", accent: "#34d399", cycle: 3.0 },
-  has_suggestion: { glow: "#06b6d4", ring: "#06b6d499", accent: "#06b6d4", cycle: 2.0 },
+  idle:           { glow: "#0a84ff", ring: "#0a84ff66", accent: "#0a84ff", cycle: 3.0 },
+  has_suggestion: { glow: "#409cff", ring: "#409cff99", accent: "#409cff", cycle: 2.0 },
   thinking:       { glow: "#5856d6", ring: "#5856d666", accent: "#7c7be0", cycle: 1.4 },
   generating:     { glow: "#ff9500", ring: "#ff950066", accent: "#ff9500", cycle: 0.55 },
   alert:          { glow: "#ff3b30", ring: "#ff3b3099", accent: "#ff3b30", cycle: 0.7 },
