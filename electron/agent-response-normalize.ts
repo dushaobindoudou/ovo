@@ -382,17 +382,19 @@ export function normalizeAgentPayload(raw: string): { parsed: AgentParsedPayload
     parsed.content = [raw.slice(0, 4000)];
   }
 
-  // 强制 actions ≥ 1：LLM 没出动作时本地兜底一条 log_note
+  // 强制 actions ≥ 1：LLM 没出动作时本地兜底
+  // CODE-17 修复：原来兜底 log_note 会写入 memory_events 污染 KG（每帧重复"归档当前屏幕活动"）。
+  // 现在改成兜底 "other" + noKgWrite — UI 显示但不写库，让 LLM 真正想做事时才写。
   if (parsed.actions.length === 0) {
     parsed.actions.push({
-      id: `log_${Date.now().toString(36)}`,
-      type: "log_note",
-      description: "归档当前屏幕活动到知识库（自动兜底）",
-      params: { auto: true, reason: "llm_returned_empty_actions" },
+      id: `skip_${Date.now().toString(36)}`,
+      type: "other",
+      description: "此刻无可执行的具体动作（Ovo 选择沉默）",
+      params: { auto: true, reason: "llm_returned_empty_actions", noKgWrite: true },
       requireConfirm: false,
-      priority: 5
+      priority: 1
     });
-    meta.notes.push("autofill: log_note");
+    meta.notes.push("autofill: skip");
   }
 
   return { parsed, meta };

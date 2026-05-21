@@ -16,15 +16,18 @@ const prompt =
 async function run() {
   const bridge = new AgentBridge();
 
-  const apiBaseUrl = process.env.OVO_API_BASE_URL;
-  const apiKey = process.env.OVO_API_KEY;
-  const apiModel = process.env.OVO_API_MODEL;
-  if (apiBaseUrl && apiKey && apiModel) {
-    bridge.setApiConfig({ baseUrl: apiBaseUrl, key: apiKey, model: apiModel });
+  // SEC-4 后 AgentBridge 不再支持运行时 API 注入（key 走 safeStorage / secrets-store，
+  // Node 冒烟脚本拿不到 Electron 加密通道）。这里只覆盖本地 CLI 后端。
+  if (process.env.OVO_API_BASE_URL || process.env.OVO_API_KEY || process.env.OVO_API_MODEL) {
+    console.warn(
+      "[smoke] OVO_API_* 已不支持（SEC-4: key 走 safeStorage）。API backend 将被 SKIP。"
+    );
   }
 
   const available = await bridge.detectAvailableBackends();
-  const all: Backend[] = ["claude-code", "openclaw", "hermes", "api"];
+  // 测试顺序：把 hermes 放首位，与生产默认偏好保持一致；
+  // 其余 backend 作为对比/回归覆盖。
+  const all: Backend[] = ["hermes", "claude-code", "openclaw", "api"];
   const results: SmokeResult[] = [];
 
   for (const backend of all) {

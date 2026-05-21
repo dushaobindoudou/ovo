@@ -4,14 +4,14 @@
  * 从 OCR 结果后开始，模拟真实用户场景，调用真实 LLM，验证完整日志输出
  *
  * 使用方式:
- *   # 方式1: 使用 Claude Code CLI (需要安装)
+ *   # 推荐：使用 hermes CLI（默认优先后端）
  *   pnpm test:e2e:scenarios
  *
- *   # 方式2: 使用 API (需要设置环境变量)
- *   OVO_API_BASE_URL=https://api.anthropic.com \
- *   OVO_API_KEY=sk-... \
- *   OVO_API_MODEL=claude-sonnet-4-20250514 \
- *   pnpm test:e2e:scenarios
+ *   # 也可：使用 claude / openclaw CLI（任一在 PATH 中可用即可）
+ *
+ *   # 注意：OVO_API_* 环境变量在本脚本中已不再支持。
+ *   # SEC-4 后，API key 走 Electron safeStorage / secrets-store 落盘，
+ *   # Node 脚本无法注入。请通过 Electron 应用 UI 配置 API 后端。
  */
 import path from "node:path";
 import { KnowledgeGraphEngine } from "../electron/knowledge-graph.js";
@@ -282,41 +282,34 @@ async function main() {
   const suggestionEngine = new SuggestionEngine();
   const actionExecutor = new ActionExecutor(agentBridge);
 
-  // 配置 API
-  const apiBaseUrl = process.env.OVO_API_BASE_URL;
-  const apiKey = process.env.OVO_API_KEY;
-  const apiModel = process.env.OVO_API_MODEL;
-
-  if (apiBaseUrl && apiKey && apiModel) {
-    agentBridge.setApiConfig({ baseUrl: apiBaseUrl, key: apiKey, model: apiModel });
-    console.log("使用 API 模式");
-  } else {
-    // 尝试检测可用的后端
-    const available = await agentBridge.detectAvailableBackends();
-    console.log(`可用的后端: ${available.join(", ") || "无"}`);
-
-    const preferred = available.includes("claude-code")
-      ? "claude-code"
-      : available.includes("hermes")
-        ? "hermes"
-        : available.includes("openclaw")
-          ? "openclaw"
-          : null;
-
-    if (!preferred) {
-      console.error("❌ 没有可用的 LLM 后端，请配置 API 密钥");
-      console.log("\n配置方式:");
-      console.log("  方式1: 设置环境变量");
-      console.log("    export OVO_API_BASE_URL=https://api.anthropic.com");
-      console.log("    export OVO_API_KEY=sk-...");
-      console.log("    export OVO_API_MODEL=claude-sonnet-4-20250514");
-      console.log("  方式2: 安装 Claude Code CLI");
-      process.exit(1);
-    }
-
-    agentBridge.setPreferredBackend(preferred);
-    console.log(`使用后端: ${preferred}`);
+  // SEC-4 后 AgentBridge 不再接受运行时 API key 注入（key 走 safeStorage / secrets-store，
+  // Node 脚本无法走 Electron 加密通道）。这里只跑本地 CLI 后端：优先 hermes，
+  // 退化到 claude-code / openclaw。
+  if (process.env.OVO_API_BASE_URL || process.env.OVO_API_KEY || process.env.OVO_API_MODEL) {
+    console.warn(
+      "⚠️  OVO_API_* 环境变量在本脚本已不支持（SEC-4: key 走 safeStorage）。改用本地 CLI 后端。"
+    );
   }
+
+  const available = await agentBridge.detectAvailableBackends();
+  console.log(`可用的本地后端: ${available.join(", ") || "无"}`);
+
+  // 与 electron/ipc/agent.ts 一致：优先 hermes。
+  const preferred = available.includes("hermes")
+    ? "hermes"
+    : available.includes("claude-code")
+      ? "claude-code"
+      : available.includes("openclaw")
+        ? "openclaw"
+        : null;
+
+  if (!preferred) {
+    console.error("❌ 没有可用的本地 Agent CLI。请安装 hermes（推荐）或 claude / openclaw。");
+    process.exit(1);
+  }
+
+  agentBridge.setPreferredBackend(preferred);
+  console.log(`使用后端: ${preferred}`);
 
   logger.info("test:e2e", "开始 3 场景测试", { scenarios: SCENARIOS.map(s => s.name) });
 

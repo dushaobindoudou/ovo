@@ -135,10 +135,12 @@ export async function runVerifyRealLogs() {
   });
 
   const available = await agentBridge.detectAvailableBackends();
-  const preferred = available.includes("claude-code")
-    ? "claude-code"
-    : available.includes("hermes")
-      ? "hermes"
+  // 与 electron/ipc/agent.ts 默认保持一致：优先 hermes（稳定性 / 不踩 401/403），
+  // claude-code / openclaw 作为 fallback。
+  const preferred = available.includes("hermes")
+    ? "hermes"
+    : available.includes("claude-code")
+      ? "claude-code"
       : available.includes("openclaw")
         ? "openclaw"
         : null;

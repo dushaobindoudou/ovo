@@ -46,6 +46,8 @@ interface AgentRequest {
 export class AgentBridge {
   private available: AgentBackend[] = [];
   private preferred: AgentBackend | null = null;
+  // SEC-13: backend → 已解析的可信绝对路径；执行时用绝对路径而非 cmd 名字，避免 PATH 污染
+  private resolvedBinaries = new Map<AgentBackend, string>();
   // SEC-4: 不再在内存里存 API key 明文。baseUrl / model 走 secrets-store 落盘（不敏感不加密），
   // key 通过 secrets-store.getApiKey() 在调用时按需读取（safeStorage 解密），用完即弃。
   // 这样即便主进程内存被 dump，也只看到 baseUrl + model，不会泄露 key。
@@ -57,17 +59,37 @@ export class AgentBridge {
   private lastError: string | null = null;
 
   async detectAvailableBackends() {
+    // 用户反馈：claude CLI 报错堆积日志噪音。把 hermes 放检测顺序首位 →
+    // pickBackend() 在没显式 preferred 时取 available[0]，即默认走 hermes。
+    // claude / openclaw 仍作 fallback。
     const checks: Array<{ backend: AgentBackend; cmd: string }> = [
+      { backend: "hermes", cmd: "hermes" },
       { backend: "claude-code", cmd: "claude" },
-      { backend: "openclaw", cmd: "openclaw" },
-      { backend: "hermes", cmd: "hermes" }
+      { backend: "openclaw", cmd: "openclaw" }
     ];
     const available: AgentBackend[] = [];
     const env = execEnv();
+    // SEC-13: 解析二进制绝对路径并缓存，避免后续每次 execa 走 PATH 查找被劫持
+    this.resolvedBinaries.clear();
     for (const check of checks) {
       try {
-        await execa("which", [check.cmd], { env });
-        available.push(check.backend);
+        const { stdout } = await execa("which", [check.cmd], { env });
+        const resolvedPath = stdout.trim().split("\n")[0];
+        // 只接受 /usr/* /opt/* /Applications/* /Users/<x>/.local/bin/* /Users/<x>/.cargo/bin/* 等可信前缀
+        // 拒绝 /tmp /private/tmp /var 等容易被植入的位置
+        const TRUSTED_PREFIXES = ["/usr/", "/opt/", "/Applications/"];
+        const homeBin = `${process.env.HOME ?? ""}/`;
+        const isTrustedHome = homeBin.length > 1 && resolvedPath.startsWith(homeBin);
+        const isTrustedSystem = TRUSTED_PREFIXES.some((p) => resolvedPath.startsWith(p));
+        if (resolvedPath && (isTrustedSystem || isTrustedHome)) {
+          this.resolvedBinaries.set(check.backend, resolvedPath);
+          available.push(check.backend);
+        } else {
+          // 不可信路径直接拒绝
+          errorLogger.alert("warn", "agent-bridge.binary-path", `拒绝不可信路径的 ${check.cmd}`, {
+            path: resolvedPath || "(empty)"
+          });
+        }
       } catch {
         // no-op
       }
@@ -213,8 +235,11 @@ export class AgentBridge {
   private async callByBackend(backend: AgentBackend, request: AgentRequest) {
     const timeout = request.timeout ?? 30_000;
     const env = execEnv();
+    // SEC-13: 用 detect 阶段缓存的绝对路径，避免 execa 走 PATH 查找被劫持
+    // 如果缓存里没有（detect 失败或未跑），fallback 回 cmd 名（保持向后兼容）
+    const bin = (b: AgentBackend, fallback: string) => this.resolvedBinaries.get(b) ?? fallback;
     if (backend === "claude-code") {
-      const { stdout } = await execa("claude", ["-p", request.prompt, "--output-format", "json"], {
+      const { stdout } = await execa(bin("claude-code", "claude"), ["-p", request.prompt, "--output-format", "json"], {
         timeout,
         env
       });
@@ -222,7 +247,7 @@ export class AgentBridge {
     }
     if (backend === "openclaw") {
       const { stdout } = await execa(
-        "openclaw",
+        bin("openclaw", "openclaw"),
         ["agent", "--non-interactive", "--message", request.prompt, "--format", "json"],
         { timeout, env }
       );
@@ -232,13 +257,19 @@ export class AgentBridge {
       // -Q quiet 模式：抑制 banner/spinner/tool previews，只输出最终响应。
       // NO_COLOR / FORCE_COLOR=0 双保险关掉 ANSI。
       const { stdout } = await execa(
-        "hermes",
+        bin("hermes", "hermes"),
         ["chat", "-q", request.prompt, "-Q"],
         { timeout, env: { ...env, NO_COLOR: "1", FORCE_COLOR: "0" } }
       );
       return stripCliNoise(stdout);
     }
     if (!this.apiConfigured) throw new Error("API 后端未配置");
+    // M8 / NEW-4 离线兜底：网络断开时拒绝 cloud backend，提示用户切本地后端
+    // 如果有 hermes / claude-code 可用，可由调用方 fallback 到本地
+    const { systemEvents } = await import("./system-events.js");
+    if (!systemEvents.isOnline()) {
+      throw new Error("当前离线 — 云端 AI 不可用。建议切换到本地后端（Hermes / Claude Code）或等待网络恢复。");
+    }
     // SEC-4: 调用时按需从 safeStorage 读 key，用完即弃，不留在内存
     const { secretsStore } = await import("./secrets-store.js");
     const apiKey = secretsStore.getApiKey();
