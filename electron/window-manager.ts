@@ -91,6 +91,9 @@ export class WindowManager {
    */
   lastFrontmostApp: string | null = null;
 
+  /** 上次因权限拒绝告警的时间戳，用于节流（避免每 5 秒刷屏 200 条相同错误）。 */
+  private lastWindowPermWarnAt = 0;
+
   async getAllWindows(): Promise<WindowInfo[]> {
     if (process.platform !== "darwin") return [];
     try {
@@ -105,11 +108,24 @@ export class WindowManager {
         };
       });
     } catch (error) {
-      throw new Error(
-        `获取窗口列表失败，请检查“系统设置 -> 隐私与安全性 -> 自动化/辅助功能/屏幕录制”权限: ${
-          error instanceof Error ? error.message : "unknown"
-        }`
-      );
+      // 关键修复：osascript 因「辅助功能权限未授权」失败时不再 throw。
+      //   原来每次 throw → 渲染端每 5s 轮询 → 200 条相同错误刷屏 error.log，
+      //   下次启动还弹"上次运行有 200 个错误"。改为返回 [] + 每 5 分钟最多告警一次，
+      //   让权限引导走 PermissionGate，而不是把脚本权限错误当致命错误。
+      const msg = error instanceof Error ? error.message : String(error);
+      const now = Date.now();
+      if (now - this.lastWindowPermWarnAt > 5 * 60_000) {
+        this.lastWindowPermWarnAt = now;
+        void import("./error-logger.js").then(({ errorLogger }) => {
+          errorLogger.alert(
+            "warn",
+            "window-manager.permission",
+            "无法枚举窗口（需「系统设置 → 隐私与安全性 → 辅助功能」授权 ovo）",
+            { detail: msg.slice(0, 200) }
+          );
+        }).catch(() => { /* */ });
+      }
+      return [];
     }
   }
 

@@ -48,7 +48,7 @@ export function getResolvedTheme(theme: ThemeMode): "light" | "dark" {
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
-      theme: "light",
+      theme: "system",
       captureInterval: 5,
       agentInterval: 5,
       monitoredWindows: [],
@@ -85,10 +85,13 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: "ovo-settings",
-      version: 4,
+      version: 5,
       // F1 (v2): 迁移老用户 verbosity="alerts" → "all"
       // F4-B (v3): 迁移 agentInterval 15s → 5s（pipeline 间隔对齐 capture）
       // SEC-4 (v4): 老用户 apiKey 从 localStorage 迁出——不再持久化
+      // UI (v5): 主题默认改为跟随系统。老用户之前被默认写死 "light"，在 macOS 深色模式下
+      //   看到浅色 app（深色标题栏 + 浅色内容）很突兀。一次性迁到 "system"，想要固定浅/深
+      //   的用户可在设置里再选。
       migrate: (persisted: unknown, fromVersion: number) => {
         if (persisted && typeof persisted === "object") {
           const p = persisted as Record<string, unknown>;
@@ -101,6 +104,9 @@ export const useSettingsStore = create<SettingsState>()(
           if (fromVersion < 4) {
             // 把残留的 apiKey 抹掉。提示用户在设置里重新输入一次（会走 safeStorage）。
             delete p.apiKey;
+          }
+          if (fromVersion < 5 && (p.theme === "light" || p.theme === undefined)) {
+            p.theme = "system";
           }
         }
         return persisted as SettingsState;
