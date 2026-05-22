@@ -252,9 +252,20 @@ export class AgentBridge {
     if (backend === "hermes") {
       // -Q quiet 模式：抑制 banner/spinner/tool previews，只输出最终响应。
       // NO_COLOR / FORCE_COLOR=0 双保险关掉 ANSI。
+      //
+      // 根因修复（60×90s 超时）：hermes 是带 skills/tools 的完整 agent CLI，`hermes chat`
+      // 默认 `--max-turns 90` —— 当观察/合成 prompt 看起来像"任务"时，hermes 会进入多轮
+      // 工具调用循环（最多 90 轮），单次调用卡到 90s 被 execa 超时杀掉（实测 baseline 真实
+      // prompt 12-20s 起步、偶发 >90s；加下列参数后稳定 6-7s）。Ovo 要的是"纯结构化补全"，
+      // 不需要 hermes 去执行任何工具，所以：
+      //   --max-turns 1   ← 核心：单轮补全，禁掉工具调用循环（默认 90 → 90s 挂起的真凶）
+      //   --ignore-rules  ← 跳过注入 SOUL.md/AGENTS.md/memory/预载 skills（把 hermes "调教成"
+      //                      个性化 agent、徒增延迟与 token，且会诱导它"想去做事"）；输出更确定
+      //   --source tool   ← 标记为第三方程序化调用，不污染用户的 session 列表（已堆积数千条）
+      // 注意：不用 --ignore-user-config —— 它会连 provider/model 配置一起丢掉导致快速报错。
       const { stdout } = await execa(
         bin("hermes", "hermes"),
-        ["chat", "-q", request.prompt, "-Q"],
+        ["chat", "-q", request.prompt, "-Q", "--max-turns", "1", "--ignore-rules", "--source", "tool"],
         { timeout, env: { ...env, NO_COLOR: "1", FORCE_COLOR: "0" } }
       );
       return stripCliNoise(stdout);
