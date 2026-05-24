@@ -615,7 +615,15 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
       role: merged.user_role_hypothesis?.role,
       offers: (merged.offers ?? []).length,
       actions: merged.actions.length,
-      suggestions: merged.suggestions.length
+      suggestions: merged.suggestions.length,
+      // P7 修：outcome_score 的质量分会读 agentOut.entities / agentOut.relations 计数，
+      // 但这里此前没写这两个字段 → computeAndStoreOutcomeScore 恒读到 0 → "抽到≥2实体"
+      // 和 "抽到≥1关系" 两档质量分（各 0.10）永远拿不到，质量分上限被压到 0.5（应为 0.7），
+      // 抽取良好的 pipeline 被系统性低估，污染 getLowOutcomePipelines 与 P8 自评。
+      // entities 计"非 application 实体"——scorer 规则是 ≥2 个非 application entity 才 +0.10，
+      // 否则只看到 app 自身的 pipeline 会误得这档分。
+      entities: (merged.entities ?? []).filter((e) => e?.type !== "application").length,
+      relations: (merged.relationships ?? []).length
     };
     pipelineLogger.updateStage(pipeline.id, "agent", {
       status: "success",
