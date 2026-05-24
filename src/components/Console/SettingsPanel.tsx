@@ -1137,7 +1137,7 @@ function PromptEvalView() {
           <p className="text-[var(--text-secondary)]">
             Ovo 每天自动反思一次：把过去 24 小时表现差的判断挑出来，分析哪里出错，给自己提改进建议。
             <br />
-            <span className="text-[var(--text-muted)]">所有建议都需要你确认，Ovo 不会自动改自己的提示词。</span>
+            <span className="text-[var(--text-muted)]">建议不会自动生效——需你点「标记为已采纳」；采纳后，该规则会在之后每一轮判断时自动注入 Ovo 的提示词中生效。</span>
           </p>
           <div className="flex items-center gap-2">
             <GlowButton className="!text-xs" onClick={() => void runNow()} disabled={busy}>
@@ -1202,6 +1202,16 @@ function PromptEvalView() {
               </span>
               <span className="truncate">{it.problem}</span>
               <span className="ml-auto shrink-0 text-[var(--text-muted)]">{it.scope}</span>
+              {it.status === "applied" && (
+                <button
+                  type="button"
+                  className="shrink-0 rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)]"
+                  title="撤销采纳：该规则将不再注入 Ovo 的提示词"
+                  onClick={() => void setStatus(it.id, "pending")}
+                >
+                  撤销
+                </button>
+              )}
             </div>
           ))}
         </div>

@@ -257,6 +257,24 @@ export class KnowledgeGraphEngine {
       .all(limit) as Array<{ id: string; created_at: number; scope: string; problem: string; proposed_change: string; evidence: string; confidence: number; status: string }>;
   }
 
+  /**
+   * P8 闭环：取出用户已**采纳**（status='applied'）的自评建议，按 scope 返回 proposed_change。
+   * 这些会被 buildObservationPrompt / buildSynthesisPrompt 自动注入为"已学到的改进规则"，
+   * 让"点应用"真正生效——无需人肉抄进源码重编译。confidence 倒序，最多 limit 条防膨胀。
+   */
+  getAppliedPromptEvalRules(limit = 8): Array<{ scope: string; rule: string }> {
+    const rows = this.db
+      .prepare(
+        `SELECT scope, proposed_change FROM prompt_eval_suggestions
+          WHERE status = 'applied'
+          ORDER BY confidence DESC, created_at DESC LIMIT ?`
+      )
+      .all(limit) as Array<{ scope: string; proposed_change: string }>;
+    return rows
+      .map((r) => ({ scope: r.scope, rule: (r.proposed_change ?? "").trim() }))
+      .filter((r) => r.rule.length > 0);
+  }
+
   // ============================================================
   // PHIL-1 / P0.4: 玻璃管家 negative patterns
   // ============================================================

@@ -491,12 +491,23 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     // Q2+Q3+P2+P6: KG 画像 + 反馈画像 + 5min 轨迹 + 当前活动状态
     // P2-fix: 轨迹按当前 active windowId 过滤，避免看 Twitter 时把 Claude Code 轨迹注入 prompt
     const activity = inferActivityState(buffer.windowId);
+    // P8 闭环：用户已采纳的自评建议按 scope 分流注入。
+    //   observation_prompt / entity_extraction / general → Pass 1 观察
+    //   synthesis_prompt / offer_generation / general    → Pass 2 合成
+    const appliedRules = kg.getAppliedPromptEvalRules();
+    const obsLearnedRules = appliedRules
+      .filter((r) => ["observation_prompt", "entity_extraction", "general"].includes(r.scope))
+      .map((r) => r.rule);
+    const synthLearnedRules = appliedRules
+      .filter((r) => ["synthesis_prompt", "offer_generation", "general"].includes(r.scope))
+      .map((r) => r.rule);
     const graphCtx = {
       ...baseGraphCtx,
       knownRoles: kg.getKnownRoles(3),
       feedbackProfile: kg.getUserFeedbackProfile(),
       sessionTrajectory: sessionTracker.getTrajectoryForPrompt(buffer.windowId),
-      activityState: `状态: ${activity.state} · ${activity.description}`
+      activityState: `状态: ${activity.state} · ${activity.description}`,
+      learnedRules: obsLearnedRules
     };
     // P3: 两段式 pipeline。Pass 1 观察 + 抽实体；Pass 2 基于 Pass 1 合成 offers/actions/suggestions
     const obsPrompt = buildObservationPrompt(buffer, graphCtx, personality);
@@ -567,7 +578,8 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
       windowTitle: buffer.windowTitle,
       feedbackProfile: graphCtx.feedbackProfile,
       negativePatterns: relevantNegatives.map((p) => p.pattern_text),
-      inflationWarnings
+      inflationWarnings,
+      learnedRules: synthLearnedRules
     });
     // 命中计数 +1（用于后续观察哪些 pattern 真有约束力）
     for (const p of relevantNegatives) {

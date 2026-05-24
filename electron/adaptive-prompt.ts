@@ -34,6 +34,11 @@ export interface GraphContext {
    * 让 LLM 区分"用户正在认真创作不要打扰"vs"在划水可以推 offer"。
    */
   activityState?: string;
+  /**
+   * P8 闭环：用户已采纳的自评改进规则（scope=observation_prompt/entity_extraction/general）。
+   * 由 kg.getAppliedPromptEvalRules() 过滤而来，注入为"已学到的规则"，让自评建议真正生效。
+   */
+  learnedRules?: string[];
 }
 
 
@@ -108,6 +113,10 @@ export function buildObservationPrompt(buffer: WindowBuffer, graphContext: Graph
   const activityBlock = graphContext.activityState && graphContext.activityState.trim()
     ? `\n## 用户当前活动状态\n${graphContext.activityState}`
     : "";
+  // P8 闭环：注入用户已采纳的自评改进规则（观察/抽取相关）。
+  const learnedBlock = graphContext.learnedRules && graphContext.learnedRules.length > 0
+    ? `\n## 📘 已采纳的改进规则（来自历史自评，请遵守）\n${graphContext.learnedRules.map((r) => `- ${r}`).join("\n")}`
+    : "";
   const appNames = Array.from(new Set([buffer.appName])).filter(Boolean);
 
   return `你是 ovo——用户的长期副驾驶。当前任务：**只做观察和理解**，不需要给出任何"我要为你做 X"的提议（那是下一阶段的事）。
@@ -138,7 +147,7 @@ ${relations || "- 无"}
 ### 高密度记忆摘要
 ${summaries || "- 无"}
 ### 用户已建立的角色画像（重要！优先复用，不要重新发明）
-${knownRolesText || "- 暂无"}${feedbackBlock}
+${knownRolesText || "- 暂无"}${feedbackBlock}${learnedBlock}
 
 ## 用户人格摘要
 ${personality}
@@ -206,6 +215,8 @@ export interface ObservationContext {
   negativePatterns?: string[];
   /** T8 反向校准：当前场景下用户过去反复拒绝的 action 类型（软约束，提示 LLM 保守） */
   inflationWarnings?: string[];
+  /** P8 闭环：用户已采纳的自评改进规则（scope=synthesis_prompt/offer_generation/general）。 */
+  learnedRules?: string[];
 }
 
 /**
@@ -234,6 +245,10 @@ export function buildSynthesisPrompt(observation: ObservationContext): string {
     ? `\n## ⚠️ 你在这个场景过去夸大过 evidence（请保守）\n${observation.inflationWarnings.map((w) => `- ${w}`).join("\n")}\n
 对上述类型的 action：除非屏幕上有非常明确的证据，否则不要主动生成；拿不准就降级为 suggestion 或只 log_note。\n`
     : "";
+  // P8 闭环：注入用户已采纳的自评改进规则（合成/offer 相关）。
+  const learnedBlock = observation.learnedRules && observation.learnedRules.length > 0
+    ? `\n## 📘 已采纳的改进规则（来自历史自评，请遵守）\n${observation.learnedRules.map((r) => `- ${r}`).join("\n")}\n`
+    : "";
 
   return `你是 ovo——用户的长期副驾驶。
 
@@ -247,7 +262,7 @@ export function buildSynthesisPrompt(observation: ObservationContext): string {
 - 长期意图: ${observation.latentIntent ?? "(未推断)"}
 - 相关 entity:
 ${entityList || "- 无"}
-${feedbackBlock}${negativeBlock}${inflationBlock}
+${feedbackBlock}${negativeBlock}${inflationBlock}${learnedBlock}
 # 你要做的 3 类输出
 
 ## offers (长期服务，最多 2 条；可以为空)
