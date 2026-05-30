@@ -4,6 +4,7 @@ import { Empty } from "../shared/Empty";
 import type { ActionType, TrustLevel } from "../../types/ovo";
 import { translateError } from "../../utils/errorTranslator";
 import { Card } from "../shared/Card";
+import { NegativePatternsCard } from "./NegativePatternsCard";
 import { Select } from "../shared/Select";
 import { Toggle } from "../shared/Toggle";
 import { Input } from "../shared/Input";
@@ -124,6 +125,9 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
 
       {/* 隐私与暂停 — 最重要 */}
       <div id="section-privacy"><PrivacyView /></div>
+
+      {/* P1-1: 教过 Ovo 的规则（查看 / 撤销禁忌） */}
+      <NegativePatternsCard />
 
       {(
         <div className="space-y-3">

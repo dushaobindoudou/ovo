@@ -1,0 +1,92 @@
+/**
+ * P1-1 配套：「教过 Ovo 的规则」管理卡。
+ *
+ * 用户在建议卡上选「永远别这样 / 这个 App 别提醒 / 不相关」时写入的 negative_patterns，
+ * 在这里集中查看并可随时撤销——满足"用户能查看和撤销教过 Ovo 的规则"。
+ */
+import { useCallback, useEffect, useState } from "react";
+import { Ban, Trash2, RotateCcw } from "lucide-react";
+import { Card } from "../shared/Card";
+
+const isElectron = typeof window !== "undefined" && !!window.ovoAPI;
+
+type Rule = Awaited<ReturnType<typeof window.ovoAPI.kg.listNegativePatterns>>[number];
+
+export function NegativePatternsCard() {
+  const [rules, setRules] = useState<Rule[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    if (!isElectron) return;
+    setLoading(true);
+    try {
+      const data = await window.ovoAPI.kg.listNegativePatterns(100);
+      setRules((data ?? []) as Rule[]);
+    } catch {
+      setRules([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const remove = async (id: string) => {
+    if (!isElectron) return;
+    try { await window.ovoAPI.kg.deleteNegativePattern(id); }
+    finally { void load(); }
+  };
+
+  return (
+    <Card title="教过 Ovo 的规则" id="section-rules">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[11px] text-[var(--text-muted)]">
+          你在建议上选「永远别这样 / 这个 App 别提醒 / 不相关」时定下的禁忌，会约束之后的建议。可随时撤销。
+        </p>
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+        >
+          <RotateCcw size={11} /> 刷新
+        </button>
+      </div>
+
+      {loading ? (
+        <p className="py-4 text-center text-[12px] text-[var(--text-muted)]">加载中…</p>
+      ) : rules.length === 0 ? (
+        <div className="rounded-md border border-dashed border-[var(--border)] p-4 text-center">
+          <p className="text-[12px] text-[var(--text-muted)]">还没有教过 Ovo 任何禁忌</p>
+          <p className="mt-1 text-[10px] text-[var(--text-muted)]">在建议卡点「不想要」选原因，规则会出现在这里</p>
+        </div>
+      ) : (
+        <ul className="space-y-1">
+          {rules.map((r) => (
+            <li
+              key={r.id}
+              className="flex items-start gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-2 text-[12px]"
+            >
+              <Ban size={12} className="mt-0.5 shrink-0 text-[var(--warning)]" />
+              <div className="min-w-0 flex-1">
+                <p className="break-words">{r.pattern_text}</p>
+                <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">
+                  {r.app_name ? `仅 ${r.app_name}` : "全局"}
+                  {r.intent ? ` · ${r.intent}` : ""}
+                  {r.hit_count > 0 ? ` · 已生效 ${r.hit_count} 次` : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void remove(r.id)}
+                title="撤销这条规则"
+                className="shrink-0 rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)] hover:border-[var(--danger)] hover:text-[var(--danger)]"
+              >
+                <Trash2 size={11} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
