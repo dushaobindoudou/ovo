@@ -2604,7 +2604,6 @@ export class KnowledgeGraphEngine {
       try {
         const inp = JSON.parse(r.input ?? "{}") as Record<string, unknown>;
         const outp = JSON.parse(r.output ?? "{}") as Record<string, unknown>;
-        const inputActions = (inp.actions as Array<Record<string, unknown>> | undefined) ?? [];
         const results = (outp.results as Array<Record<string, unknown>> | undefined) ?? [];
         // confirm 路径 input 直接是 {actionId, description}
         const isConfirm = r.node === "action.confirm.execute";
@@ -2629,26 +2628,35 @@ export class KnowledgeGraphEngine {
           });
           continue;
         }
-        // actions.execute 路径：input.actions[] 跟 output.results[] 一一对应
-        for (const a of inputActions) {
-          const actionId = String(a.id ?? "");
+        // actions.execute 路径：动作数据在 output.results[]（input 只有 {total,pending,
+        // autoExecutable} 计数，没有 actions[]）。此前遍历空的 input.actions[] → 这个分支
+        // 永远取不到任何东西，是"产出页空白"的真因。改为直接遍历 results。
+        for (const result of results) {
+          const actionId = String(result.actionId ?? "");
           if (!actionId || seen.has(actionId)) continue;
-          const result = results.find((rr) => rr.actionId === actionId);
-          if (!result) continue;
           const status = String(result.status ?? "");
           if (!SHOWN_OUTPUT_STATUSES.has(status)) continue;
-          const atype = String(a.type ?? "other");
+          const atype = String(result.type ?? "other");
           if (NON_DELIVERABLE_OUTPUT_TYPES.has(atype)) continue; // 策展：跳过归档/导航
           seen.add(actionId);
+          const resultOutput = typeof result.output === "string" ? result.output : undefined;
+          // result 无 description 字段 → 优先从 output 的 summary/preview 取，再退化为人话化 actionId
+          let description = "";
+          if (resultOutput) {
+            try {
+              const o = JSON.parse(resultOutput) as { summary?: string; preview?: string };
+              description = (o.summary || o.preview || "").trim().slice(0, 160);
+            } catch { /* output 非 JSON，忽略 */ }
+          }
+          if (!description) description = actionId.replace(/_/g, " ");
           out.push({
             actionId,
             type: atype,
-            description: String(a.description ?? ""),
+            description,
             status,
             timestamp: r.start_time,
             pipelineId: r.pipeline_id ?? undefined,
-            params: (a.params as Record<string, unknown>) ?? {},
-            output: typeof result.output === "string" ? result.output : undefined
+            output: resultOutput
           });
           if (out.length >= limit) break;
         }
