@@ -83,6 +83,7 @@ export type OvoInvokeChannel =
   | "action:confirm"
   | "action:cancel"
   | "action:undo-clipboard"
+  | "action:rerun"
   | "drafts:list"
   | "drafts:promote"
   | "drafts:dismiss"
@@ -687,6 +688,7 @@ export interface OvoAPI {
     cancel: (payload: { actionId: string; pipelineId?: string }) => Promise<any>;
     getDetail: (actionId: string) => Promise<ActionDetail | null>;
     undoClipboard: (actionId: string) => Promise<{ ok: boolean }>;
+    rerun: (payload: { actionId?: string; type?: string; description?: string; params?: Record<string, unknown> }) => Promise<{ ok: boolean; result?: { status?: string; error?: string; output?: string } }>;
   };
   drafts: {
     list: (limit?: number) => Promise<Array<{

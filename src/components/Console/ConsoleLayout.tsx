@@ -37,7 +37,7 @@ export function ConsoleLayout() {
       consumeOpenAction: () => setPendingOpenActionId(null)
     };
     if (page === "overview") return <OverviewPanel ctx={ctx} />;
-    if (page === "outputs") return <OutputsPanel />;
+    if (page === "outputs") return <OutputsPanel ctx={ctx} />;
     if (page === "process") return <ProcessPanel ctx={ctx} />;
     if (page === "knowledge") return <MemoryPanel ctx={ctx} />;
     return <SettingsPanel ctx={ctx} />;

@@ -85,7 +85,38 @@ async function openApp(name: string) {
   } catch { /* ignore */ }
 }
 
-export function OutputsPanel() {
+const ABANDON_KEY = "ovo.outputs.abandoned";
+const ATTENTION_STATUSES = new Set(["failed", "timeout", "pending", "drafted"]);
+
+/** 把 ActionResult.output / error 提炼成一句失败原因 */
+function extractError(p: { output?: string }): string {
+  if (!p.output) return "执行失败";
+  try {
+    const parsed = JSON.parse(p.output) as { error?: string; summary?: string };
+    return (parsed.error || parsed.summary || "").slice(0, 200) || "执行失败";
+  } catch {
+    return p.output.slice(0, 200);
+  }
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; cls: string }> = {
+    success:  { label: "已完成", cls: "border-[var(--success,#22c55e)]/40 text-[var(--success,#22c55e)]" },
+    failed:   { label: "失败",   cls: "border-[var(--danger)]/40 text-[var(--danger)]" },
+    timeout:  { label: "超时",   cls: "border-[var(--danger)]/40 text-[var(--danger)]" },
+    pending:  { label: "待验收", cls: "border-[var(--accent)]/40 text-[var(--accent)]" },
+    drafted:  { label: "待验收", cls: "border-[var(--accent)]/40 text-[var(--accent)]" },
+    rejected: { label: "已放弃", cls: "border-[var(--border)] text-[var(--text-muted)]" }
+  };
+  const m = map[status] ?? { label: status, cls: "border-[var(--border)] text-[var(--text-muted)]" };
+  return <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] ${m.cls}`}>{m.label}</span>;
+}
+
+interface OutputsPanelProps {
+  ctx?: { requestOpenAction?: (actionId: string) => void };
+}
+
+export function OutputsPanel({ ctx }: OutputsPanelProps) {
   const { t } = useTranslation();
   const [future, setFuture] = useState<FutureData>({ reminders: [], events: [] });
   const [past, setPast] = useState<PastEntry[]>([]);
@@ -154,16 +185,51 @@ export function OutputsPanel() {
     [scheduled]
   );
 
-  // 按类型分组 past
+  // P1-3 验收台：用户「放弃」的产出物（本地记住，不再出现在「需要你处理」）
+  const [abandoned, setAbandoned] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(ABANDON_KEY) || "[]") as string[]); }
+    catch { return new Set(); }
+  });
+  const [retrying, setRetrying] = useState<string | null>(null);
+
+  const abandon = (actionId: string) => {
+    setAbandoned((prev) => {
+      const next = new Set(prev).add(actionId);
+      try { localStorage.setItem(ABANDON_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  };
+
+  const retry = async (p: PastEntry) => {
+    if (!isElectron) return;
+    setRetrying(p.actionId);
+    try {
+      await window.ovoAPI.action.rerun({
+        actionId: p.actionId, type: p.type, description: p.description, params: p.params
+      });
+    } finally {
+      setRetrying(null);
+      void loadPast();
+    }
+  };
+
+  // 需要你处理（失败/待验收，排除已放弃） vs 已完成
+  const needsAttention = useMemo(
+    () => past.filter((p) => ATTENTION_STATUSES.has(p.status) && !abandoned.has(p.actionId)),
+    [past, abandoned]
+  );
+  const donePast = useMemo(() => past.filter((p) => p.status === "success"), [past]);
+
+  // 按类型分组「已完成」
   const groupedPast = useMemo(() => {
     const map = new Map<string, PastEntry[]>();
-    for (const p of past) {
+    for (const p of donePast) {
       const k = p.type || "other";
       if (!map.has(k)) map.set(k, []);
       map.get(k)!.push(p);
     }
     return Array.from(map.entries()).map(([k, items]) => ({ type: k, items: items.slice(0, 10) }));
-  }, [past]);
+  }, [donePast]);
 
   return (
     <div className="space-y-3">
@@ -171,7 +237,7 @@ export function OutputsPanel() {
         <div>
           <h2 className="text-lg font-semibold">Ovo 的产出物</h2>
           <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-            左侧：未来要发生的 / 右侧：已经做完的。点任意 [去看] 跳到对应系统应用。
+            左侧：未来要发生 / 右侧：验收台——失败可重试或放弃，待验收的去对应 App 完成，已完成可看详情。
           </p>
         </div>
         <button
@@ -309,10 +375,10 @@ export function OutputsPanel() {
           )}
         </Card>
 
-        {/* ───── 右：已经做完 ───── */}
+        {/* ───── 右：验收台（需要你处理 + 已完成） ───── */}
         <Card>
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-sm font-semibold">已经做完</p>
+            <p className="text-sm font-semibold">验收台</p>
             <span className="text-[10px] text-[var(--text-muted)]">最近 60 条</span>
           </div>
           {loadingPast ? (
@@ -323,7 +389,82 @@ export function OutputsPanel() {
               <p className="mt-1 text-[10px] text-[var(--text-muted)]">用一会儿，它做过的每件事都会出现在这里</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
+              {/* 需要你处理：失败（重试/放弃）+ 待验收（去对应 App 完成） */}
+              {needsAttention.length > 0 && (
+                <div>
+                  <p className="mb-1 text-[10px] uppercase tracking-wider text-[var(--warning)]">
+                    需要你处理（{needsAttention.length}）
+                  </p>
+                  <ul className="space-y-1">
+                    {needsAttention.map((p) => {
+                      const meta = TYPE_META[p.type] ?? TYPE_META.other;
+                      const isFailed = p.status === "failed" || p.status === "timeout";
+                      return (
+                        <li
+                          key={p.actionId}
+                          className="rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-2 text-[12px]"
+                        >
+                          <div className="flex items-start gap-2">
+                            <span className="min-w-0 flex-1 font-medium">
+                              {sanitizeForDisplay(p.description, "（动作描述含代码）", 160)}
+                            </span>
+                            <StatusBadge status={p.status} />
+                          </div>
+                          {isFailed ? (
+                            <p className="mt-0.5 text-[10px] text-[var(--danger)]">
+                              {sanitizeForDisplay(extractError(p), "（错误含代码）", 160)}
+                            </p>
+                          ) : (
+                            <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">
+                              {meta.openApp ? `去 ${meta.openApp} 确认并完成` : "等待你确认"}
+                            </p>
+                          )}
+                          <div className="mt-1 flex items-center gap-2">
+                            {isFailed && (
+                              <button
+                                type="button"
+                                disabled={retrying === p.actionId}
+                                onClick={() => void retry(p)}
+                                className="inline-flex items-center gap-0.5 rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50"
+                              >
+                                {retrying === p.actionId ? "重试中…" : "重试"}
+                              </button>
+                            )}
+                            {!isFailed && meta.openApp && (
+                              <button
+                                type="button"
+                                onClick={() => void openApp(meta.openApp!)}
+                                className="inline-flex items-center gap-0.5 rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                              >
+                                去 {meta.openApp} <ExternalLink size={9} />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => abandon(p.actionId)}
+                              className="inline-flex items-center gap-0.5 rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)] hover:border-[var(--danger)] hover:text-[var(--danger)]"
+                            >
+                              放弃
+                            </button>
+                            {ctx?.requestOpenAction && (
+                              <button
+                                type="button"
+                                onClick={() => ctx.requestOpenAction!(p.actionId)}
+                                className="ml-auto text-[10px] text-[var(--text-muted)] hover:text-[var(--accent)]"
+                              >
+                                详情
+                              </button>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+
+              {/* 已完成：按类型分组，可跳原 App / 看详情 */}
               {groupedPast.map((g) => {
                 const meta = TYPE_META[g.type] ?? TYPE_META.other;
                 const Icon = meta.icon;
@@ -345,9 +486,22 @@ export function OutputsPanel() {
                       {g.items.map((p) => (
                         <li
                           key={p.actionId}
-                          className="rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-2 text-[12px]"
+                          className="group rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-2 text-[12px]"
                         >
-                          <p className="font-medium">{sanitizeForDisplay(p.description, "（动作描述含代码）", 160)}</p>
+                          <div className="flex items-start gap-2">
+                            <span className="min-w-0 flex-1 font-medium">
+                              {sanitizeForDisplay(p.description, "（动作描述含代码）", 160)}
+                            </span>
+                            {ctx?.requestOpenAction && (
+                              <button
+                                type="button"
+                                onClick={() => ctx.requestOpenAction!(p.actionId)}
+                                className="shrink-0 text-[10px] text-[var(--text-muted)] opacity-0 transition-opacity hover:text-[var(--accent)] group-hover:opacity-100"
+                              >
+                                详情
+                              </button>
+                            )}
+                          </div>
                           <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">
                             {formatRelative(p.timestamp)}
                           </p>

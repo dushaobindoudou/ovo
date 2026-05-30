@@ -64,6 +64,7 @@ const ALLOWED_CHANNELS = new Set([
   "action:confirm",
   "action:cancel",
   "action:undo-clipboard",
+  "action:rerun",
   "pipeline:get-recent",
   "pipeline:get-detail",
   "pipeline:rate-stage",
@@ -274,7 +275,8 @@ contextBridge.exposeInMainWorld("ovoAPI", {
     confirm: (payload) => ipcRenderer.invoke("action:confirm", payload),
     getDetail: (actionId) => ipcRenderer.invoke("action:get-detail", actionId),
     cancel: (payload) => ipcRenderer.invoke("action:cancel", payload),
-    undoClipboard: (actionId) => ipcRenderer.invoke("action:undo-clipboard", actionId)
+    undoClipboard: (actionId) => ipcRenderer.invoke("action:undo-clipboard", actionId),
+    rerun: (payload) => ipcRenderer.invoke("action:rerun", payload)
   },
   drafts: {
     list: (limit) => ipcRenderer.invoke("drafts:list", limit),

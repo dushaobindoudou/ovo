@@ -6,7 +6,7 @@
  * 这种"主流程编排" 留在 ipc-handlers.ts 主文件（CODE-10 单独的重构 PR）。
  */
 import { safeExecute } from "../safe-execute.js";
-import type { AgentAction } from "../types.js";
+import type { AgentAction, ActionType } from "../types.js";
 import type { ActionResult } from "../action-executor.js";
 import type { FeedbackEngine } from "../feedback-engine.js";
 import type { IpcHandlerDeps } from "./_shared.js";
@@ -41,6 +41,28 @@ export function registerPipelineHandlers(deps: IpcHandlerDeps) {
       "info"
     );
     return { ok: true };
+  });
+
+  // P1-3 验收台「重试」：用户对失败的产出物显式重试。
+  //   用户主动点重试 = direct 意图 → 标 evidence_level=direct 绕过 evidence gating
+  //   （历史动作没有实时屏幕证据，否则会被 grounder 误拒）。信任/确认规则照旧由 execute 内部处理。
+  ipcMain.handle("action:rerun", async (_event, payload: {
+    actionId?: string; type?: string; description?: string; params?: Record<string, unknown>;
+  }) => {
+    const action: AgentAction = {
+      id: payload.actionId || `rerun_${Date.now().toString(36)}`,
+      type: (payload.type as ActionType) ?? "other",
+      description: payload.description ?? "",
+      params: payload.params ?? {},
+      requireConfirm: false,
+      priority: 50,
+      evidence_level: "direct"
+    };
+    const result = await actionExecutor.execute(action, {});
+    deps.logSystem("info", "action.rerun", "重试产出物动作", {
+      actionId: action.id, type: action.type, status: result.status
+    });
+    return { ok: result.status === "success", result };
   });
 
   // 用户反馈（accept / reject / ignored）
