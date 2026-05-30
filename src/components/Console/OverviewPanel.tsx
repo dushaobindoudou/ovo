@@ -15,6 +15,7 @@ import { Sparkles, Pause, Play, Eye, ChevronDown, ChevronUp, Camera, Brain, Comp
 import { Card } from "../shared/Card";
 import { GlowButton } from "../shared/GlowButton";
 import { SetupChecklist } from "./SetupChecklist";
+import { FirstWinGuide } from "./FirstWinGuide";
 import { useInsights } from "../../hooks/useInsights";
 import { usePendingActions } from "../../hooks/usePendingActions";
 import { useWindowStore } from "../../stores/windowStore";
@@ -300,6 +301,12 @@ export function OverviewPanel({ ctx }: OverviewPanelProps) {
           )}
         </div>
       </Card>
+
+      {/* ────────── P0-2 First Win 引导（拿到第一条建议前出现，之后不再打扰） ────────── */}
+      <FirstWinGuide
+        firstWinAchieved={!!latest?.prediction || history.length > 0 || totalPending > 0}
+        captureAgo={captureAgo}
+      />
 
       {/* ────────── ovo 最近做了什么（self-evolving 可见化） ────────── */}
       {history.length > 0 && <ActivityStrip history={history} />}
