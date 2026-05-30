@@ -4,7 +4,7 @@
 > 10 concrete scenarios where Ovo earns its keep.
 >
 > For the philosophical context, see [`AGENT_PHILOSOPHY.md`](AGENT_PHILOSOPHY.md).
-> For how this is built, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
+> For how this is built, see [`ARCHITECTURE.md`](../engineering/ARCHITECTURE.md).
 
 ---
 
@@ -240,5 +240,5 @@ The 10 above are a starting set. The richer this list, the better Ovo gets at re
 
 - [`AGENT_PHILOSOPHY.md`](AGENT_PHILOSOPHY.md) — why these are copilot-shaped not tool-shaped
 - [`PRODUCT_PHILOSOPHY.md`](PRODUCT_PHILOSOPHY.md) — Ovo's product constitution
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — how the pipeline turns observations into suggestions
-- [`AI_BACKENDS.md`](AI_BACKENDS.md) — which tool agents Ovo can call (when written)
+- [`ARCHITECTURE.md`](../engineering/ARCHITECTURE.md) — how the pipeline turns observations into suggestions
+- [`AI_BACKENDS.md`](../engineering/AI_BACKENDS.md) — which tool agents Ovo can call (when written)

@@ -27,7 +27,7 @@
 
 <p>
   <a href="https://github.com/dushaobindoudou/ovo/releases/latest">⬇ 下载 macOS 版</a> ·
-  <a href="docs/PRODUCT_PHILOSOPHY.md">📖 产品哲学</a> ·
+  <a href="docs/product/PRODUCT_PHILOSOPHY.md">📖 产品哲学</a> ·
   <a href="https://github.com/dushaobindoudou/ovo/discussions">💬 讨论区</a> ·
   <a href="CONTRIBUTING.md">🤝 贡献指南</a>
 </p>
@@ -219,7 +219,7 @@ pnpm pack:mac     # 构建 DMG 到 out/ 目录
 
 **技术栈**：Electron 34 · React 19 · TypeScript · Vite · Tailwind · better-sqlite3 · Tesseract.js · Zustand
 
-详见 [`docs/PRODUCT_PHILOSOPHY.md`](docs/PRODUCT_PHILOSOPHY.md) 和 [`docs/ELECTRON_IPC_MAPPING.md`](docs/ELECTRON_IPC_MAPPING.md)。
+详见 [`docs/product/PRODUCT_PHILOSOPHY.md`](docs/product/PRODUCT_PHILOSOPHY.md) 和 [`docs/engineering/ELECTRON_IPC_MAPPING.md`](docs/engineering/ELECTRON_IPC_MAPPING.md)。
 
 ---
 
@@ -242,7 +242,7 @@ pnpm pack:mac     # 构建 DMG 到 out/ 目录
 **计划中** 🔮
 - Windows + Linux 支持
 - 插件/扩展系统
-- KPI 看板（TTFV / 命中率 / 撤销率 —— 详见 [`PRODUCT_PHILOSOPHY.md`](docs/PRODUCT_PHILOSOPHY.md)）
+- KPI 看板（TTFV / 命中率 / 撤销率 —— 详见 [`PRODUCT_PHILOSOPHY.md`](docs/product/PRODUCT_PHILOSOPHY.md)）
 - macOS 公证 + 自动更新
 - 多语言 UI
 
@@ -256,30 +256,29 @@ pnpm pack:mac     # 构建 DMG 到 out/ 目录
 
 | 文档 | 用途 |
 |---|---|
-| [`AGENT_PHILOSOPHY.md`](docs/AGENT_PHILOSOPHY.md) | **核心思想。** 两类 agent（工具型 vs 副驾型）— 为什么 Ovo 是被低估的那一类 |
-| [`PRODUCT_PHILOSOPHY.md`](docs/PRODUCT_PHILOSOPHY.md) | 项目宪法 —— 参与产品方向先读这个 |
-| [`USE_CASES.md`](docs/USE_CASES.md) | 10 个具体场景：副驾驶在哪些时刻为你创造价值 |
-| [`PRIVACY.md`](docs/PRIVACY.md) | Ovo 收集什么（不收集什么）—— 完整数据流审计 |
+| [`AGENT_PHILOSOPHY.md`](docs/product/AGENT_PHILOSOPHY.md) | **核心思想。** 两类 agent（工具型 vs 副驾型）— 为什么 Ovo 是被低估的那一类 |
+| [`PRODUCT_PHILOSOPHY.md`](docs/product/PRODUCT_PHILOSOPHY.md) | 项目宪法 —— 参与产品方向先读这个 |
+| [`PRODUCT_EXPERIENCE_BACKLOG.md`](docs/product/PRODUCT_EXPERIENCE_BACKLOG.md) | 当前产品体验待执行清单：激活、信任、反馈、产出物 |
+| [`USE_CASES.md`](docs/product/USE_CASES.md) | 10 个具体场景：副驾驶在哪些时刻为你创造价值 |
+| [`PRIVACY.md`](docs/product/PRIVACY.md) | Ovo 收集什么（不收集什么）—— 完整数据流审计 |
 
 ### 构建 / 使用
 
 | 文档 | 用途 |
 |---|---|
-| [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 深度技术架构 —— 进程拓扑 / 数据流 / KG schema / IPC 契约 |
-| [`AI_BACKENDS.md`](docs/AI_BACKENDS.md) | 4 个后端选择（Claude Code / OpenClaw / Hermes / 直接 API）配置 + 取舍 |
-| [`ELECTRON_IPC_MAPPING.md`](docs/ELECTRON_IPC_MAPPING.md) | IPC 通道与 payload 契约 |
-| [`RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md) | 发版流程 |
+| [`ARCHITECTURE.md`](docs/engineering/ARCHITECTURE.md) | 深度技术架构 —— 进程拓扑 / 数据流 / KG schema / IPC 契约 |
+| [`AI_BACKENDS.md`](docs/engineering/AI_BACKENDS.md) | 4 个后端选择（Claude Code / OpenClaw / Hermes / 直接 API）配置 + 取舍 |
+| [`ELECTRON_IPC_MAPPING.md`](docs/engineering/ELECTRON_IPC_MAPPING.md) | IPC 通道与 payload 契约 |
+| [`RELEASE_PROCESS.md`](docs/operations/RELEASE_PROCESS.md) | 发版流程 |
 
 ### 项目状态
 
 | 文档 | 用途 |
 |---|---|
-| [`UX_AUDIT.md`](docs/UX_AUDIT.md) | 65 个已知 UX 问题（P0 → P3）+ KPI 度量框架 |
-| [`BUG_REPORT.md`](docs/BUG_REPORT.md) | QA 跟踪的 bug + 架构反模式 |
-| [`UI_DESIGN_AUDIT.md`](docs/UI_DESIGN_AUDIT.md) | 设计系统一致性报告 |
-| [`GITHUB_GROWTH_PLAN.md`](docs/GITHUB_GROWTH_PLAN.md) | 90 天 0 → 1k stars 路径 |
-| [`GOOD_FIRST_ISSUES.md`](docs/GOOD_FIRST_ISSUES.md) | 新手可以直接领的任务 |
-| [`STATUS.md`](docs/STATUS.md) | 各功能当前实现状态 |
+| [`UNRESOLVED_ISSUES.md`](docs/UNRESOLVED_ISSUES.md) | 当前仍未解决的工程 / 产品问题 |
+| [`GITHUB_GROWTH_PLAN.md`](docs/operations/GITHUB_GROWTH_PLAN.md) | 90 天 0 → 1k stars 路径 |
+| [`GOOD_FIRST_ISSUES.md`](docs/operations/GOOD_FIRST_ISSUES.md) | 新手可以直接领的任务 |
+| [`archive/`](docs/archive/README.md) | 历史审计、旧规格、过期状态快照 |
 
 ---
 

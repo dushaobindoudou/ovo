@@ -2,7 +2,7 @@
 
 > Deep technical documentation for contributors and integrators.
 > If you just want to use Ovo, see the [README](../README.md).
-> If you want to align with project direction first, see [PRODUCT_PHILOSOPHY.md](PRODUCT_PHILOSOPHY.md).
+> If you want to align with project direction first, see [PRODUCT_PHILOSOPHY.md](../product/PRODUCT_PHILOSOPHY.md).
 
 ---
 
@@ -245,7 +245,7 @@ Every step writes to the **pipeline log** (SQLite `pipeline_logs` table), making
 
 ## 5. IPC Contract
 
-The renderer accesses main-process functionality exclusively through `window.ovoAPI`, exposed via `electron/preload.cjs` and `contextBridge`. The full surface is documented in [`docs/ELECTRON_IPC_MAPPING.md`](ELECTRON_IPC_MAPPING.md).
+The renderer accesses main-process functionality exclusively through `window.ovoAPI`, exposed via `electron/preload.cjs` and `contextBridge`. The full surface is documented in [`docs/engineering/ELECTRON_IPC_MAPPING.md`](ELECTRON_IPC_MAPPING.md).
 
 ### Namespaces (44 total)
 
@@ -292,7 +292,7 @@ Currently:
 - Per-window API surfaces (Floating window gets a subset, Toast even less)
 - `safeHandle(channel, schema, fn)` wrapper for all IPC handlers
 
-See `docs/BUG_REPORT.md` C4 + A6 for the threat model.
+See `docs/archive/audits/BUG_REPORT.md` C4 + A6 for the threat model.
 
 ---
 
@@ -392,7 +392,7 @@ CREATE TABLE prompt_eval_suggestions (
 
 ### Migration strategy (current)
 
-Migrations are applied at startup via try-catch `ALTER TABLE` statements. **This is fragile** — see `docs/BUG_REPORT.md` C9 + A7. Future work: introduce `schema_version` table + ordered migration files.
+Migrations are applied at startup via try-catch `ALTER TABLE` statements. **This is fragile** — see `docs/archive/audits/BUG_REPORT.md` C9 + A7. Future work: introduce `schema_version` table + ordered migration files.
 
 ### Privacy properties
 
@@ -523,7 +523,7 @@ User adjusts per-action-type slider in Settings. See UX_AUDIT P0.3 + P0.10.
 | Dependency audit on China mirror | M10 — pnpm audit returns 405 |
 | Auto-update mechanism | C7 — no automatic update channel yet |
 
-See `docs/BUG_REPORT.md` for full threat inventory + tracking.
+See `docs/archive/audits/BUG_REPORT.md` for full threat inventory + tracking.
 
 ---
 
@@ -635,12 +635,12 @@ Designed for future plugin/extension support:
 
 ## See also
 
-- [`PRODUCT_PHILOSOPHY.md`](PRODUCT_PHILOSOPHY.md) — why Ovo exists, what makes it different
+- [`PRODUCT_PHILOSOPHY.md`](../product/PRODUCT_PHILOSOPHY.md) — why Ovo exists, what makes it different
 - [`ELECTRON_IPC_MAPPING.md`](ELECTRON_IPC_MAPPING.md) — full IPC channel reference
 - [`AI_BACKENDS.md`](AI_BACKENDS.md) — backend setup and trade-offs (this file)
-- [`PRIVACY.md`](PRIVACY.md) — privacy commitments and data flow audit
-- [`BUG_REPORT.md`](BUG_REPORT.md) — known issues with file:line references
-- [`UX_AUDIT.md`](UX_AUDIT.md) — product/UX backlog
-- [`UI_DESIGN_AUDIT.md`](UI_DESIGN_AUDIT.md) — design system consistency report
-- [`CONTRIBUTING.md`](../CONTRIBUTING.md) — how to contribute code/docs/translations
-- [`SECURITY.md`](../SECURITY.md) — responsible disclosure
+- [`PRIVACY.md`](../product/PRIVACY.md) — privacy commitments and data flow audit
+- [`BUG_REPORT.md`](../archive/audits/BUG_REPORT.md) — historical issue report with file:line references
+- [`UX_AUDIT.md`](../archive/audits/UX_AUDIT.md) — historical product/UX audit
+- [`UI_DESIGN_AUDIT.md`](../archive/audits/UI_DESIGN_AUDIT.md) — historical design system consistency report
+- [`CONTRIBUTING.md`](../../CONTRIBUTING.md) — how to contribute code/docs/translations
+- [`SECURITY.md`](../../SECURITY.md) — responsible disclosure

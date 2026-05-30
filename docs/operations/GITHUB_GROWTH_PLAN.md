@@ -273,7 +273,7 @@ body:
 [![Stars](https://img.shields.io/github/stars/dushaobindoudou/ovo?style=social)](https://github.com/dushaobindoudou/ovo/stargazers)
 [![Discord](https://img.shields.io/discord/XXXX?label=Discord)](https://discord.gg/XXXX)
 
-English | [简体中文](README_CN.md)
+English | [简体中文](../../README_CN.md)
 
 [⬇ Download for macOS](https://github.com/dushaobindoudou/ovo/releases/latest) ·
 [📖 Documentation](docs/) ·
@@ -342,23 +342,23 @@ pnpm dev
 - [ ] Glass butler floating window
 - [ ] AI behavior timeline (transparent reasoning)
 
-See [PRODUCT_PHILOSOPHY.md](docs/PRODUCT_PHILOSOPHY.md) for the long-term vision.
+See [PRODUCT_PHILOSOPHY.md](docs/product/PRODUCT_PHILOSOPHY.md) for the long-term vision.
 
 ## 💬 Community
 
 - [Discord](https://discord.gg/XXXX) — international community
-- [WeChat Group](docs/assets/wechat-qr.png) — Chinese community
+- WeChat Group — add QR image under `docs/assets/` before linking it here
 - [GitHub Discussions](https://github.com/dushaobindoudou/ovo/discussions) — Q&A and ideas
 
 ## 🤝 Contributing
 
-Contributions are very welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are very welcome! See [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 Good first issues are tagged [`good first issue`](https://github.com/dushaobindoudou/ovo/labels/good%20first%20issue).
 
 ## 📄 License
 
-[AGPL-3.0](LICENSE) — open source, copyleft. Commercial use requires the same license.
+[AGPL-3.0](../../LICENSE) — open source, copyleft. Commercial use requires the same license.
 
 ## ⭐ Star History
 
@@ -521,7 +521,7 @@ Good first issues are tagged [`good first issue`](https://github.com/dushaobindo
 ---
 
 **配套文档参考**：
-- 长期愿景：`docs/PRODUCT_PHILOSOPHY.md`
-- UX 待修问题：`docs/UX_AUDIT.md`（65 问题）
-- 系统 bug：`docs/BUG_REPORT.md`（37 bug — 其中 C6 签名 / C7 自动更新 / M11 图标 直接影响发布质量）
-- UI 设计一致性：`docs/UI_DESIGN_AUDIT.md`（22 问题 — B5 三种图标系统混用 直接影响 README 截图质感）
+- 长期愿景：`docs/product/PRODUCT_PHILOSOPHY.md`
+- UX 待修问题：`docs/archive/audits/UX_AUDIT.md`（65 问题）
+- 系统 bug：`docs/archive/audits/BUG_REPORT.md`（37 bug — 其中 C6 签名 / C7 自动更新 / M11 图标 直接影响发布质量）
+- UI 设计一致性：`docs/archive/audits/UI_DESIGN_AUDIT.md`（22 问题 — B5 三种图标系统混用 直接影响 README 截图质感）

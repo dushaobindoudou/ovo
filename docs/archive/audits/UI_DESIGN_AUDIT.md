@@ -111,7 +111,7 @@
   - `icon-renderer.ts:35` `v: { r: 0x4a, g: 0xe3, b: 0x9b }` — 亮绿系
 - **影响**：设计意图（避开微信）与实施（仍用微信绿）冲突 — 团队内部对"我们是什么颜色"无共识
 - **复现路径**：把 Ovo 图标和微信图标并列比对，会被误认为关联产品
-- **建议修复**：开产品会议确定 — 要么明确"用 systemBlue 不用任何绿色"，要么明确"用品牌绿但调整色值（如换成 emerald-500 #10b981）避开微信识别色"，写进 `docs/PRODUCT_PHILOSOPHY.md` 作为长期承诺
+- **建议修复**：开产品会议确定 — 要么明确"用 systemBlue 不用任何绿色"，要么明确"用品牌绿但调整色值（如换成 emerald-500 #10b981）避开微信识别色"，写进 `docs/product/PRODUCT_PHILOSOPHY.md` 作为长期承诺
 
 ---
 
@@ -321,7 +321,7 @@ CSS 定义了完整 tokens 但代码大规模绕过。**Design tokens 必须 ESL
 同一个"thinking"概念三个组件三套实现。**状态机必须中心化** — 1 个枚举 + 1 个 visual mapping。
 
 ### 反模式 4：设计文档与代码脱节
-`docs/ui-design/` 是 HTML、`docs/PRODUCT_PHILOSOPHY.md` 是文字、`src/index.css` 是 CSS — 三处定义彼此不同步。**design system 应该是单一物料库** — code-as-spec 或 spec-as-code。
+`docs/ui-design/` 是 HTML、`docs/product/PRODUCT_PHILOSOPHY.md` 是文字、`src/index.css` 是 CSS — 三处定义彼此不同步。**design system 应该是单一物料库** — code-as-spec 或 spec-as-code。
 
 ### 反模式 5：Tailwind 被当成 "utility class 库" 而非 design system 引擎（第 2 轮新增）
 项目根本没有 `tailwind.config` 也没用 `@theme` 指令。Tailwind 沦为 "随手写 utility class" 而不是 "把 design tokens 工业化的引擎"。这是 B2/I2/I3/I7 等所有"散落硬编码"问题的根因。

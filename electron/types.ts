@@ -71,7 +71,7 @@ export const ACTION_TYPES: ActionType[] = [
 
 /**
  * 信号强度分级 — 决定 action 是直接执行 / 进草稿台 / 拒绝。
- * 参考 docs/REFLECTION_LOG.md 反思 #2。
+ * 参考 docs/archive/history/REFLECTION_LOG.md 反思 #2。
  *
  *   - direct      用户在屏幕上明确表达了这个意图（选中文本、输入框打字、点了按钮）
  *   - inferred    屏幕行为强暗示（写邮件中、在 IDE 编辑 TODO 注释等）

@@ -71,7 +71,7 @@ Ovo is a screen-aware desktop AI. We take privacy seriously:
 
 If you find a gap in any of the above, that is a Critical issue — please report immediately.
 
-See also: [`docs/PRODUCT_PHILOSOPHY.md`](docs/PRODUCT_PHILOSOPHY.md) section on privacy commitments.
+See also: [`docs/product/PRODUCT_PHILOSOPHY.md`](docs/product/PRODUCT_PHILOSOPHY.md) section on privacy commitments.
 
 ---
 

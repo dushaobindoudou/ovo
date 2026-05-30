@@ -27,7 +27,7 @@
 
 <p>
   <a href="https://github.com/dushaobindoudou/ovo/releases/latest">⬇ Download for macOS</a> ·
-  <a href="docs/PRODUCT_PHILOSOPHY.md">📖 Philosophy</a> ·
+  <a href="docs/product/PRODUCT_PHILOSOPHY.md">📖 Philosophy</a> ·
   <a href="https://github.com/dushaobindoudou/ovo/discussions">💬 Discussions</a> ·
   <a href="CONTRIBUTING.md">🤝 Contributing</a>
 </p>
@@ -201,7 +201,7 @@ That's it. Within 1-2 minutes Ovo will start observing and suggesting.
 
 **Tech stack**: Electron 34 · React 19 · TypeScript · Vite · Tailwind · better-sqlite3 · Tesseract.js · Zustand
 
-See [`docs/PRODUCT_PHILOSOPHY.md`](docs/PRODUCT_PHILOSOPHY.md) for the design philosophy and [`docs/ELECTRON_IPC_MAPPING.md`](docs/ELECTRON_IPC_MAPPING.md) for IPC contracts.
+See [`docs/product/PRODUCT_PHILOSOPHY.md`](docs/product/PRODUCT_PHILOSOPHY.md) for the design philosophy and [`docs/engineering/ELECTRON_IPC_MAPPING.md`](docs/engineering/ELECTRON_IPC_MAPPING.md) for IPC contracts.
 
 ---
 
@@ -224,7 +224,7 @@ See [`docs/PRODUCT_PHILOSOPHY.md`](docs/PRODUCT_PHILOSOPHY.md) for the design ph
 **Planned** 🔮
 - Windows + Linux support
 - Plugin/extension system
-- KPI dashboard (TTFV, hit rate, undo rate — see [`PRODUCT_PHILOSOPHY.md`](docs/PRODUCT_PHILOSOPHY.md))
+- KPI dashboard (TTFV, hit rate, undo rate — see [`PRODUCT_PHILOSOPHY.md`](docs/product/PRODUCT_PHILOSOPHY.md))
 - macOS Notarization + auto-updates
 - Multi-language UI (currently 中文/English mixed)
 
@@ -238,30 +238,29 @@ See [open milestones](https://github.com/dushaobindoudou/ovo/milestones) for wha
 
 | Doc | What it's for |
 |---|---|
-| [`AGENT_PHILOSOPHY.md`](docs/AGENT_PHILOSOPHY.md) | **The big idea.** Two kinds of agents (tool vs copilot) and why Ovo is the underbuilt kind |
-| [`PRODUCT_PHILOSOPHY.md`](docs/PRODUCT_PHILOSOPHY.md) | The project constitution — read before contributing to product direction |
-| [`USE_CASES.md`](docs/USE_CASES.md) | 10 concrete moments where a copilot earns its keep |
-| [`PRIVACY.md`](docs/PRIVACY.md) | What Ovo collects (and doesn't) — full data flow audit |
+| [`AGENT_PHILOSOPHY.md`](docs/product/AGENT_PHILOSOPHY.md) | **The big idea.** Two kinds of agents (tool vs copilot) and why Ovo is the underbuilt kind |
+| [`PRODUCT_PHILOSOPHY.md`](docs/product/PRODUCT_PHILOSOPHY.md) | The project constitution — read before contributing to product direction |
+| [`PRODUCT_EXPERIENCE_BACKLOG.md`](docs/product/PRODUCT_EXPERIENCE_BACKLOG.md) | Current product execution backlog: activation, trust, feedback, outputs |
+| [`USE_CASES.md`](docs/product/USE_CASES.md) | 10 concrete moments where a copilot earns its keep |
+| [`PRIVACY.md`](docs/product/PRIVACY.md) | What Ovo collects (and doesn't) — full data flow audit |
 
 ### Building / using
 
 | Doc | What it's for |
 |---|---|
-| [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Deep technical architecture — process topology, data flow, KG schema, IPC contract |
-| [`AI_BACKENDS.md`](docs/AI_BACKENDS.md) | 4 backend choices (Claude Code / OpenClaw / Hermes / Direct API) — setup + trade-offs |
-| [`ELECTRON_IPC_MAPPING.md`](docs/ELECTRON_IPC_MAPPING.md) | IPC channels and payload contracts |
-| [`RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md) | How we ship a release |
+| [`ARCHITECTURE.md`](docs/engineering/ARCHITECTURE.md) | Deep technical architecture — process topology, data flow, KG schema, IPC contract |
+| [`AI_BACKENDS.md`](docs/engineering/AI_BACKENDS.md) | 4 backend choices (Claude Code / OpenClaw / Hermes / Direct API) — setup + trade-offs |
+| [`ELECTRON_IPC_MAPPING.md`](docs/engineering/ELECTRON_IPC_MAPPING.md) | IPC channels and payload contracts |
+| [`RELEASE_PROCESS.md`](docs/operations/RELEASE_PROCESS.md) | How we ship a release |
 
 ### Project state
 
 | Doc | What it's for |
 |---|---|
-| [`UX_AUDIT.md`](docs/UX_AUDIT.md) | 65 known UX issues with priorities (P0 → P3) + KPI framework |
-| [`BUG_REPORT.md`](docs/BUG_REPORT.md) | QA-tracked bugs + architecture anti-patterns |
-| [`UI_DESIGN_AUDIT.md`](docs/UI_DESIGN_AUDIT.md) | Design system consistency report |
-| [`GITHUB_GROWTH_PLAN.md`](docs/GITHUB_GROWTH_PLAN.md) | 90-day path from 0 to 1k stars |
-| [`GOOD_FIRST_ISSUES.md`](docs/GOOD_FIRST_ISSUES.md) | Ready-to-grab beginner tasks |
-| [`STATUS.md`](docs/STATUS.md) | Current implementation status by feature |
+| [`UNRESOLVED_ISSUES.md`](docs/UNRESOLVED_ISSUES.md) | Current unresolved engineering/product issues |
+| [`GITHUB_GROWTH_PLAN.md`](docs/operations/GITHUB_GROWTH_PLAN.md) | 90-day path from 0 to 1k stars |
+| [`GOOD_FIRST_ISSUES.md`](docs/operations/GOOD_FIRST_ISSUES.md) | Ready-to-grab beginner tasks |
+| [`archive/`](docs/archive/README.md) | Historical audits, old specs, and outdated status snapshots |
 
 ---
 

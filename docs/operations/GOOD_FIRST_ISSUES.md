@@ -23,7 +23,7 @@ Two compiled JavaScript files were accidentally created at the repo root:
 - `/ipc-handlers.js` (38 KB — compiled from `electron/ipc-handlers.ts`)
 - `/main.js` (15 KB — compiled from `electron/main.ts`)
 
-They are not committed, but every contributor's `git status` shows them as untracked and they could easily be force-pushed by mistake. See `docs/BUG_REPORT.md` → N1 + N5.
+They are not committed, but every contributor's `git status` shows them as untracked and they could easily be force-pushed by mistake. See `docs/archive/audits/BUG_REPORT.md` → N1 + N5.
 
 ### Files involved
 - `/main.js` (delete)
@@ -45,7 +45,7 @@ They are not committed, but every contributor's `git status` shows them as untra
 **Skills**: TypeScript, React, attention to detail
 
 ### Background
-We have 8+ variants of "no data" copy scattered across UI: `暂无错误` / `暂无日志` / `暂无业务日志` / `暂无注册任务` / `(空)` / `（空）` (full-width vs half-width brackets!) / `空闲` / etc. This makes the product feel inconsistent. See `docs/UI_DESIGN_AUDIT.md` → S8.
+We have 8+ variants of "no data" copy scattered across UI: `暂无错误` / `暂无日志` / `暂无业务日志` / `暂无注册任务` / `(空)` / `（空）` (full-width vs half-width brackets!) / `空闲` / etc. This makes the product feel inconsistent. See `docs/archive/audits/UI_DESIGN_AUDIT.md` → S8.
 
 ### Files involved
 - `src/components/Console/SettingsPanel.tsx:340,355,384,439,485,544,652`
@@ -69,7 +69,7 @@ We have 8+ variants of "no data" copy scattered across UI: `暂无错误` / `暂
 **Skills**: React, lucide-react
 
 ### Background
-The codebase mixes emoji icons (`⚠ 📸 🧠 💡`) with lucide-react icons (`<AlertCircle />`, `<Brain />`). Emoji render differently across OS/font and they're inconsistent with the rest of the icon system. Start with the `⚠` warning emoji as the test case. See `docs/UI_DESIGN_AUDIT.md` → B5 + T2.
+The codebase mixes emoji icons (`⚠ 📸 🧠 💡`) with lucide-react icons (`<AlertCircle />`, `<Brain />`). Emoji render differently across OS/font and they're inconsistent with the rest of the icon system. Start with the `⚠` warning emoji as the test case. See `docs/archive/audits/UI_DESIGN_AUDIT.md` → B5 + T2.
 
 ### Files involved
 - `src/components/Console/OverviewPanel.tsx:111`
@@ -92,7 +92,7 @@ The codebase mixes emoji icons (`⚠ 📸 🧠 💡`) with lucide-react icons (`
 **Skills**: copywriting, React (trivial JSX edit)
 
 ### Background
-Current onboarding headline `5 分钟告诉 ovo 关于你` creates an expectation that Ovo will "really know you" — which we can't yet deliver. The product philosophy says we should open with a **restraint promise** instead. See `docs/UX_AUDIT.md` → P0.1.
+Current onboarding headline `5 分钟告诉 ovo 关于你` creates an expectation that Ovo will "really know you" — which we can't yet deliver. The product philosophy says we should open with a **restraint promise** instead. See `docs/archive/audits/UX_AUDIT.md` → P0.1.
 
 ### Files involved
 - `src/components/Onboarding/BootstrapWizard.tsx:94` (current headline)
@@ -113,7 +113,7 @@ Current onboarding headline `5 分钟告诉 ovo 关于你` creates an expectatio
 **Skills**: React, basic CSS
 
 ### Background
-The 4 tabs (`现在 / 记忆 / 回放 / 设置`) are abstract — new users don't know what `回放` means. Tooltips would help. See `docs/UX_AUDIT.md` → P1.5.
+The 4 tabs (`现在 / 记忆 / 回放 / 设置`) are abstract — new users don't know what `回放` means. Tooltips would help. See `docs/archive/audits/UX_AUDIT.md` → P1.5.
 
 ### Files involved
 - `src/components/Console/ConsoleSidebar.tsx:14-18` (tab labels)
@@ -137,7 +137,7 @@ The 4 tabs (`现在 / 记忆 / 回放 / 设置`) are abstract — new users don'
 **Skills**: screen recording, image editing
 
 ### Background
-README has 6 screenshot placeholders that need real screenshots. This is a high-impact, low-difficulty contribution that makes the project look 10x more professional on GitHub. See `docs/GITHUB_GROWTH_PLAN.md`.
+README has 6 screenshot placeholders that need real screenshots. This is a high-impact, low-difficulty contribution that makes the project look 10x more professional on GitHub. See `docs/operations/GITHUB_GROWTH_PLAN.md`.
 
 ### What's needed
 - 6 PNG screenshots, 1920×1200 (or 16:10 retina), saved to `docs/assets/`:
@@ -165,7 +165,7 @@ README has 6 screenshot placeholders that need real screenshots. This is a high-
 **Skills**: Electron, basic HTML/CSS
 
 ### Background
-From double-clicking the Ovo icon to seeing the first UI, there's a 1-3 second black screen. A splash screen (with Ovo logo + "正在唤醒...") would make the launch feel intentional. See `docs/UI_DESIGN_AUDIT.md` → P2.10.
+From double-clicking the Ovo icon to seeing the first UI, there's a 1-3 second black screen. A splash screen (with Ovo logo + "正在唤醒...") would make the launch feel intentional. See `docs/archive/audits/UI_DESIGN_AUDIT.md` → P2.10.
 
 ### Files involved
 - `electron/main.ts` (create splash window before main window)
@@ -187,7 +187,7 @@ From double-clicking the Ovo icon to seeing the first UI, there's a 1-3 second b
 **Skills**: React, Zustand
 
 ### Background
-When you click "Accept" on a suggestion, the receipt only shows for 1.1 seconds. That's too fast to undo if you change your mind. Gmail-style 5-second undo would dramatically improve trust. See `docs/UX_AUDIT.md` → P1.3 + P1.4.
+When you click "Accept" on a suggestion, the receipt only shows for 1.1 seconds. That's too fast to undo if you change your mind. Gmail-style 5-second undo would dramatically improve trust. See `docs/archive/audits/UX_AUDIT.md` → P1.3 + P1.4.
 
 ### Files involved
 - `src/components/SuggestionPanel/SuggestionCard.tsx:26` (`RECEIPT_HOLD_MS = 1100`)
@@ -209,7 +209,7 @@ When you click "Accept" on a suggestion, the receipt only shows for 1.1 seconds.
 **Skills**: TypeScript
 
 ### Background
-When an action fails, we currently show raw `error.message` strings like `ENOENT: no such file` or `AppleScript error -1743` — users can't understand or fix these. We need an error translator that maps common errors to user-friendly "what + why + what to do next" messages. See `docs/BUG_REPORT.md` → P0.12.
+When an action fails, we currently show raw `error.message` strings like `ENOENT: no such file` or `AppleScript error -1743` — users can't understand or fix these. We need an error translator that maps common errors to user-friendly "what + why + what to do next" messages. See `docs/archive/audits/BUG_REPORT.md` → P0.12.
 
 ### Files involved
 - New: `electron/error-translator.ts` (with `translateError(rawError: string): { title, why, action }`)
@@ -237,7 +237,7 @@ When an action fails, we currently show raw `error.message` strings like `ENOENT
 **Skills**: React, basic search filtering
 
 ### Background
-SettingsPanel is a single long scrolling page with many sections. Hard to find a specific setting like "blacklist" or "pause" without scrolling. A search box at the top would let users filter sections. See `docs/UX_AUDIT.md` → P1.22.
+SettingsPanel is a single long scrolling page with many sections. Hard to find a specific setting like "blacklist" or "pause" without scrolling. A search box at the top would let users filter sections. See `docs/archive/audits/UX_AUDIT.md` → P1.22.
 
 ### Files involved
 - `src/components/Console/SettingsPanel.tsx`
@@ -254,7 +254,7 @@ SettingsPanel is a single long scrolling page with many sections. Hard to find a
 
 ## Bonus pool (5+ more ideas if these get claimed fast)
 
-- Replace `text-[10.5px]` / `text-[13px]` hardcoded sizes with Tailwind type scale (`docs/UI_DESIGN_AUDIT.md` → I3)
+- Replace `text-[10.5px]` / `text-[13px]` hardcoded sizes with Tailwind type scale (`docs/archive/audits/UI_DESIGN_AUDIT.md` → I3)
 - Define z-index scale in CSS variables and replace `z-[100] z-50 z-40 z-30` magic numbers (UI S5)
 - Add `--motion-fast / --motion-base / --motion-slow` CSS variables and use them everywhere instead of `0.55s / 0.7s / 1.4s / 2.4s` scattered values (UI S7)
 - Add `darkModeSupport: true` test — verify SiriOrb / AnimatedLogo / Tray icon all respond to theme switch (UI I1)

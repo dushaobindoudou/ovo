@@ -11,7 +11,7 @@
 
 ## Which axis of the philosophy does it serve?
 
-<!-- See docs/PRODUCT_PHILOSOPHY.md — pick all that apply. -->
+<!-- See docs/product/PRODUCT_PHILOSOPHY.md — pick all that apply. -->
 
 - [ ] 🚀 Proactive (helps Ovo act before being asked)
 - [ ] 🪟 Transparent (makes Ovo's thinking more visible)

@@ -1,7 +1,7 @@
 /**
  * evidence-grounder.ts —— LLM 自报 evidence 的客观验证层。
  *
- * 参考 docs/REFLECTION_LOG.md 反思 #2 — 不能让 LLM 自评置信度，必须由运行时
+ * 参考 docs/archive/history/REFLECTION_LOG.md 反思 #2 — 不能让 LLM 自评置信度，必须由运行时
  * 用客观信号（OCR / window title / 用户行为）验证它说的"屏幕证据"真不真实。
  *
  * 输入：LLM 自报的 evidence_level + evidence[]，以及当时的 OCR preview / window

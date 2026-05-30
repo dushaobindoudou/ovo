@@ -168,7 +168,7 @@ Since this is the **first public release**, take extra care:
 - [ ] Verify the unsigned-build warning in README is accurate ("right-click → Open")
 - [ ] Prepare a 30s demo GIF for the Release notes (not just the README)
 - [ ] Have the [Show HN draft](https://github.com/dushaobindoudou/ovo/discussions) ready
-- [ ] Make sure `good first issue` labels exist on at least 10 issues (use `docs/GOOD_FIRST_ISSUES.md`)
+- [ ] Make sure `good first issue` labels exist on at least 10 issues (use `docs/operations/GOOD_FIRST_ISSUES.md`)
 - [ ] Star History Chart will look empty for ~24h — that's fine
 
 ---
@@ -183,7 +183,7 @@ After v0.2.0:
   - Signed + Notarized macOS DMG ✅
   - Working auto-update ✅
   - Windows support ✅
-  - All P0 issues from `docs/UX_AUDIT.md` resolved ✅
+  - All P0 issues from `docs/archive/audits/UX_AUDIT.md` resolved ✅
   - >1000 GitHub stars ✅
   - Track record of >30 day mean-time-between-bugs in `BUG_REPORT.md` ✅
 
@@ -191,6 +191,6 @@ After v0.2.0:
 
 ## See also
 
-- [`CHANGELOG.md`](../CHANGELOG.md) — all version history
-- [`docs/GITHUB_GROWTH_PLAN.md`](GITHUB_GROWTH_PLAN.md) — broader 90-day plan
-- [`docs/BUG_REPORT.md`](BUG_REPORT.md) — known issues including release-blockers (C6 signing, C7 auto-update)
+- [`CHANGELOG.md`](../../CHANGELOG.md) — all version history
+- [`docs/operations/GITHUB_GROWTH_PLAN.md`](GITHUB_GROWTH_PLAN.md) — broader 90-day plan
+- [`docs/archive/audits/BUG_REPORT.md`](../archive/audits/BUG_REPORT.md) — historical known issues including release-blockers (C6 signing, C7 auto-update)

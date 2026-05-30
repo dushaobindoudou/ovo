@@ -1,6 +1,6 @@
 # Privacy Policy
 
-> 中文版：[PRIVACY_CN.md](PRIVACY_CN.md)
+> 中文版：见 [`README_CN.md`](../../README_CN.md) 的隐私说明入口。
 > Last updated: 2026-05-17 · Applies to: Ovo v0.2.0 and later
 
 This is the privacy policy for **Ovo**, an open-source proactive AI desktop assistant. As open source software you run locally, the privacy model is fundamentally different from cloud services — and we want to be specific about exactly what that means.
@@ -77,7 +77,7 @@ A typical Ovo prompt contains:
 - Anything from apps in your blacklist (default includes password managers, banking apps)
 - Anything during a paused period (`privacy:pause` IPC)
 
-You can audit the redaction regex list at [`electron/sensitive-filter.ts`](../electron/sensitive-filter.ts).
+You can audit the redaction regex list at [`electron/sensitive-filter.ts`](../../electron/sensitive-filter.ts).
 
 ---
 
@@ -147,7 +147,7 @@ Ovo is a productivity tool intended for adults. We do not knowingly collect data
 
 ## 7. Security Disclosures
 
-For security vulnerabilities, please follow [`SECURITY.md`](../SECURITY.md). Do not open public issues.
+For security vulnerabilities, please follow [`SECURITY.md`](../../SECURITY.md). Do not open public issues.
 
 ---
 
@@ -162,7 +162,7 @@ We will update this policy when:
 Material changes will be announced in:
 
 - A pinned issue in [Discussions](https://github.com/dushaobindoudou/ovo/discussions)
-- A new entry in [`CHANGELOG.md`](../CHANGELOG.md) under "Security"
+- A new entry in [`CHANGELOG.md`](../../CHANGELOG.md) under "Security"
 - A Toast notification at next app launch
 
 The `Last updated` date at the top of this file always reflects the current version.
@@ -172,8 +172,8 @@ The `Last updated` date at the top of this file always reflects the current vers
 ## 9. Contact
 
 - For privacy questions: open a GitHub Discussion in the [Q&A category](https://github.com/dushaobindoudou/ovo/discussions/categories/q-a)
-- For vulnerabilities: see [`SECURITY.md`](../SECURITY.md)
-- For everything else: see [`CONTRIBUTING.md`](../CONTRIBUTING.md)
+- For vulnerabilities: see [`SECURITY.md`](../../SECURITY.md)
+- For everything else: see [`CONTRIBUTING.md`](../../CONTRIBUTING.md)
 
 We don't have a "privacy@" inbox because we don't process your data centrally. The repository owner is `@dushaobindoudou` on GitHub.
 
@@ -185,11 +185,11 @@ This policy describes intent. The code describes reality. If anything in this po
 
 Files most relevant to privacy:
 
-- [`electron/auto-capture.ts`](../electron/auto-capture.ts) — what's captured and when
-- [`electron/sensitive-filter.ts`](../electron/sensitive-filter.ts) — redaction rules
-- [`electron/agent-bridge.ts`](../electron/agent-bridge.ts) — every outbound network call
-- [`electron/secrets-store.ts`](../electron/secrets-store.ts) — API key encryption
-- [`electron/preferences-store.ts`](../electron/preferences-store.ts) — preferences storage
-- [`electron/knowledge-graph.ts`](../electron/knowledge-graph.ts) — KG schema and queries
+- [`electron/auto-capture.ts`](../../electron/auto-capture.ts) — what's captured and when
+- [`electron/sensitive-filter.ts`](../../electron/sensitive-filter.ts) — redaction rules
+- [`electron/agent-bridge.ts`](../../electron/agent-bridge.ts) — every outbound network call
+- [`electron/secrets-store.ts`](../../electron/secrets-store.ts) — API key encryption
+- [`electron/preferences-store.ts`](../../electron/preferences-store.ts) — preferences storage
+- [`electron/knowledge-graph.ts`](../../electron/knowledge-graph.ts) — KG schema and queries
 
 Auditing welcome — that's the whole point of open source.

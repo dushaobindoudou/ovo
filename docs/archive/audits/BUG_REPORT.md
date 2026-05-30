@@ -1,6 +1,6 @@
 # Ovo Bug 报告（持续演进文档）
 
-> QA / 测试视角的系统问题库。与 `docs/UX_AUDIT.md`（产品视角）互补。
+> QA / 测试视角的系统问题库。与 `docs/archive/audits/UX_AUDIT.md`（产品视角）互补。
 > 每次 `/loop` bug 扫描轮跑完，新发现追加到此。
 
 **最新更新**：第 3 轮（2026-05-16）· 累计 37 个 bug · 8 个架构反模式 · 1 个 false alarm 已撤回

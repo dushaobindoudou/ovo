@@ -23,14 +23,14 @@ You don't need to be a coder to help:
 
 ### Read the philosophy first
 
-Ovo has an opinionated product philosophy: **proactive + transparent + teachable**. Before proposing a change, read [`docs/PRODUCT_PHILOSOPHY.md`](docs/PRODUCT_PHILOSOPHY.md) — it's our compass for product decisions.
+Ovo has an opinionated product philosophy: **proactive + transparent + teachable**. Before proposing a change, read [`docs/product/PRODUCT_PHILOSOPHY.md`](docs/product/PRODUCT_PHILOSOPHY.md) — it's our compass for product decisions.
 
 Every PR should be able to answer: **"Which axis of the philosophy does this serve?"** (proactive / transparent / teachable, or all three.)
 
 ### Check existing work
 
 - Search [issues](https://github.com/dushaobindoudou/ovo/issues) and [Discussions](https://github.com/dushaobindoudou/ovo/discussions) first
-- Check [`docs/UX_AUDIT.md`](docs/UX_AUDIT.md), [`docs/BUG_REPORT.md`](docs/BUG_REPORT.md), [`docs/UI_DESIGN_AUDIT.md`](docs/UI_DESIGN_AUDIT.md) — many known issues are already tracked there
+- Check [`docs/archive/audits/UX_AUDIT.md`](docs/archive/audits/UX_AUDIT.md), [`docs/archive/audits/BUG_REPORT.md`](docs/archive/audits/BUG_REPORT.md), [`docs/archive/audits/UI_DESIGN_AUDIT.md`](docs/archive/audits/UI_DESIGN_AUDIT.md) — many known issues are already tracked there
 
 ---
 
@@ -111,7 +111,7 @@ ovo/
 └── electron-builder.yml # Packaging config
 ```
 
-See [`docs/ELECTRON_IPC_MAPPING.md`](docs/ELECTRON_IPC_MAPPING.md) for IPC channels and payload contracts.
+See [`docs/engineering/ELECTRON_IPC_MAPPING.md`](docs/engineering/ELECTRON_IPC_MAPPING.md) for IPC channels and payload contracts.
 
 ---
 

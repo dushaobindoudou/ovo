@@ -3,7 +3,7 @@
 > Ovo is a copilot agent. The thinking is done by a **tool agent** of your choice.
 > This document covers the four backends Ovo supports, how to configure each, and the trade-offs.
 
-For the philosophical framing (why a copilot drives tool agents), see [`AGENT_PHILOSOPHY.md`](AGENT_PHILOSOPHY.md).
+For the philosophical framing (why a copilot drives tool agents), see [`AGENT_PHILOSOPHY.md`](../product/AGENT_PHILOSOPHY.md).
 
 ---
 
@@ -187,14 +187,14 @@ USER:
 ```
 
 You can audit the actual prompt construction at:
-- [`electron/prompt-engine.ts`](../electron/prompt-engine.ts)
-- [`electron/adaptive-prompt.ts`](../electron/adaptive-prompt.ts)
+- [`electron/prompt-engine.ts`](../../electron/prompt-engine.ts)
+- [`electron/adaptive-prompt.ts`](../../electron/adaptive-prompt.ts)
 
 Every prompt is **logged** in the Pipeline timeline (Console → Process / 回放 tab), so you can see exactly what was sent for any past pipeline.
 
 ### Redaction
 
-Before sending, [`electron/sensitive-filter.ts`](../electron/sensitive-filter.ts) strips:
+Before sending, [`electron/sensitive-filter.ts`](../../electron/sensitive-filter.ts) strips:
 - API tokens (sk-… / ghp-… / AIza-… / etc.)
 - JWT tokens
 - Credit card numbers
@@ -203,7 +203,7 @@ Before sending, [`electron/sensitive-filter.ts`](../electron/sensitive-filter.ts
 - `.env`-style secret patterns
 - Inline password / verification code patterns
 
-See [`PRIVACY.md`](PRIVACY.md) for the full privacy model.
+See [`PRIVACY.md`](../product/PRIVACY.md) for the full privacy model.
 
 ---
 
@@ -264,12 +264,12 @@ Configuration for each backend is remembered separately (e.g. switching from Dir
 
 If you want Ovo to support a new backend (e.g. a self-hosted vLLM, a corporate proxy, a new vendor), the integration point is:
 
-- [`electron/agent-bridge.ts`](../electron/agent-bridge.ts) — add a new case in the backend dispatch
-- Add the new backend to the type union in [`electron/types.ts`](../electron/types.ts)
-- Add a Settings UI option in [`src/components/Console/SettingsPanel.tsx`](../src/components/Console/SettingsPanel.tsx)
+- [`electron/agent-bridge.ts`](../../electron/agent-bridge.ts) — add a new case in the backend dispatch
+- Add the new backend to the type union in [`electron/types.ts`](../../electron/types.ts)
+- Add a Settings UI option in [`src/components/Console/SettingsPanel.tsx`](../../src/components/Console/SettingsPanel.tsx)
 - Add a unit test in `electron/__tests__/agent-bridge.test.ts` (when tests exist)
 
-For step-by-step contribution flow, see [`CONTRIBUTING.md`](../CONTRIBUTING.md). For architectural placement, see [`ARCHITECTURE.md`](ARCHITECTURE.md) §4 + §11.
+For step-by-step contribution flow, see [`CONTRIBUTING.md`](../../CONTRIBUTING.md). For architectural placement, see [`ARCHITECTURE.md`](ARCHITECTURE.md) §4 + §11.
 
 ---
 
@@ -293,7 +293,7 @@ Or file an [issue](https://github.com/dushaobindoudou/ovo/issues/new/choose) —
 
 ## See also
 
-- [`PRIVACY.md`](PRIVACY.md) — what gets sent (and what doesn't) per backend
+- [`PRIVACY.md`](../product/PRIVACY.md) — what gets sent (and what doesn't) per backend
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — where the backend fits in Ovo's data flow
-- [`AGENT_PHILOSOPHY.md`](AGENT_PHILOSOPHY.md) — why Ovo (copilot) calls these backends (tools), not the other way around
-- [`SECURITY.md`](../SECURITY.md) — reporting issues with key handling or prompt content
+- [`AGENT_PHILOSOPHY.md`](../product/AGENT_PHILOSOPHY.md) — why Ovo (copilot) calls these backends (tools), not the other way around
+- [`SECURITY.md`](../../SECURITY.md) — reporting issues with key handling or prompt content

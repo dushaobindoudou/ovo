@@ -142,7 +142,7 @@ GitHub: https://github.com/dushaobindoudou/ovo
 
 我们在工具型 Agent 上花了数千亿美金。**真正能被广泛使用、真正改变工作方式的，是副驾型 Agent。但几乎没有人在认真做。**
 
-(完整论述：[docs/AGENT_PHILOSOPHY.md](https://github.com/dushaobindoudou/ovo/blob/main/docs/AGENT_PHILOSOPHY.md))
+(完整论述：[docs/product/AGENT_PHILOSOPHY.md](https://github.com/dushaobindoudou/ovo/blob/main/docs/product/AGENT_PHILOSOPHY.md))
 
 ## 第一次"哇这真的懂我"的时刻
 
@@ -156,7 +156,7 @@ GitHub: https://github.com/dushaobindoudou/ovo
 
 ## 现在每天用它做什么
 
-{这部分写 4-6 个你真在用的场景，每个 50-100 字。可以从 [USE_CASES.md](https://github.com/dushaobindoudou/ovo/blob/main/docs/USE_CASES.md) 里挑你真在用的。例子：}
+{这部分写 4-6 个你真在用的场景，每个 50-100 字。可以从 [USE_CASES.md](https://github.com/dushaobindoudou/ovo/blob/main/docs/product/USE_CASES.md) 里挑你真在用的。例子：}
 
 1. **草拟邮件回复**：约 80% 我的简单回复（"是 / 不行 / Thursday 见"类）现在都是 Ovo 草拟好我一点 send。
 2. **找回上下文**：再也不需要"Wei 是谁来着"——Ovo 看到对方邮箱就把上次的对话浮起来。
@@ -191,7 +191,7 @@ GitHub: https://github.com/dushaobindoudou/ovo
 - ✅ **完整 MIT 开源**，代码可审计
 - ✅ **默认零遥测** —— Ovo 不收集任何使用数据
 
-完整隐私文档：[PRIVACY.md](https://github.com/dushaobindoudou/ovo/blob/main/docs/PRIVACY.md)
+完整隐私文档：[PRIVACY.md](https://github.com/dushaobindoudou/ovo/blob/main/docs/product/PRIVACY.md)
 
 ## 现在的状态
 
@@ -270,7 +270,7 @@ Known limitations:
 
 Repo: https://github.com/dushaobindoudou/ovo
 Philosophy doc (most important read): 
-  https://github.com/dushaobindoudou/ovo/blob/main/docs/AGENT_PHILOSOPHY.md
+  https://github.com/dushaobindoudou/ovo/blob/main/docs/product/AGENT_PHILOSOPHY.md
 
 Would love to hear: what's the first thing your screen-aware copilot 
 should have noticed about you?
@@ -300,7 +300,7 @@ first. The privacy model:
 
 The only network call is to YOUR chosen LLM provider with YOUR key. 
 Full data flow audit: 
-https://github.com/dushaobindoudou/ovo/blob/main/docs/PRIVACY.md
+https://github.com/dushaobindoudou/ovo/blob/main/docs/product/PRIVACY.md
 
 The code is open — `grep -rE "fetch|http" electron/` shows every 
 outbound call. Audit welcome.
@@ -348,7 +348,7 @@ runs on your prompt, but its reasoning is invisible. Ovo runs on
 observation, but its reasoning is visible.
 
 Glass-box AI is the bet. 
-https://github.com/dushaobindoudou/ovo/blob/main/docs/AGENT_PHILOSOPHY.md#52-visible-reasoning
+https://github.com/dushaobindoudou/ovo/blob/main/docs/product/AGENT_PHILOSOPHY.md#52-visible-reasoning
 ```
 
 #### 质疑 5: "This is just OS-level integration the OS should provide"
@@ -563,7 +563,7 @@ angle resonates most here.
 
 ### 锦上添花
 
-- 3-5 张架构图 (`docs/ARCHITECTURE.md` 里的 ASCII art 做成 SVG)
+- 3-5 张架构图 (`docs/engineering/ARCHITECTURE.md` 里的 ASCII art 做成 SVG)
 - 公众号封面图 (1080×1440)
 - 知乎首图 (1280×720)
 - 头像/Logo 高分辨率 (2048×2048)

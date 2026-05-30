@@ -391,7 +391,7 @@ If we ever ship a feature that violates a principle here, ship the principle cha
 ## See also
 
 - [`PRODUCT_PHILOSOPHY.md`](PRODUCT_PHILOSOPHY.md) — how the principles translate into Ovo's specific product decisions
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — how those decisions become code
+- [`ARCHITECTURE.md`](../engineering/ARCHITECTURE.md) — how those decisions become code
 - [`USE_CASES.md`](USE_CASES.md) — what the copilot looks like in practice (when written)
-- [`AI_BACKENDS.md`](AI_BACKENDS.md) — the tool agents Ovo can drive (when written)
+- [`AI_BACKENDS.md`](../engineering/AI_BACKENDS.md) — the tool agents Ovo can drive (when written)
 - [`PRIVACY.md`](PRIVACY.md) — the trust commitments the copilot model requires

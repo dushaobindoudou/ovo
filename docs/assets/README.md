@@ -26,7 +26,7 @@ README screenshots, demo GIFs, architecture diagrams, blog post images, etc.
 
 ## Want to contribute screenshots?
 
-See [`docs/GOOD_FIRST_ISSUES.md`](../GOOD_FIRST_ISSUES.md) — issue #6 is specifically about contributing screenshots. Great way to make your first PR!
+See [`docs/operations/GOOD_FIRST_ISSUES.md`](../operations/GOOD_FIRST_ISSUES.md) — issue #6 is specifically about contributing screenshots. Great way to make your first PR!
 
 ## Capture tips
 
