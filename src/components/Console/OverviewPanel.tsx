@@ -14,6 +14,7 @@ import { useTranslation } from "react-i18next";
 import { Sparkles, Pause, Play, Eye, ChevronDown, ChevronUp, Camera, Brain, Compass, Trash2 } from "lucide-react";
 import { Card } from "../shared/Card";
 import { GlowButton } from "../shared/GlowButton";
+import { SetupChecklist } from "./SetupChecklist";
 import { useInsights } from "../../hooks/useInsights";
 import { usePendingActions } from "../../hooks/usePendingActions";
 import { useWindowStore } from "../../stores/windowStore";
@@ -257,6 +258,9 @@ export function OverviewPanel({ ctx }: OverviewPanelProps) {
 
   return (
     <div className="space-y-4">
+      {/* ────────── P0-1 首启自检（全绿且收起后自动消失） ────────── */}
+      <SetupChecklist />
+
       {/* ────────── Hero ────────── */}
       <Card>
         {latest?.prediction ? (
