@@ -41,6 +41,20 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
   const { getStats } = useKnowledgeGraph();
   const [kgStats, setKgStats] = useState<{ entities: number; relationships: number; events: number } | null>(null);
   const [permResult, setPermResult] = useState<{ ok: boolean; message: string } | null>(null);
+  // P2-2: 快捷任务反馈（如"已暂停 30 分钟"）
+  const [quickMsg, setQuickMsg] = useState<string>("");
+
+  const scrollToSection = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  const quickPause = async () => {
+    try {
+      await window.ovoAPI?.privacy?.pause?.(30);
+      setQuickMsg("已暂停观察 30 分钟，可在下方隐私区随时恢复");
+      window.setTimeout(() => setQuickMsg(""), 4000);
+    } catch { /* ignore */ }
+    scrollToSection("section-privacy");
+  };
 
   const handleRequestPermission = async () => {
     setPermResult(null);
@@ -107,6 +121,31 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
           </a>
         ))}
       </nav>
+
+      {/* P2-2: 快捷任务 — 用"我想…"人话框架，常见操作 1-2 击直达 */}
+      <Card title="我想…">
+        <div className="flex flex-wrap gap-1.5">
+          {[
+            { label: "暂停观察", run: () => void quickPause() },
+            { label: "屏蔽某个 App", run: () => scrollToSection("section-privacy") },
+            { label: "降低打扰", run: () => scrollToSection("section-toast") },
+            { label: "检查 AI 后端", run: () => scrollToSection("section-api") },
+            { label: "导出 / 删除数据", run: () => scrollToSection("section-privacy") }
+          ].map((task) => (
+            <button
+              key={task.label}
+              type="button"
+              onClick={task.run}
+              className="rounded-full border border-[var(--border)] px-3 py-1 text-[12px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            >
+              {task.label}
+            </button>
+          ))}
+        </div>
+        {quickMsg && (
+          <p className="mt-2 text-[11px] text-[var(--accent)]">{quickMsg}</p>
+        )}
+      </Card>
 
       {/* 语言 — 放最顶部，双语标题让任何语言下都能一眼找到 */}
       <Card title="语言 / Language" id="section-language">
