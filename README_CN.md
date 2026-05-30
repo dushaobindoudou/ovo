@@ -232,7 +232,13 @@ pnpm pack:mac     # 构建 DMG 到 out/ 目录
 - Pipeline 全链路透明（每步可查）
 - 隐私控制（暂停 / 黑名单 / 敏感信息脱敏）
 - Prompt 自评（Ovo 反思自己的 pipeline 质量）
-- 4 步 Bootstrap 引导
+- 首启自检清单 + First Win 引导
+- **到期执行调度** —— 把动作定到某时间 / 每天 / 每周（发送类到点仍需确认）
+- **可教的反馈** —— 带原因拒绝建议；可查看并撤销教过它的每条规则
+- **产出物验收台** —— 每个产出物有状态，失败可重试 / 放弃
+- **记忆纠错** —— 实体改名、敏感记忆"删除并不再记录"
+- **北极星指标看板**（TTFV / 命中率 / 纠错数 / 产出完成率）—— 100% 本地
+- 完整中英双语 UI
 
 **进行中** 🚧
 - 信任分级 UI（每种 action 独立 5 级自主权：展示 → 草拟 → 确认 → 自动+5秒撤销 → 完全托管）
@@ -242,9 +248,7 @@ pnpm pack:mac     # 构建 DMG 到 out/ 目录
 **计划中** 🔮
 - Windows + Linux 支持
 - 插件/扩展系统
-- KPI 看板（TTFV / 命中率 / 撤销率 —— 详见 [`PRODUCT_PHILOSOPHY.md`](docs/product/PRODUCT_PHILOSOPHY.md)）
 - macOS 公证 + 自动更新
-- 多语言 UI
 
 查看 [开放 milestones](https://github.com/dushaobindoudou/ovo/milestones) 了解最新进展。
 

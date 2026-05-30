@@ -214,7 +214,13 @@ See [`docs/product/PRODUCT_PHILOSOPHY.md`](docs/product/PRODUCT_PHILOSOPHY.md) f
 - Pipeline transparency (every step logged + queryable)
 - Privacy controls (pause, blacklist, sensitive data redaction)
 - Prompt self-eval (Ovo reflects on its own pipeline quality)
-- Bootstrap onboarding (4-step seed)
+- First-run setup checklist + First Win onboarding
+- **Scheduled actions** — defer an action to a time / daily / weekly (sends still confirm at fire time)
+- **Teachable feedback** — reject with a reason; view & revoke every rule you've taught it
+- **Outputs acceptance station** — status per deliverable, retry/abandon failed ones
+- **Memory correction** — rename entities, "delete & never record" sensitive ones
+- **North-star metrics dashboard** (TTFV, hit rate, corrections, output completion) — 100% local
+- Full bilingual UI (简体中文 / English)
 
 **In Progress** 🚧
 - Trust ladder UI (per-action autonomy levels: show → draft → confirm → auto + 5s undo → full delegation)
@@ -224,9 +230,7 @@ See [`docs/product/PRODUCT_PHILOSOPHY.md`](docs/product/PRODUCT_PHILOSOPHY.md) f
 **Planned** 🔮
 - Windows + Linux support
 - Plugin/extension system
-- KPI dashboard (TTFV, hit rate, undo rate — see [`PRODUCT_PHILOSOPHY.md`](docs/product/PRODUCT_PHILOSOPHY.md))
 - macOS Notarization + auto-updates
-- Multi-language UI (currently 中文/English mixed)
 
 See [open milestones](https://github.com/dushaobindoudou/ovo/milestones) for what's coming next.
 

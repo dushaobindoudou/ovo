@@ -13,6 +13,36 @@ _Targeting 0.3.0. Still ahead: macOS code signing + Notarization, auto-update
 mechanism, and the trust ladder UI. Already landed on `main` since 0.2.0:_
 
 ### Added
+- ⏰ **Scheduled actions ("do it at a time")** — Ovo can defer an action to a
+  future time (or daily/weekly), fired by a scheduler with the same trust rules:
+  send-type actions (email / iMessage) still surface a confirmation at fire time
+  and are **never sent unattended**; stale items (>6h overdue) are skipped after
+  downtime. View and cancel scheduled items in the Outputs tab.
+- 🚦 **First-run Setup Checklist** — a one-glance startup self-check (screen
+  permission · capture/OCR · active window · AI backend) that tells you
+  *what's wrong, why, and the next step* for any blocked item.
+- 🎯 **First Win guide** — cold-start scenario cards so a new user gets their
+  first useful suggestion within seconds, plus a clear diagnostic if nothing
+  surfaces in 5 minutes.
+- 🛟 **Live privacy status bar** — always shows which app Ovo is watching, last
+  capture time, whether the current data is written to memory, which AI backend
+  is processing it, and a blocklist-hit state.
+- 🗣 **Granular, teachable feedback** — dismiss a suggestion with a reason
+  (irrelevant / misunderstood / too early / too noisy / mute this app / never),
+  which teaches Ovo via negative patterns; view and revoke every rule you've
+  taught it under Settings.
+- 📥 **Outputs acceptance station** — every deliverable now has a status
+  (to-verify / done / failed / abandoned); failed items offer retry or abandon,
+  and you can jump straight to the action's detail.
+- ✏️ **Memory correction** — rename entities (the old name is kept as an alias so
+  matching still works) and "delete & never record" sensitive memories with a
+  confirmation and result feedback.
+- 📊 **North-star metrics + "How Ovo's doing" dashboard** — local TTFV,
+  suggestion hit rate, correction count, trust-action counts, and output
+  completion rate, visualized on the Now page. **No telemetry leaves your machine.**
+- 🫧 **Floating-orb status tooltip** — hover the orb for a plain-language status line.
+- ⚡ **Settings quick tasks** — an "I want to…" row (pause · block an app ·
+  reduce interruptions · check AI backend · export/delete data) for 1–2-click access.
 - 🌍 **Full bilingual UI (简体中文 / English)** — language switcher promoted to a
   standalone card at the very top of Settings, with localized status bar, all
   Settings sections, Overview / Memory / Process panels, suggestion & action
@@ -28,6 +58,11 @@ mechanism, and the trust ladder UI. Already landed on `main` since 0.2.0:_
   `UNRESOLVED_ISSUES.md`
 
 ### Changed
+- 🧭 **Single adaptive prompt replaces the preset multi-persona ("Soul") switching** —
+  the LLM identifies the right tone/context on its own, so the fixed
+  work/casual/learning/negotiation/focus enum was dropped as unnecessary
+- 📁 **Docs reorganized** into `product/` · `engineering/` · `operations/` ·
+  `archive/` with an updated navigation index (all internal links fixed)
 - ♻️ Console / Suggestion panels refactored onto a shared component library
 - ♻️ `ipc-handlers` split into focused `ipc/*` modules + knowledge-graph migrations
 - 🤖 **hermes backend is now the default priority**, with agent-output schema
