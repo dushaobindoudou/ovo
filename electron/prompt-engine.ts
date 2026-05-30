@@ -73,7 +73,9 @@ JSON schema:
       "description": "string  // 给人看的中文描述，例如「把今天的会议要点存入知识库」",
       "params": {},
       "requireConfirm": false,
-      "priority": 0
+      "priority": 0,
+      "fireAt": "string  // 可选。仅当屏幕明确出现「未来某时间点要做某事」时填 ISO 时间（如 2026-05-30T15:00:00）；到点 Ovo 自动执行。无明确未来时间则省略。",
+      "recurrence": "none | daily | weekly  // 可选，配合 fireAt 表示周期，默认 none"
     }
   ],
   "suggestions": [
@@ -115,7 +117,8 @@ JSON schema:
 7. content 必须是字符串数组；如果只有一句回复，也要包装成数组。
 8. relationships 应优先用上面枚举的 relation 值；当现有图谱实体能与本次发现连接时尽量产出 ≥ 1 条边。
 9. 不要把 JSON 放进字符串字段里。
-10. 不要 markdown，不要 \`\`\`json 围栏，不要任何前后缀。`;
+10. 不要 markdown，不要 \`\`\`json 围栏，不要任何前后缀。
+11. fireAt 只在屏幕有**明确未来时间**且用户意图是"到时执行/提醒"时才填（例：邮件里写"下午3点发"、日程"明早9点"）。不确定时间就**不要**填 fireAt，按当下动作处理。送发类（send_email）即使带 fireAt，到点也只会弹确认，不会自动发——requireConfirm 仍须为 true。`;
 }
 
 export function buildActionExecutionPrompt(description: string, params: Record<string, unknown>) {

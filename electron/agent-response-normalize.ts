@@ -87,6 +87,12 @@ function parseAction(item: unknown): AgentAction | null {
   //   现在如实解析 LLM 自报的等级 + 证据，让 evidence-grounder 真正能工作。
   const evidence_level = parseEvidenceLevel(item.evidence_level);
   const evidence = asStringArray(item.evidence).map((e) => e.slice(0, 200)).slice(0, 6);
+  // 到期执行：解析 LLM 自报的 fireAt（epoch ms 或 ISO 字符串）+ recurrence。
+  // 不在这里做时间合法性判断（交给 pipeline 的 normalizeFireAt），只如实透传。
+  const fireAt =
+    typeof item.fireAt === "number" || typeof item.fireAt === "string" ? item.fireAt : undefined;
+  const recurrence =
+    item.recurrence === "daily" || item.recurrence === "weekly" ? item.recurrence : undefined;
   return {
     id,
     type,
@@ -95,7 +101,9 @@ function parseAction(item: unknown): AgentAction | null {
     requireConfirm: REQUIRE_CONFIRM_TYPES.has(type) ? true : Boolean(item.requireConfirm),
     priority: parsePriority(item.priority),
     ...(evidence_level ? { evidence_level } : {}),
-    ...(evidence.length > 0 ? { evidence } : {})
+    ...(evidence.length > 0 ? { evidence } : {}),
+    ...(fireAt !== undefined ? { fireAt } : {}),
+    ...(recurrence ? { recurrence } : {})
   };
 }
 
