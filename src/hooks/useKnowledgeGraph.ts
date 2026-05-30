@@ -53,6 +53,10 @@ export function useKnowledgeGraph() {
     if (!isElectron) return null;
     try { return await window.ovoAPI.kg.getEntityDetail(entityId); } catch { return null; }
   }, []);
+  const renameEntity = useCallback(async (entityId: string, newName: string) => {
+    if (!isElectron) return { ok: false };
+    try { return await window.ovoAPI.kg.renameEntity({ entityId, newName }); } catch { return { ok: false }; }
+  }, []);
   const runGC = useCallback(async () => {
     if (!isElectron) return { deleted: 0, rescored: 0 };
     try { return await window.ovoAPI.kg.runGC(); } catch { return { deleted: 0, rescored: 0 }; }
@@ -60,6 +64,6 @@ export function useKnowledgeGraph() {
 
   return {
     searchEntities, getEntity, analyzePersonality, getStats, getGraph, getEvents,
-    clear, exportGraph, setPinned, deleteEntity, getEntityDetail, runGC
+    clear, exportGraph, setPinned, deleteEntity, getEntityDetail, renameEntity, runGC
   };
 }

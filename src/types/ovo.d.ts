@@ -61,6 +61,7 @@ export type OvoInvokeChannel =
   | "kg:export"
   | "kg:set-pinned"
   | "kg:delete-entity"
+  | "kg:rename-entity"
   | "kg:get-entity-detail"
   | "kg:run-gc"
   | "scheduled-actions:list"
@@ -559,6 +560,7 @@ export interface OvoAPI {
     export: () => Promise<any>;
     setPinned: (payload: { entityId: string; pinned: boolean }) => Promise<{ ok: boolean }>;
     deleteEntity: (entityId: string) => Promise<{ ok: boolean; relationsDeleted: number }>;
+    renameEntity: (payload: { entityId: string; newName: string }) => Promise<{ ok: boolean; error?: string }>;
     getEntityDetail: (entityId: string) => Promise<{
       entity: {
         id: string; name: string; type: string; description: string;

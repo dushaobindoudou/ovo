@@ -43,6 +43,13 @@ export function registerKgHandlers(deps: IpcHandlerDeps) {
     kg.getRecentEvents(typeof limit === "number" && limit > 0 ? limit : 100, { includeLegacy: false })
   );
   ipcMain.handle("kg:get-stats", () => kg.getStats());
+  // P1-2 记忆纠错：实体改名（旧名并入 aliases，保留匹配）
+  ipcMain.handle("kg:rename-entity", (_event, payload: { entityId: string; newName: string }) => {
+    if (!payload?.entityId || typeof payload.newName !== "string") {
+      return { ok: false, error: "参数缺失" };
+    }
+    return kg.renameEntity(payload.entityId, payload.newName);
+  });
   // 到期执行调度：列表（含未来未到期 + 最近历史）+ 取消单条
   ipcMain.handle("scheduled-actions:list", (_event, limit?: number) =>
     kg.listScheduledActions(typeof limit === "number" && limit > 0 ? limit : 50)

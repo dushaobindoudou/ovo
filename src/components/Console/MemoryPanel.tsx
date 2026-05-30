@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pin, PinOff, Trash2, Maximize2, Minimize2, Sparkles, X, Search, MoreHorizontal, Download, UserCircle } from "lucide-react";
+import { Pin, PinOff, Trash2, Maximize2, Minimize2, Sparkles, X, Search, MoreHorizontal, Download, UserCircle, Pencil, ShieldOff } from "lucide-react";
 import { Card } from "../shared/Card";
 import { Empty } from "../shared/Empty";
 import { Input } from "../shared/Input";
@@ -45,7 +45,7 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
   const { t: tr } = useTranslation();
   const {
     searchEntities, analyzePersonality, getStats, getGraph, getEvents,
-    clear, exportGraph, setPinned, deleteEntity, getEntityDetail
+    clear, exportGraph, setPinned, deleteEntity, getEntityDetail, renameEntity
   } = useKnowledgeGraph();
 
   const [query, setQuery] = useState("");
@@ -220,6 +220,48 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
       await deleteEntity(detail.entity.id);
       setSelectedId(null);
       await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // P1-2: 实体改名（旧名自动并入 aliases，历史引用不丢）
+  const handleRename = async () => {
+    if (!detail?.entity) return;
+    const next = window.prompt("把这个记忆改成正确的名字：", detail.entity.name);
+    if (next === null) return;
+    const name = next.trim();
+    if (!name || name === detail.entity.name) return;
+    setBusy(true);
+    try {
+      const r = await renameEntity(detail.entity.id, name);
+      if (!r.ok) { window.alert(`改名失败：${("error" in r && r.error) || "未知错误"}`); return; }
+      await refresh();
+      void getEntityDetail(detail.entity.id).then((d) => setDetail(d as EntityDetail | null));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // P1-2: 敏感记忆"删除并不再记录"——二次确认 + 删除实体 + 写入禁忌 + 结果反馈
+  const handleForget = async () => {
+    if (!detail?.entity) return;
+    const name = detail.entity.name;
+    if (!window.confirm(`「删除并不再记录」会：\n① 删除「${name}」及其 ${detail.relations.length} 条关系\n② 加一条禁忌：以后不再记录/提及它\n\n确定吗？`)) return;
+    setBusy(true);
+    try {
+      await deleteEntity(detail.entity.id);
+      let ruleOk = false;
+      try {
+        const r = await window.ovoAPI.kg.addNegativePattern({
+          patternText: `用户标记为敏感：不要再记录或提及「${name}」相关的信息`,
+          contextSignature: name
+        });
+        ruleOk = !!r?.ok;
+      } catch { /* 规则写入失败不阻断删除 */ }
+      setSelectedId(null);
+      await refresh();
+      window.alert(ruleOk ? `已删除「${name}」并加入禁忌，之后不再记录它。` : `已删除「${name}」，但禁忌规则写入失败，可在设置→教过 Ovo 的规则手动添加。`);
     } finally {
       setBusy(false);
     }
@@ -550,6 +592,8 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
               onClose={() => setSelectedId(null)}
               onPinToggle={() => void handlePinToggle()}
               onDelete={() => void handleDelete()}
+              onRename={() => void handleRename()}
+              onForget={() => void handleForget()}
               onJump={(id) => setSelectedId(id)}
             />
           ) : (
@@ -626,7 +670,7 @@ function EntityListView({
 
 /* ──────────────────────── 实体富详情视图（侧栏） ──────────────────────── */
 function EntityDetailView({
-  detail, events, busy, onClose, onPinToggle, onDelete, onJump
+  detail, events, busy, onClose, onPinToggle, onDelete, onRename, onForget, onJump
 }: {
   detail: EntityDetail;
   events: Array<{ id: string; app_name: string; window_title?: string; timestamp: number; intent?: string; summary?: string }>;
@@ -634,6 +678,8 @@ function EntityDetailView({
   onClose: () => void;
   onPinToggle: () => void;
   onDelete: () => void;
+  onRename: () => void;
+  onForget: () => void;
   onJump: (id: string) => void;
 }) {
   const { t: tr } = useTranslation();
@@ -782,11 +828,20 @@ function EntityDetailView({
       </div>
 
       {/* 底部操作 */}
-      <div className="shrink-0 border-t border-[var(--border)] p-3">
+      <div className="shrink-0 space-y-2 border-t border-[var(--border)] p-3">
         <div className="flex gap-2">
           <GlowButton className="!flex-1 !text-xs" onClick={onPinToggle} disabled={busy}>
             {e.pinned ? <><PinOff size={12} className="mr-1 inline" />取消钉住</> : <><Pin size={12} className="mr-1 inline" />钉住</>}
           </GlowButton>
+          <button
+            type="button"
+            onClick={onRename}
+            disabled={busy}
+            title="改成正确的名字（旧名仍可匹配）"
+            className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+          >
+            <Pencil size={12} className="mr-1 inline" />改名
+          </button>
           <button
             type="button"
             onClick={onDelete}
@@ -796,6 +851,16 @@ function EntityDetailView({
             <Trash2 size={12} className="mr-1 inline" />删除
           </button>
         </div>
+        {/* P1-2: 敏感记忆——删除并加入"不再记录"禁忌（二次确认 + 结果反馈） */}
+        <button
+          type="button"
+          onClick={onForget}
+          disabled={busy}
+          title="删除这条记忆，并让 Ovo 以后不再记录它"
+          className="flex w-full items-center justify-center gap-1 rounded-lg border border-[var(--danger)]/40 px-3 py-1.5 text-xs text-[var(--danger)] hover:bg-[var(--danger)]/10"
+        >
+          <ShieldOff size={12} />删除并不再记录（敏感）
+        </button>
       </div>
     </>
   );

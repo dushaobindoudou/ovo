@@ -42,6 +42,7 @@ const ALLOWED_CHANNELS = new Set([
   "kg:export",
   "kg:set-pinned",
   "kg:delete-entity",
+  "kg:rename-entity",
   "kg:get-entity-detail",
   "kg:run-gc",
   "scheduled-actions:list",
@@ -235,6 +236,7 @@ contextBridge.exposeInMainWorld("ovoAPI", {
     },
     setPinned: (payload) => ipcRenderer.invoke("kg:set-pinned", payload),
     deleteEntity: (entityId) => ipcRenderer.invoke("kg:delete-entity", entityId),
+    renameEntity: (payload) => ipcRenderer.invoke("kg:rename-entity", payload),
     getEntityDetail: (entityId) => ipcRenderer.invoke("kg:get-entity-detail", entityId),
     runGC: () => ipcRenderer.invoke("kg:run-gc"),
     // PHIL-1 / P0.4: 玻璃管家 negative patterns

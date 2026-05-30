@@ -1146,6 +1146,25 @@ export class KnowledgeGraphEngine {
   }
 
   /**
+   * P1-2 记忆纠错：实体改名。把旧名并入 aliases，保证历史引用 / 后续匹配仍能命中。
+   */
+  renameEntity(entityId: string, newName: string): { ok: boolean; error?: string } {
+    const name = newName.trim();
+    if (!name) return { ok: false, error: "新名称不能为空" };
+    const row = this.db
+      .prepare("SELECT name, aliases FROM entities WHERE id = ? LIMIT 1")
+      .get(entityId) as { name: string; aliases: string | null } | undefined;
+    if (!row) return { ok: false, error: "实体不存在" };
+    if (row.name === name) return { ok: true };
+    const aliases: string[] = row.aliases ? (JSON.parse(row.aliases) as string[]) : [];
+    if (row.name && !aliases.includes(row.name)) aliases.push(row.name);
+    this.db
+      .prepare("UPDATE entities SET name = ?, aliases = ? WHERE id = ?")
+      .run(name, JSON.stringify(aliases.slice(0, 20)), entityId);
+    return { ok: true };
+  }
+
+  /**
    * KG-D: 取单个 entity 的完整详情：自身字段 + 关系 + 最近事件
    * UI 用，比 getEntity 更全。
    */
