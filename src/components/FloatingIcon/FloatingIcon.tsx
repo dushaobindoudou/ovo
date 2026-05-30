@@ -59,6 +59,25 @@ function pickVisual(state: FloatingStatePayload): Visual {
   return "idle";
 }
 
+/**
+ * P2-1: 悬浮球「人话状态」——用原生 title tooltip（OS 级，不撑 96×96 窗口、零布局影响）。
+ * 文案与主界面 LiveStatusBar 口径一致。
+ */
+function statusText(state: FloatingStatePayload): string {
+  if (state.pipelineStatus === "alert" || state.lastRiskLevel === "high" || state.lastRiskLevel === "critical") {
+    return "有重要提醒";
+  }
+  if (state.pipelineStatus === "thinking" || state.pipelineStatus === "generating") {
+    return "正在生成建议…";
+  }
+  if (state.unreadCount > 0) {
+    return `有 ${state.unreadCount} 条建议${state.summary ? ` · ${state.summary}` : ""}`;
+  }
+  if (state.summary) return state.summary;
+  if (state.activeApp) return `正在看 ${state.activeApp}`;
+  return "Ovo 正在观察 · 点击展开";
+}
+
 export function FloatingIcon() {
   const [state, setState] = useState<FloatingStatePayload>(DEFAULT_STATE);
 
@@ -217,6 +236,7 @@ export function FloatingIcon() {
           onPointerMove={handlePointerMove}
           onPointerUp={(e) => void handlePointerUp(e)}
           aria-label="ovo 悬浮球（拖动可移位，点击展开）"
+          title={statusText(state)}
           className="flex h-20 w-20 items-center justify-center"
           style={{
             background: "transparent",
