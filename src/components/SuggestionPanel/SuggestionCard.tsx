@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Check, ThumbsDown, ThumbsUp, X, ChevronLeft } from "lucide-react";
 import clsx from "clsx";
 import { useFeedback } from "../../hooks/useFeedback";
@@ -8,13 +9,13 @@ const isElectron = typeof window !== "undefined" && !!window.ovoAPI;
 
 // P1-1 建议反馈细分：拒绝时让用户说"哪里错了"，把原因教回系统。
 type RejectReason = "irrelevant" | "misunderstood" | "too_early" | "too_noisy" | "mute_app" | "never";
-const REJECT_REASONS: { key: RejectReason; label: string }[] = [
-  { key: "irrelevant", label: "不相关" },
-  { key: "misunderstood", label: "理解错了" },
-  { key: "too_early", label: "太早" },
-  { key: "too_noisy", label: "太打扰" },
-  { key: "mute_app", label: "这个 App 别提醒" },
-  { key: "never", label: "永远别这样" }
+const REJECT_REASONS: { key: RejectReason; i18nKey: string }[] = [
+  { key: "irrelevant", i18nKey: "suggestionCard.reasonIrrelevant" },
+  { key: "misunderstood", i18nKey: "suggestionCard.reasonMisunderstood" },
+  { key: "too_early", i18nKey: "suggestionCard.reasonTooEarly" },
+  { key: "too_noisy", i18nKey: "suggestionCard.reasonTooNoisy" },
+  { key: "mute_app", i18nKey: "suggestionCard.reasonMuteApp" },
+  { key: "never", i18nKey: "suggestionCard.reasonNever" }
 ];
 
 /**
@@ -24,13 +25,14 @@ const REJECT_REASONS: { key: RejectReason; label: string }[] = [
  *   - irrelevant → 该类建议作用域（intent）
  *   - 其余（理解错/太早/太打扰）→ 只做一次性反馈 + toast 抑制，不建永久规则
  */
-async function teachFromReason(reason: RejectReason, suggestionType: string, label: string, title: string) {
+type TFn = (key: string, opts?: Record<string, unknown>) => string;
+async function teachFromReason(t: TFn, reason: RejectReason, suggestionType: string, label: string, title: string) {
   if (!isElectron) return;
   try {
     if (reason === "never") {
       await window.ovoAPI.kg.addNegativePattern({
         intent: suggestionType,
-        patternText: `用户明确要求：永远不要再推送类似「${title || label}」的「${label}」建议`,
+        patternText: t("suggestionCard.ruleNever", { title: title || label, label }),
         contextSignature: title
       });
     } else if (reason === "mute_app") {
@@ -39,13 +41,13 @@ async function teachFromReason(reason: RejectReason, suggestionType: string, lab
       await window.ovoAPI.kg.addNegativePattern({
         appName: appName || undefined,
         patternText: appName
-          ? `用户要求：不要在 ${appName} 里推送「${label}」类提醒`
-          : `用户要求：减少「${label}」类提醒`
+          ? t("suggestionCard.ruleMuteApp", { app: appName, label })
+          : t("suggestionCard.ruleMuteAppGeneric", { label })
       });
     } else if (reason === "irrelevant") {
       await window.ovoAPI.kg.addNegativePattern({
         intent: suggestionType,
-        patternText: `用户反馈「${label}」类建议常常不相关——没有强屏幕证据时不要推`
+        patternText: t("suggestionCard.ruleIrrelevant", { label })
       });
     }
   } catch { /* 写入失败不阻断反馈 */ }
@@ -73,6 +75,7 @@ const COLLAPSE_MS = 320;
 const RECEIPT_HOLD_MS = 1100;
 
 export function SuggestionCard({ item, onDismiss }: SuggestionCardProps) {
+  const { t } = useTranslation();
   const { submitSuggestionFeedback } = useFeedback();
   const spec = getSuggestionSpec(item.type);
   const Icon = spec.icon;
@@ -125,7 +128,7 @@ export function SuggestionCard({ item, onDismiss }: SuggestionCardProps) {
       action: "rejected",
       reason,
     });
-    void teachFromReason(reason, item.type, spec.label, item.title);
+    void teachFromReason(t, reason, item.type, spec.label, item.title);
     dismissTimerRef.current = window.setTimeout(beginLeave, RECEIPT_HOLD_MS);
   };
 
@@ -198,7 +201,7 @@ export function SuggestionCard({ item, onDismiss }: SuggestionCardProps) {
             <button
               type="button"
               onClick={() => handleReact("accepted")}
-              title="采纳"
+              title={t("suggestionCard.accept")}
               className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-[var(--accent-dim)] hover:text-[var(--accent)]"
             >
               <ThumbsUp size={12} />
@@ -206,7 +209,7 @@ export function SuggestionCard({ item, onDismiss }: SuggestionCardProps) {
             <button
               type="button"
               onClick={() => setShowReasons(true)}
-              title="不想要（告诉 Ovo 哪里不对）"
+              title={t("suggestionCard.reject")}
               className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
             >
               <ThumbsDown size={12} />
@@ -214,7 +217,7 @@ export function SuggestionCard({ item, onDismiss }: SuggestionCardProps) {
             <button
               type="button"
               onClick={handleClose}
-              title="关闭"
+              title={t("suggestionCard.close")}
               className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
             >
               <X size={12} />
@@ -234,6 +237,7 @@ function ReasonPicker({
   onPick: (reason: RejectReason) => void;
   onBack: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5">
       <div className="mb-1.5 flex items-center gap-1.5">
@@ -241,11 +245,11 @@ function ReasonPicker({
           type="button"
           onClick={onBack}
           className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-          title="返回"
+          title={t("suggestionCard.back")}
         >
           <ChevronLeft size={13} />
         </button>
-        <span className="text-[11.5px] font-medium text-[var(--text-secondary)]">哪里不对？告诉 Ovo，它会学</span>
+        <span className="text-[11.5px] font-medium text-[var(--text-secondary)]">{t("suggestionCard.reasonPrompt")}</span>
       </div>
       <div className="flex flex-wrap gap-1">
         {REJECT_REASONS.map((r) => (
@@ -260,7 +264,7 @@ function ReasonPicker({
                 : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
             )}
           >
-            {r.label}
+            {t(r.i18nKey)}
           </button>
         ))}
       </div>
@@ -269,6 +273,7 @@ function ReasonPicker({
 }
 
 function ReceiptInline({ accepted, label }: { accepted: boolean; label: string }) {
+  const { t } = useTranslation();
   return (
     <div
       className="flex items-center gap-2 rounded-lg border px-3 py-2 text-[11.5px]"
@@ -287,7 +292,7 @@ function ReceiptInline({ accepted, label }: { accepted: boolean; label: string }
         {accepted ? <Check size={11} /> : <ThumbsDown size={10} />}
       </span>
       <span className="text-[var(--text-secondary)]">
-        {accepted ? `已采纳 · ovo 会更主动推 ${label}` : `已忽略 · 减少 ${label} 类提醒`}
+        {accepted ? t("suggestionCard.receiptAccepted", { label }) : t("suggestionCard.receiptRejected", { label })}
       </span>
     </div>
   );

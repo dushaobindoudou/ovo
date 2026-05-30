@@ -11,6 +11,7 @@
  *   - 等待超过 5 分钟仍无建议 → 给出明确原因（没截到屏 / 还没遇到可帮的机会）。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Mail, FileText, Code2, Globe, Sparkles, Eye } from "lucide-react";
 import { Card } from "../shared/Card";
 
@@ -25,13 +26,14 @@ interface FirstWinGuideProps {
 }
 
 const SCENARIOS = [
-  { key: "email", icon: Mail, title: "打开一封待回复的邮件", desc: "Ovo 会帮你准备回复草稿" },
-  { key: "notes", icon: FileText, title: "打开会议纪要", desc: "提取待办事项和提醒" },
-  { key: "code", icon: Code2, title: "停在一段代码 TODO", desc: "建议下一步怎么改" },
-  { key: "research", icon: Globe, title: "打开一个调研网页", desc: "总结要点并给后续动作" }
-];
+  { key: "email", icon: Mail },
+  { key: "notes", icon: FileText },
+  { key: "code", icon: Code2 },
+  { key: "research", icon: Globe }
+] as const;
 
 export function FirstWinGuide({ firstWinAchieved, captureAgo }: FirstWinGuideProps) {
+  const { t } = useTranslation();
   const [done, setDone] = useState<boolean>(() => {
     try { return localStorage.getItem(DONE_KEY) === "1"; } catch { return false; }
   });
@@ -56,12 +58,10 @@ export function FirstWinGuide({ firstWinAchieved, captureAgo }: FirstWinGuidePro
     return () => clearInterval(t);
   }, [done]);
 
-  const waitReason = useMemo(() => {
-    if (captureAgo < 0) {
-      return "Ovo 还没截到任何屏幕：确认上面的「启动自检」全部通过，并保证屏幕上有可见的应用窗口。";
-    }
-    return "Ovo 在看，但还没遇到能帮上忙的机会。试着打开下面任意一个场景，给它一个明确的上下文。";
-  }, [captureAgo]);
+  const waitReason = useMemo(
+    () => (captureAgo < 0 ? t("firstWin.waitNoCapture") : t("firstWin.waitObserving")),
+    [captureAgo, t]
+  );
 
   if (done || firstWinAchieved) return null;
 
@@ -69,10 +69,10 @@ export function FirstWinGuide({ firstWinAchieved, captureAgo }: FirstWinGuidePro
     <Card>
       <div className="mb-1 flex items-center gap-1.5">
         <Sparkles size={15} className="text-[var(--accent)]" />
-        <p className="text-sm font-semibold">拿到第一条建议</p>
+        <p className="text-sm font-semibold">{t("firstWin.title")}</p>
       </div>
       <p className="mb-2.5 text-[11px] text-[var(--text-muted)]">
-        Ovo 会观察你正在做的事。挑一个场景照着做，几十秒内就能看到它的第一条建议。
+        {t("firstWin.subtitle")}
       </p>
 
       <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
@@ -92,8 +92,8 @@ export function FirstWinGuide({ firstWinAchieved, captureAgo }: FirstWinGuidePro
             >
               <Icon size={14} className="mt-0.5 shrink-0 text-[var(--accent)]" />
               <span className="min-w-0">
-                <span className="block text-[12px] font-medium">{s.title}</span>
-                <span className="mt-0.5 block text-[10.5px] text-[var(--text-muted)]">{s.desc}</span>
+                <span className="block text-[12px] font-medium">{t(`firstWin.${s.key}Title`)}</span>
+                <span className="mt-0.5 block text-[10.5px] text-[var(--text-muted)]">{t(`firstWin.${s.key}Desc`)}</span>
               </span>
             </button>
           );
@@ -103,15 +103,13 @@ export function FirstWinGuide({ firstWinAchieved, captureAgo }: FirstWinGuidePro
       {selected && (
         <div className="mt-2 flex items-center gap-1.5 rounded-md border border-[var(--accent)]/40 bg-[var(--accent-dim)] p-2 text-[11px] text-[var(--text-secondary)]">
           <Eye size={12} className="shrink-0 text-[var(--accent)]" />
-          <span>
-            好，打开「{SCENARIOS.find((x) => x.key === selected)?.title}」后我会盯着这个场景，准备好建议就弹给你。
-          </span>
+          <span>{t("firstWin.selected", { title: t(`firstWin.${selected}Title`) })}</span>
         </div>
       )}
 
       {waitedTooLong && (
         <div className="mt-2 rounded-md border border-[var(--warning,#f59e0b)]/40 bg-[var(--warning,#f59e0b)]/5 p-2 text-[11px] text-[var(--text-secondary)]">
-          <p className="font-medium text-[var(--warning,#f59e0b)]">已经等了几分钟还没有建议？</p>
+          <p className="font-medium text-[var(--warning,#f59e0b)]">{t("firstWin.waitTitle")}</p>
           <p className="mt-0.5 text-[var(--text-muted)]">{waitReason}</p>
         </div>
       )}

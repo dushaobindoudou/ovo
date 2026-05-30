@@ -13,6 +13,7 @@
  * 全部关键项通过 → 折叠成「可以开始使用」，用户可一键收起（localStorage 记住）。
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   CheckCircle2, XCircle, Loader2, Circle, ShieldAlert, Cpu, ScanText, Eye, Bell, ChevronUp
 } from "lucide-react";
@@ -46,6 +47,7 @@ function StatusIcon({ status }: { status: ItemStatus }) {
 }
 
 export function SetupChecklist() {
+  const { t } = useTranslation();
   const { loaded, isGranted, isNotAvailable, requestScreenRecording, checkStatus } = usePermissions();
   const { getLatest, onUpdate } = useHealth();
 
@@ -100,61 +102,64 @@ export function SetupChecklist() {
     list.push({
       key: "screen",
       icon: ShieldAlert,
-      label: "屏幕录制权限",
-      detail: screenState === "neutral" ? "当前平台无需此权限" : "Ovo 通过它看到你的屏幕来理解上下文",
+      label: t("setupChecklist.screenLabel"),
+      detail: screenState === "neutral" ? t("setupChecklist.screenDetailNa") : t("setupChecklist.screenDetail"),
       status: screenState,
-      why: "未授权 → Ovo 看不到任何屏幕内容，无法工作。到「系统设置 → 隐私与安全性 → 屏幕录制」勾选 Ovo。",
+      why: t("setupChecklist.screenWhy"),
       action: screenState === "fail"
-        ? { label: "去授权", run: async () => { await requestScreenRecording(); await checkStatus(); } }
+        ? { label: t("setupChecklist.screenAction"), run: async () => { await requestScreenRecording(); await checkStatus(); } }
         : undefined
     });
 
     list.push({
       key: "capture",
       icon: ScanText,
-      label: "截图 / OCR 可用",
+      label: t("setupChecklist.captureLabel"),
       detail: health?.ok
-        ? `最近一次识别置信度 ${Math.round((health.confidence ?? 0))}%，文本 ${health.textLength ?? 0} 字`
-        : "截屏并提取屏幕文字",
+        ? t("setupChecklist.captureDetailOk", { conf: Math.round(health.confidence ?? 0), len: health.textLength ?? 0 })
+        : t("setupChecklist.captureDetail"),
       status: captureState,
       why: screenState === "fail"
-        ? "先授予屏幕录制权限，截图/OCR 才能开始。"
-        : `自检失败：${health?.error ?? "暂时拿不到可截图的窗口"}。请确认屏幕上有可见的应用窗口。`
+        ? t("setupChecklist.captureWhyScreen")
+        : t("setupChecklist.captureWhy", { err: health?.error ?? "—" })
     });
 
     list.push({
       key: "window",
       icon: Eye,
-      label: "活动窗口识别",
-      detail: health?.appName ? `正在看：${health.appName}` : "识别你当前在用哪个 App",
+      label: t("setupChecklist.windowLabel"),
+      detail: health?.appName ? t("setupChecklist.windowDetailWatching", { app: health.appName }) : t("setupChecklist.windowDetail"),
       status: windowState,
-      why: "暂时识别不到活动窗口，切换到任意应用窗口后会自动恢复。"
+      why: t("setupChecklist.windowWhy")
     });
 
+    const backendCount = agent?.availableBackends?.length ?? 0;
     list.push({
       key: "backend",
       icon: Cpu,
-      label: "AI 后端可用",
+      label: t("setupChecklist.backendLabel"),
       detail: backendOk
-        ? `当前后端：${agent?.current}${(agent?.availableBackends?.length ?? 0) > 1 ? `（共 ${agent?.availableBackends?.length} 个可用）` : ""}`
-        : "把屏幕内容变成理解和建议的大脑",
+        ? (backendCount > 1
+            ? t("setupChecklist.backendDetailOkMulti", { cur: agent?.current, n: backendCount })
+            : t("setupChecklist.backendDetailOk", { cur: agent?.current }))
+        : t("setupChecklist.backendDetail"),
       status: backendState,
-      why: "没有检测到可用 AI 后端。默认用 hermes（无需 API Key）；或到「设置 → AI 后端」配置 API Key。配好后点重新检测。",
+      why: t("setupChecklist.backendWhy"),
       action: !backendOk && !loadingAgent
-        ? { label: "重新检测", run: async () => { await window.ovoAPI.agent.detectBackends(); await refreshAgent(); } }
+        ? { label: t("setupChecklist.backendAction"), run: async () => { await window.ovoAPI.agent.detectBackends(); await refreshAgent(); } }
         : undefined
     });
 
     list.push({
       key: "automation",
       icon: Bell,
-      label: "自动化权限（提醒 / 日历 / 邮件）",
-      detail: "按需：第一次让 Ovo 写提醒或发邮件时，macOS 会弹窗请求授权",
+      label: t("setupChecklist.automationLabel"),
+      detail: t("setupChecklist.automationDetail"),
       status: "neutral"
     });
 
     return list;
-  }, [screenState, captureState, windowState, backendState, backendOk, loadingAgent, health, agent, requestScreenRecording, checkStatus, refreshAgent]);
+  }, [t, screenState, captureState, windowState, backendState, backendOk, loadingAgent, health, agent, requestScreenRecording, checkStatus, refreshAgent]);
 
   // 关键项：屏幕（除非平台不需要）、截图/OCR、AI 后端
   const criticalKeys = ["screen", "capture", "backend"];
@@ -179,7 +184,7 @@ export function SetupChecklist() {
             ? <CheckCircle2 size={15} className="text-[var(--success,#22c55e)]" />
             : <Loader2 size={15} className="animate-spin text-[var(--accent)]" />}
           <p className="text-sm font-semibold">
-            {allReady ? "Ovo 已就绪，可以开始使用" : "启动自检"}
+            {allReady ? t("setupChecklist.ready") : t("setupChecklist.title")}
           </p>
         </div>
         {allReady && (
@@ -188,14 +193,14 @@ export function SetupChecklist() {
             onClick={collapse}
             className="inline-flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)]"
           >
-            <ChevronUp size={12} /> 收起
+            <ChevronUp size={12} /> {t("setupChecklist.collapse")}
           </button>
         )}
       </div>
 
       {!allReady && (
         <p className="mb-2 text-[11px] text-[var(--text-muted)]">
-          逐项确认 Ovo 能不能工作。卡住的项会告诉你原因和下一步。
+          {t("setupChecklist.subtitle")}
         </p>
       )}
 

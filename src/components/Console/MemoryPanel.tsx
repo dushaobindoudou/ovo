@@ -228,14 +228,14 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
   // P1-2: 实体改名（旧名自动并入 aliases，历史引用不丢）
   const handleRename = async () => {
     if (!detail?.entity) return;
-    const next = window.prompt("把这个记忆改成正确的名字：", detail.entity.name);
+    const next = window.prompt(tr("memory.renamePrompt"), detail.entity.name);
     if (next === null) return;
     const name = next.trim();
     if (!name || name === detail.entity.name) return;
     setBusy(true);
     try {
       const r = await renameEntity(detail.entity.id, name);
-      if (!r.ok) { window.alert(`改名失败：${("error" in r && r.error) || "未知错误"}`); return; }
+      if (!r.ok) { window.alert(tr("memory.renameFailed", { err: ("error" in r && r.error) || "?" })); return; }
       await refresh();
       void getEntityDetail(detail.entity.id).then((d) => setDetail(d as EntityDetail | null));
     } finally {
@@ -247,7 +247,7 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
   const handleForget = async () => {
     if (!detail?.entity) return;
     const name = detail.entity.name;
-    if (!window.confirm(`「删除并不再记录」会：\n① 删除「${name}」及其 ${detail.relations.length} 条关系\n② 加一条禁忌：以后不再记录/提及它\n\n确定吗？`)) return;
+    if (!window.confirm(tr("memory.forgetConfirm", { name, n: detail.relations.length }))) return;
     setBusy(true);
     try {
       await deleteEntity(detail.entity.id);
@@ -261,7 +261,7 @@ export function MemoryPanel({ ctx }: { ctx?: { selectedId: string | null } }) {
       } catch { /* 规则写入失败不阻断删除 */ }
       setSelectedId(null);
       await refresh();
-      window.alert(ruleOk ? `已删除「${name}」并加入禁忌，之后不再记录它。` : `已删除「${name}」，但禁忌规则写入失败，可在设置→教过 Ovo 的规则手动添加。`);
+      window.alert(ruleOk ? tr("memory.forgetOk", { name }) : tr("memory.forgetPartial", { name }));
     } finally {
       setBusy(false);
     }
@@ -837,10 +837,10 @@ function EntityDetailView({
             type="button"
             onClick={onRename}
             disabled={busy}
-            title="改成正确的名字（旧名仍可匹配）"
+            title={tr("memory.renameTitle")}
             className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
-            <Pencil size={12} className="mr-1 inline" />改名
+            <Pencil size={12} className="mr-1 inline" />{tr("memory.rename")}
           </button>
           <button
             type="button"
@@ -856,10 +856,10 @@ function EntityDetailView({
           type="button"
           onClick={onForget}
           disabled={busy}
-          title="删除这条记忆，并让 Ovo 以后不再记录它"
+          title={tr("memory.forgetTitle")}
           className="flex w-full items-center justify-center gap-1 rounded-lg border border-[var(--danger)]/40 px-3 py-1.5 text-xs text-[var(--danger)] hover:bg-[var(--danger)]/10"
         >
-          <ShieldOff size={12} />删除并不再记录（敏感）
+          <ShieldOff size={12} />{tr("memory.forget")}
         </button>
       </div>
     </>

@@ -50,7 +50,7 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
   const quickPause = async () => {
     try {
       await window.ovoAPI?.privacy?.pause?.(30);
-      setQuickMsg("已暂停观察 30 分钟，可在下方隐私区随时恢复");
+      setQuickMsg(t("settingsPanel.quickPausedMsg"));
       window.setTimeout(() => setQuickMsg(""), 4000);
     } catch { /* ignore */ }
     scrollToSection("section-privacy");
@@ -123,14 +123,14 @@ export function SettingsPanel({ ctx }: { ctx?: { selectedId: string | null } }) 
       </nav>
 
       {/* P2-2: 快捷任务 — 用"我想…"人话框架，常见操作 1-2 击直达 */}
-      <Card title="我想…">
+      <Card title={t("settingsPanel.quickTitle")}>
         <div className="flex flex-wrap gap-1.5">
           {[
-            { label: "暂停观察", run: () => void quickPause() },
-            { label: "屏蔽某个 App", run: () => scrollToSection("section-privacy") },
-            { label: "降低打扰", run: () => scrollToSection("section-toast") },
-            { label: "检查 AI 后端", run: () => scrollToSection("section-api") },
-            { label: "导出 / 删除数据", run: () => scrollToSection("section-privacy") }
+            { label: t("settingsPanel.quickPause"), run: () => void quickPause() },
+            { label: t("settingsPanel.quickBlockApp"), run: () => scrollToSection("section-privacy") },
+            { label: t("settingsPanel.quickReduce"), run: () => scrollToSection("section-toast") },
+            { label: t("settingsPanel.quickCheckAi"), run: () => scrollToSection("section-api") },
+            { label: t("settingsPanel.quickData"), run: () => scrollToSection("section-privacy") }
           ].map((task) => (
             <button
               key={task.label}
