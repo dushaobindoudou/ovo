@@ -63,6 +63,8 @@ export type OvoInvokeChannel =
   | "kg:delete-entity"
   | "kg:get-entity-detail"
   | "kg:run-gc"
+  | "scheduled-actions:list"
+  | "scheduled-actions:cancel"
   | "prompt-eval:list"
   | "prompt-eval:set-status"
   | "prompt-eval:run-now"
@@ -536,6 +538,20 @@ export interface OvoAPI {
       nodes: Array<{ id: string; name: string; type: string; description?: string; mentionCount: number; lastSeen: number }>;
       edges: Array<{ id: string; sourceId: string; targetId: string; relation: string; strength: number; updatedAt: number }>;
     }>;
+    listScheduledActions: (limit?: number) => Promise<Array<{
+      id: string;
+      createdAt: number;
+      fireAt: number;
+      recurrence: "none" | "daily" | "weekly";
+      action: { id: string; description: string; type?: string; params: Record<string, unknown> };
+      title: string;
+      appName?: string;
+      source: string;
+      status: "pending" | "fired" | "cancelled" | "failed";
+      lastFiredAt?: number;
+      lastResult?: string;
+    }>>;
+    cancelScheduledAction: (id: string) => Promise<{ ok: boolean }>;
     triggerSummarize: () => Promise<{ ok: boolean }>;
     analyzePersonality: () => Promise<any>;
     clear: () => Promise<any>;

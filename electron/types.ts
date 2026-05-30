@@ -103,6 +103,14 @@ export interface AgentAction {
    * 主进程 grounder 会用这个数组在 OCR preview 里做子串匹配验证。
    */
   evidence?: string[];
+  /**
+   * 到期执行调度：动作不立即执行，到此时间点（epoch ms，或 ISO 字符串）才由
+   * scheduler 触发。pipeline 探测到未来 fireAt 时落 scheduled_actions 表。
+   * 送发类（send_email / send_imessage）到点仍走待确认，不会偷偷发。
+   */
+  fireAt?: number | string;
+  /** 配合 fireAt：none（默认）/ daily / weekly 周期重排 */
+  recurrence?: "none" | "daily" | "weekly";
 }
 
 export interface AgentSuggestion {

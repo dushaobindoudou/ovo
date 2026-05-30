@@ -26,6 +26,8 @@ import { safeExecuteAsync } from "../safe-execute.js";
 import type { AgentBridge } from "../agent-bridge.js";
 import type { AutoCaptureService } from "../auto-capture.js";
 import type { KnowledgeGraphEngine } from "../knowledge-graph.js";
+import type { ActionExecutor, ActionResult } from "../action-executor.js";
+import type { AgentAction, ActionType, AgentSuggestion } from "../types.js";
 import type { LogSystemFn, HealthConfig } from "./_shared.js";
 
 export interface SchedulerDeps {
@@ -38,6 +40,30 @@ export interface SchedulerDeps {
   setLatestHealth: (v: unknown) => void;
   runSummarizeOnce: () => Promise<void>;
   runPromptSelfEval: () => Promise<void>;
+  // 到期执行调度（scheduled-actions-fire）所需：
+  actionExecutor: ActionExecutor;
+  registerPendingAction: (action: AgentAction, pipelineId?: string) => void;
+  toastManager?: {
+    enqueueActions?: (actions: AgentAction[], pipelineId: string) => void;
+    enqueueReceipts?: (receipts: AgentSuggestion[]) => void;
+  };
+}
+
+/** 到点必须确认、永不无人值守自动发送的类型（安全底线） */
+const ALWAYS_CONFIRM_AT_FIRE = new Set<ActionType>(["send_email", "send_imessage"]);
+/** 过期超过此时长的调度直接跳过，避免停机一段时间后回来洪流式补发陈旧动作 */
+const SCHED_STALE_MS = 6 * 3600 * 1000;
+/** 每次扫描最多处理多少条到期项，防止一次性淹没执行器 */
+const SCHED_MAX_PER_TICK = 5;
+
+/** 从 ActionResult 里抽一句简短结果摘要落到 last_result。 */
+function summarizeActionResult(r: ActionResult): string {
+  if (r.error) return r.error.slice(0, 200);
+  try {
+    const parsed = JSON.parse(r.output ?? "{}") as { summary?: string };
+    if (parsed.summary) return String(parsed.summary).slice(0, 200);
+  } catch { /* output 非 JSON，忽略 */ }
+  return (r.output ?? r.status ?? "").slice(0, 200);
 }
 
 /** 注册所有 scheduler 周期任务。返回需要在 before-quit 清理的句柄。 */
@@ -50,7 +76,10 @@ export function registerSchedulers(deps: SchedulerDeps): { startupGcTimer: NodeJ
     healthConfig,
     setLatestHealth,
     runSummarizeOnce,
-    runPromptSelfEval
+    runPromptSelfEval,
+    actionExecutor,
+    registerPendingAction,
+    toastManager
   } = deps;
 
   // 关系强度每日衰减：scheduler 兜底，每 24h 运行一次。
@@ -168,6 +197,9 @@ export function registerSchedulers(deps: SchedulerDeps): { startupGcTimer: NodeJ
         // 表 pending 行无限增长。接进每日 GC，默认 7 天未处理的草稿标 expired。
         const draftRet = kg.expireOldDrafts();
         if (draftRet.expired > 0) logSystem("info", "kg.drafts-gc", "过期草稿清理", draftRet);
+        // 到期执行调度：清掉 30 天前的终态项（fired / cancelled / failed）
+        const schedRet = kg.purgeOldScheduledActions();
+        if (schedRet.purged > 0) logSystem("info", "kg.sched-gc", "过期调度动作清理", schedRet);
       } catch (e) {
         logSystem("error", "kg.gc", "KG GC 失败", {
           error: e instanceof Error ? e.message : String(e)
@@ -201,6 +233,78 @@ export function registerSchedulers(deps: SchedulerDeps): { startupGcTimer: NodeJ
     task: runPromptSelfEval,
     onError: (error) => {
       errorLogger.alert("warn", "prompt-self-eval", "自评任务异常", {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  // 到期执行调度：每分钟扫一次 scheduled_actions 里到期且 pending 的项。
+  //   - 送发类（send_email / send_imessage）到点不偷发 → 转待确认 toast（settle 视作已触发）
+  //   - 可逆 / Ovo 内部 / 信任≥3 的类型 → 直接执行 + 弹透明回执
+  //   - 过期超过 SCHED_STALE_MS 的跳过（停机回来不补发陈旧动作）
+  //   - 单 tick 限流 SCHED_MAX_PER_TICK 条
+  scheduler.register({
+    id: "scheduled-actions-fire",
+    intervalMs: 60_000,
+    task: async () => {
+      const due = kg.listDueScheduledActions();
+      if (due.length === 0) return;
+      let processed = 0;
+      for (const row of due) {
+        if (processed >= SCHED_MAX_PER_TICK) break;
+        processed++;
+        const now = Date.now();
+
+        // 过期太久 → 跳过（recurrence=daily/weekly 时 settle(ok) 会重排到下个周期）
+        if (now - row.fireAt > SCHED_STALE_MS) {
+          kg.settleScheduledAction(
+            row.id, true,
+            `已过期跳过（到期于约 ${Math.round((now - row.fireAt) / 3600000)}h 前）`
+          );
+          logSystem("info", "sched.fire", "跳过过期调度动作", { id: row.id, title: row.title });
+          continue;
+        }
+
+        // 用户/agent 之前已显式安排 → direct 意图，绕过 evidence gating
+        //（到点没有实时屏幕证据，否则会被 grounder 误判 speculative 拒掉）
+        const action: AgentAction = { ...row.action, evidence_level: "direct" };
+        const type = action.type ?? "other";
+        const trustLevel = preferencesStore.getTrustLevel(type);
+        const mustConfirm =
+          ALWAYS_CONFIRM_AT_FIRE.has(type) || action.requireConfirm === true || trustLevel < 3;
+        const pipelineId = `scheduled:${row.id}`;
+
+        try {
+          if (mustConfirm) {
+            registerPendingAction(action, pipelineId);
+            broadcast("action:pending", { pipelineId, actions: [action] });
+            toastManager?.enqueueActions?.([action], pipelineId);
+            kg.settleScheduledAction(row.id, true, "已到点 → 弹出待确认");
+            logSystem("info", "sched.fire", "到点动作转待确认", { id: row.id, type });
+          } else {
+            const result = await actionExecutor.execute(action, {});
+            const ok = result.status === "success";
+            kg.settleScheduledAction(row.id, ok, summarizeActionResult(result));
+            // 透明回执：让用户知道 Ovo 到点替他做了什么（即使控制台没开）
+            toastManager?.enqueueReceipts?.([{
+              id: `sched_${row.id}_${now.toString(36)}`,
+              type: ok ? "info" : "risk",
+              title: ok ? `已到点执行：${row.title}` : `到点执行失败：${row.title}`,
+              content: ok ? (action.description || "") : (result.error || "执行失败"),
+              priority: 80
+            }]);
+            logSystem(ok ? "info" : "warning", "sched.fire", "到点动作执行完成", { id: row.id, type, ok });
+          }
+        } catch (e) {
+          kg.settleScheduledAction(row.id, false, e instanceof Error ? e.message : String(e));
+          logSystem("error", "sched.fire", "到点动作执行异常", {
+            id: row.id, error: e instanceof Error ? e.message : String(e)
+          });
+        }
+      }
+    },
+    onError: (error) => {
+      errorLogger.alert("warn", "scheduled-actions-fire", "到期执行调度异常", {
         error: error instanceof Error ? error.message : String(error)
       });
     }

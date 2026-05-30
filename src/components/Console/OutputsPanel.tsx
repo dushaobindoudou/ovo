@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Card } from "../shared/Card";
-import { Bell, Calendar, FileText, ClipboardCopy, Mail, MessageSquare, Globe, Search as SearchIcon, Sparkles, ExternalLink, RefreshCw } from "lucide-react";
+import { Bell, Calendar, FileText, ClipboardCopy, Mail, MessageSquare, Globe, Search as SearchIcon, Sparkles, ExternalLink, RefreshCw, Clock } from "lucide-react";
 import { sanitizeForDisplay } from "../../utils/sanitizeText";
 
 const isElectron = typeof window !== "undefined" && !!window.ovoAPI;
@@ -64,8 +64,8 @@ function formatRelative(ts: number): string {
   return `${Math.floor(diff / 86_400_000)} 天前`;
 }
 
-function formatTime(iso?: string): string {
-  if (!iso) return "—";
+function formatTime(iso?: string | number): string {
+  if (iso === undefined || iso === null || iso === "") return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   const today = new Date();
@@ -92,6 +92,27 @@ export function OutputsPanel() {
   const [loadingFuture, setLoadingFuture] = useState(true);
   const [loadingPast, setLoadingPast] = useState(true);
   const [futureError, setFutureError] = useState<string>("");
+  type SchedRow = Awaited<ReturnType<typeof window.ovoAPI.kg.listScheduledActions>>[number];
+  const [scheduled, setScheduled] = useState<SchedRow[]>([]);
+
+  const loadScheduled = useMemo(() => async () => {
+    if (!isElectron) return;
+    try {
+      const data = await window.ovoAPI.kg.listScheduledActions(50);
+      setScheduled((data ?? []) as SchedRow[]);
+    } catch {
+      setScheduled([]);
+    }
+  }, []);
+
+  const cancelScheduled = async (id: string) => {
+    if (!isElectron) return;
+    try {
+      await window.ovoAPI.kg.cancelScheduledAction(id);
+    } finally {
+      void loadScheduled();
+    }
+  };
 
   const loadFuture = useMemo(() => async () => {
     if (!isElectron) return;
@@ -122,10 +143,16 @@ export function OutputsPanel() {
   useEffect(() => {
     void loadFuture();
     void loadPast();
+    void loadScheduled();
     // 已发生的轮询 10s 刷新；未来的不轮询（osascript 慢），靠用户手动刷新
-    const t = setInterval(() => { void loadPast(); }, 10_000);
+    const t = setInterval(() => { void loadPast(); void loadScheduled(); }, 10_000);
     return () => clearInterval(t);
-  }, [loadFuture, loadPast]);
+  }, [loadFuture, loadPast, loadScheduled]);
+
+  const pendingScheduled = useMemo(
+    () => scheduled.filter((s) => s.status === "pending").sort((a, b) => a.fireAt - b.fireAt),
+    [scheduled]
+  );
 
   // 按类型分组 past
   const groupedPast = useMemo(() => {
@@ -149,12 +176,50 @@ export function OutputsPanel() {
         </div>
         <button
           type="button"
-          onClick={() => { void loadFuture(); void loadPast(); }}
+          onClick={() => { void loadFuture(); void loadPast(); void loadScheduled(); }}
           className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
         >
           <RefreshCw size={11} /> 刷新
         </button>
       </div>
+
+      {/* ───── Ovo 已安排到点执行（scheduled_actions）───── */}
+      {pendingScheduled.length > 0 && (
+        <Card>
+          <div className="mb-2 flex items-center gap-1.5">
+            <Clock size={13} className="text-[var(--accent)]" />
+            <p className="text-sm font-semibold">Ovo 已安排到点执行（{pendingScheduled.length}）</p>
+          </div>
+          <p className="mb-2 text-[11px] text-[var(--text-muted)]">
+            到点由 Ovo 自动执行。发送类（邮件 / iMessage）到点只会弹出待确认，不会自动发出。
+          </p>
+          <ul className="space-y-1">
+            {pendingScheduled.map((s) => (
+              <li
+                key={s.id}
+                className="flex items-start gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-2 text-[12px]"
+              >
+                <Clock size={12} className="mt-0.5 shrink-0 text-[var(--accent)]" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">{sanitizeForDisplay(s.title, "（含代码）", 120)}</p>
+                  <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">
+                    {formatTime(s.fireAt)}
+                    {s.recurrence !== "none" ? ` · ${s.recurrence === "daily" ? "每天" : "每周"}` : ""}
+                    {s.action?.type ? ` · ${s.action.type}` : ""}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void cancelScheduled(s.id)}
+                  className="shrink-0 rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)] hover:border-[var(--warning)] hover:text-[var(--warning)]"
+                >
+                  取消
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {/* ───── 左：未来要发生 ───── */}

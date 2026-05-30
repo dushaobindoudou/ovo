@@ -43,6 +43,13 @@ export function registerKgHandlers(deps: IpcHandlerDeps) {
     kg.getRecentEvents(typeof limit === "number" && limit > 0 ? limit : 100, { includeLegacy: false })
   );
   ipcMain.handle("kg:get-stats", () => kg.getStats());
+  // 到期执行调度：列表（含未来未到期 + 最近历史）+ 取消单条
+  ipcMain.handle("scheduled-actions:list", (_event, limit?: number) =>
+    kg.listScheduledActions(typeof limit === "number" && limit > 0 ? limit : 50)
+  );
+  ipcMain.handle("scheduled-actions:cancel", (_event, id: string) =>
+    kg.cancelScheduledAction(String(id))
+  );
   ipcMain.handle("kg:get-graph", (_event, limit?: number) => kg.getGraphSnapshot(limit ?? 80));
   ipcMain.handle("kg:analyze-personality", () => personalityAnalyzer.analyze());
   // SEC-16: kg:clear 不可逆破坏性操作——加主进程二次握手。

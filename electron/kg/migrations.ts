@@ -11,7 +11,7 @@
  */
 import type Database from "better-sqlite3";
 
-export const CURRENT_SCHEMA_VERSION = 4;  // v4: evidence_inflation；v3: drafts；v2: memory_events actor
+export const CURRENT_SCHEMA_VERSION = 5;  // v5: scheduled_actions；v4: evidence_inflation；v3: drafts；v2: memory_events actor
 
 /** 单条 migration 失败的统一处理：良性错误 swallow，真错误告警 */
 function reportMigrationError(err: unknown, label: string) {
@@ -294,6 +294,27 @@ export function bootstrap(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_inflation_lookup
       ON evidence_inflation(app_name, action_type, intent);
+  `);
+
+  // v5 迁移：scheduled_actions 表 —— 「到期执行」调度。
+  //   action 携带未来 fire_at 时不立即执行，落这里；scheduler 每分钟扫到期的 → 走
+  //   actionExecutor.execute（信任/确认规则照旧）。recurrence 支持 daily/weekly 重排。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS scheduled_actions (
+      id TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL,
+      fire_at INTEGER NOT NULL,
+      recurrence TEXT NOT NULL DEFAULT 'none',  -- none | daily | weekly
+      action_json TEXT NOT NULL,                -- 序列化的 AgentAction
+      title TEXT NOT NULL,
+      app_name TEXT,
+      source TEXT NOT NULL DEFAULT 'agent',     -- agent | user | offer
+      status TEXT NOT NULL DEFAULT 'pending',   -- pending | fired | cancelled | failed
+      last_fired_at INTEGER,
+      last_result TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_scheduled_due
+      ON scheduled_actions(status, fire_at);
   `);
 
   // T15 / C9 / A7: bootstrap 全部走完，写入当前 schema 版本号

@@ -24,7 +24,7 @@ import { sessionTracker, inferActivityState } from "./session-tracker.js";
 import { safeExecute, safeExecuteAsync } from "./safe-execute.js";
 import { preferencesStore } from "./preferences-store.js";
 import { sanitizeParsedPayload } from "./text-sanitize.js";
-import type { AgentSuggestion } from "./types.js";
+import type { AgentSuggestion, AgentAction } from "./types.js";
 import type { ActionResult } from "./action-executor.js";
 
 import {
@@ -45,6 +45,19 @@ import { registerDevHandlers } from "./ipc/dev.js";
 import type { IpcHandlerDeps, WindowGetterOptions } from "./ipc/_shared.js";
 
 export type { WindowGetterOptions };
+
+/**
+ * 归一化 AgentAction.fireAt → epoch ms（或 undefined）。
+ * 接受 number（epoch ms）或可被 Date.parse 解析的 ISO 字符串；非法值返回 undefined。
+ */
+function normalizeFireAt(fireAt: number | string | undefined): number | undefined {
+  if (typeof fireAt === "number" && Number.isFinite(fireAt) && fireAt > 0) return fireAt;
+  if (typeof fireAt === "string") {
+    const t = Date.parse(fireAt);
+    if (Number.isFinite(t)) return t;
+  }
+  return undefined;
+}
 
 export function registerIpcHandlers(options: WindowGetterOptions) {
   // CODE-3: 用 safeIpcMain 替换 rawIpcMain，幂等注册——dev reload 不再抛 "second handler"
@@ -305,7 +318,10 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     healthConfig,
     setLatestHealth: (v) => { latestHealth = v; },
     runSummarizeOnce,
-    runPromptSelfEval
+    runPromptSelfEval,
+    actionExecutor,
+    registerPendingAction,
+    toastManager: options.toastManager
   });
   void startupGcTimer; // before-quit cleanup 已在 registerSchedulers 内部 app.on
 
@@ -737,6 +753,46 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
 
     // ---- 阶段 5: actions ----
     const actionsStart = Date.now();
+    // 到期执行：带未来 fireAt 的动作不立即执行，落 scheduled_actions 表，到点由
+    // scheduler(scheduled-actions-fire) 触发。送发类到点仍走待确认，不会偷偷发。
+    // 在此处先把它们从本轮动作里剔除（mutate response.parsed.actions，下游照旧用它）。
+    {
+      const now = Date.now();
+      const scheduled: AgentAction[] = [];
+      response.parsed.actions = response.parsed.actions.filter((a) => {
+        const fireAt = normalizeFireAt(a.fireAt);
+        if (fireAt && fireAt > now + 60_000) {
+          try {
+            kg.addScheduledAction({
+              fireAt,
+              recurrence: a.recurrence ?? "none",
+              action: a,
+              title: a.description || a.type || "已安排动作",
+              appName: buffer.appName,
+              source: "agent"
+            });
+            scheduled.push(a);
+          } catch (e) {
+            systemLogger?.warn?.("sched.enqueue", "调度动作入库失败", {
+              error: e instanceof Error ? e.message : String(e)
+            });
+            return true; // 入库失败则退回当轮立即处理，避免动作丢失
+          }
+          return false;
+        }
+        return true;
+      });
+      if (scheduled.length > 0) {
+        const when = new Date(normalizeFireAt(scheduled[0].fireAt)!).toLocaleString();
+        options.toastManager?.enqueueReceipts?.([{
+          id: `sched_enq_${pipeline.id}_${Date.now().toString(36)}`,
+          type: "info",
+          title: scheduled.length === 1 ? "已安排 1 个动作到指定时间" : `已安排 ${scheduled.length} 个动作`,
+          content: `${scheduled[0].description || scheduled[0].type || "动作"} · ${when}`,
+          priority: 70
+        }]);
+      }
+    }
     // 「不打扰」原则：LLM 标记 requireConfirm 或属于硬白名单外的类型都视作 pending
     const pendingActions = response.parsed.actions.filter(
       (a) => a.requireConfirm || !ActionExecutor.canAutoExecute(a.type)

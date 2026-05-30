@@ -10,6 +10,7 @@ import { safeExecute } from "./safe-execute.js";
 import { bootstrap as bootstrapSchema, getSchemaVersionInfo as schemaVersionInfo } from "./kg/migrations.js";
 import * as draftsStore from "./kg/drafts-store.js";
 import type { DraftRow } from "./kg/drafts-store.js";
+import * as schedStore from "./kg/scheduled-actions-store.js";
 
 // NEW-1 + DATA-7: memory_events.content 入库截断长度（足够保留上下文，避免无界增长）
 const MEMORY_CONTENT_MAX_CHARS = 8000;
@@ -2659,6 +2660,28 @@ export class KnowledgeGraphEngine {
     limit = 5
   ): Array<{ appName: string; actionType: string; intent: string; effectiveScore: number }> {
     return draftsStore.getInflationWarnings(this.db, ctx, threshold, limit);
+  }
+
+  // ── 到期执行调度：实现在 kg/scheduled-actions-store.ts，这里薄委托 ──
+  addScheduledAction(payload: Omit<Parameters<typeof schedStore.addScheduledAction>[1], "id"> & { id?: string }): string {
+    const id = payload.id ?? this.id("sched");
+    schedStore.addScheduledAction(this.db, { ...payload, id });
+    return id;
+  }
+  listDueScheduledActions(now?: number): schedStore.ScheduledActionRow[] {
+    return schedStore.listDueScheduledActions(this.db, now);
+  }
+  listScheduledActions(limit = 50): schedStore.ScheduledActionRow[] {
+    return schedStore.listScheduledActions(this.db, limit);
+  }
+  settleScheduledAction(id: string, ok: boolean, resultSummary: string): void {
+    schedStore.settleScheduledAction(this.db, id, ok, resultSummary);
+  }
+  cancelScheduledAction(id: string): { ok: boolean } {
+    return schedStore.cancelScheduledAction(this.db, id);
+  }
+  purgeOldScheduledActions(olderThanMs?: number): { purged: number } {
+    return schedStore.purgeOldScheduledActions(this.db, olderThanMs);
   }
 
   /** Close the database connection - should be called on app quit */
