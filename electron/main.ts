@@ -739,8 +739,8 @@ async function bootstrap() {
   });
   logger.info("electron:main", "应用启动", { isDev });
 
-  // 检查上次运行的错误日志
-  const errorCount = errorLogger.getErrorCount();
+  // 检查上次运行的错误日志（用归档的上一会话计数，不再把历史旧错反复重数）
+  const errorCount = errorLogger.getPreviousSessionErrorCount();
   if (errorCount > 0) {
     logger.warning("electron:main", "检测到上次运行的错误日志", { errorCount });
   }

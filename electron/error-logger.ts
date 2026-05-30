@@ -76,8 +76,34 @@ export class ErrorLogger {
       this.write("error", "unhandledRejection", String(reason));
     });
 
-    // 读取已有日志
-    this.loadExisting();
+    // 每次启动归档上一会话的 error.log，本会话从干净开始。
+    // 否则旧错误（含早已解决的）会被反复重数 → 启动永远误报"检测到 N 个错误"、
+    // app 内错误日志视图也一直堆着陈年旧账。
+    this.startFreshSession();
+  }
+
+  private prevSessionErrors = 0;
+  /** 上一会话（已归档）的 error 级条数，给启动告警用（真实反映上次运行，而非历史累计）。 */
+  getPreviousSessionErrorCount() {
+    return this.prevSessionErrors;
+  }
+
+  private startFreshSession() {
+    const logPath = this.getLogPath();
+    try {
+      if (fs.existsSync(logPath)) {
+        // 先数上一会话的 error 条数（启动告警用），再把旧文件归档到 .prev
+        const content = fs.readFileSync(logPath, "utf-8");
+        this.prevSessionErrors = content.split("\n").filter(Boolean).reduce((n, line) => {
+          try { return (JSON.parse(line) as { level?: string }).level === "error" ? n + 1 : n; }
+          catch { return n; }
+        }, 0);
+        fs.renameSync(logPath, logPath + ".prev");
+      }
+    } catch {
+      // 归档失败不阻断启动——大不了继续往旧文件追加
+    }
+    this.entries = [];
   }
 
   write(level: string, source: string, message: string) {
@@ -168,29 +194,6 @@ export class ErrorLogger {
 
   getAlerts(limit = 50) {
     return this.alerts.slice(-limit);
-  }
-
-  private loadExisting() {
-    const logPath = this.getLogPath();
-    if (!fs.existsSync(logPath)) return;
-    try {
-      const content = fs.readFileSync(logPath, "utf-8");
-      this.entries = content
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => {
-          // 单行 parse 失败是正常的（半截写入 / 已 rotate），这一行丢弃即可
-          try { return JSON.parse(line); } catch { return null; }
-        })
-        .filter(Boolean)
-        .slice(-200); // 只保留最近 200 条
-    } catch (e) {
-      // 读历史日志失败不阻断启动——往 stderr 倒一条提示，运维能注意到
-      try {
-        const reason = e instanceof Error ? e.message : String(e);
-        process.stderr.write(`[errorLogger.loadExisting-failed] ${reason}\n`);
-      } catch { /* */ }
-    }
   }
 
   private rotateIfNeeded() {

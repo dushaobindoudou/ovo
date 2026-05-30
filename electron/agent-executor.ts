@@ -243,7 +243,8 @@ export async function planAndExecuteAction(
 ): Promise<AgentExecutionResult> {
   const started = Date.now();
   const prompt = buildPlanPrompt(action);
-  const response = await agentBridge.call({ prompt, outputFormat: "json", timeout: 45_000 });
+  // hermes 实测 22-70s（非旧假设 6-7s），45s 偏紧 → 90s
+  const response = await agentBridge.call({ prompt, outputFormat: "json", timeout: 90_000 });
   if (!response.ok) {
     return {
       ok: false,

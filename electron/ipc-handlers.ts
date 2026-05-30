@@ -351,7 +351,9 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     });
     let raw = "";
     try {
-      const response = await agentBridge.call({ prompt, outputFormat: "json", timeout: 45_000 });
+      // hermes 实测 22-70s（非旧注释假设的 6-7s），关系推断 prompt 含实体清单偏大 →
+      // 45s 太紧常超时。提到 90s。这是后台富化，失败已优雅跳过（不影响主流程）。
+      const response = await agentBridge.call({ prompt, outputFormat: "json", timeout: 90_000 });
       raw = response.raw ?? "";
       if (!response.ok) {
         finishBizNode(bizId, "failed", { error: response.error ?? "agent call failed" });
@@ -604,7 +606,8 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
     for (const p of relevantNegatives) {
       try { kg.markNegativePatternHit(p.id); } catch { /* 命中计数失败不阻断 */ }
     }
-    const synthResponse = await agentBridge.call({ prompt: synthPrompt, outputFormat: "json", timeout: 45_000 });
+    // Pass2 合成：hermes 实测 22-70s，45s 偏紧 → 90s（与 relation-inference 对齐）
+    const synthResponse = await agentBridge.call({ prompt: synthPrompt, outputFormat: "json", timeout: 90_000 });
 
     // Pass 2 失败兜底：保留 Pass 1 输出，actions/suggestions/offers 走默认（actions 自动 log_note 兜底）
     const synthParsed = (synthResponse.ok && synthResponse.parsed) ? synthResponse.parsed : null;
