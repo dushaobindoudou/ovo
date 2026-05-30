@@ -532,8 +532,11 @@ export function registerIpcHandlers(options: WindowGetterOptions) {
       promptLength: obsPrompt.length,
       passes: 2
     });
-    // 观察 prompt 最大、hermes 走网络偶有延迟尖峰 → 90s 余量（prompt 已收窄，正常远低于此）
-    const obsResponse = await agentBridge.call({ prompt: obsPrompt, outputFormat: "json", timeout: 90_000 });
+    // 观察 prompt 最大、hermes 走网络偶有延迟尖峰 → 150s 余量。
+    // 实测：极简 prompt ~7s，真实观察 prompt 56-70s（贴着旧 90s 上限），hermes 偶发
+    // stale_stream_pool_cleanup 重建 SSL/HTTP 连接再 +30-60s → 旧 90s 间歇性超时报错。
+    // 150s 容下典型耗时 + 一次连接重建；仍超时则视为真卡死（网络断）该失败。
+    const obsResponse = await agentBridge.call({ prompt: obsPrompt, outputFormat: "json", timeout: 150_000 });
 
     if (!obsResponse.ok || !obsResponse.parsed) {
       const agentOutput = {
