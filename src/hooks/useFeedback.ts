@@ -10,6 +10,8 @@ export function useFeedback() {
       action: "accepted" | "rejected" | "ignored";
       personalityContext?: string;
       appContext?: string;
+      /** P1-1: 拒绝原因（不相关/理解错/太早/太打扰/mute_app/never） */
+      reason?: string;
     }) => {
       if (!isElectron) return Promise.resolve({ ok: false });
       return window.ovoAPI.suggestion.feedback(payload);

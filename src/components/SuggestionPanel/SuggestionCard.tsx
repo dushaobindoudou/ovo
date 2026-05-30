@@ -1,8 +1,55 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ThumbsDown, ThumbsUp, X } from "lucide-react";
+import { Check, ThumbsDown, ThumbsUp, X, ChevronLeft } from "lucide-react";
 import clsx from "clsx";
 import { useFeedback } from "../../hooks/useFeedback";
 import { getSuggestionSpec } from "./suggestionTypes";
+
+const isElectron = typeof window !== "undefined" && !!window.ovoAPI;
+
+// P1-1 建议反馈细分：拒绝时让用户说"哪里错了"，把原因教回系统。
+type RejectReason = "irrelevant" | "misunderstood" | "too_early" | "too_noisy" | "mute_app" | "never";
+const REJECT_REASONS: { key: RejectReason; label: string }[] = [
+  { key: "irrelevant", label: "不相关" },
+  { key: "misunderstood", label: "理解错了" },
+  { key: "too_early", label: "太早" },
+  { key: "too_noisy", label: "太打扰" },
+  { key: "mute_app", label: "这个 App 别提醒" },
+  { key: "never", label: "永远别这样" }
+];
+
+/**
+ * 把拒绝原因写回 negative_patterns，后续 prompt 会读到并约束同类建议。
+ *   - never      → 全局禁忌（最强）
+ *   - mute_app   → 当前 App 作用域（取实时活动窗口名）
+ *   - irrelevant → 该类建议作用域（intent）
+ *   - 其余（理解错/太早/太打扰）→ 只做一次性反馈 + toast 抑制，不建永久规则
+ */
+async function teachFromReason(reason: RejectReason, suggestionType: string, label: string, title: string) {
+  if (!isElectron) return;
+  try {
+    if (reason === "never") {
+      await window.ovoAPI.kg.addNegativePattern({
+        intent: suggestionType,
+        patternText: `用户明确要求：永远不要再推送类似「${title || label}」的「${label}」建议`,
+        contextSignature: title
+      });
+    } else if (reason === "mute_app") {
+      const h = await window.ovoAPI.health.getLatest().catch(() => null);
+      const appName = (h as { appName?: string } | null)?.appName;
+      await window.ovoAPI.kg.addNegativePattern({
+        appName: appName || undefined,
+        patternText: appName
+          ? `用户要求：不要在 ${appName} 里推送「${label}」类提醒`
+          : `用户要求：减少「${label}」类提醒`
+      });
+    } else if (reason === "irrelevant") {
+      await window.ovoAPI.kg.addNegativePattern({
+        intent: suggestionType,
+        patternText: `用户反馈「${label}」类建议常常不相关——没有强屏幕证据时不要推`
+      });
+    }
+  } catch { /* 写入失败不阻断反馈 */ }
+}
 
 /**
  * 通知风格紧凑卡片。
@@ -32,6 +79,7 @@ export function SuggestionCard({ item, onDismiss }: SuggestionCardProps) {
   const isHighPriority = (item.priority ?? 0) >= 4;
 
   const [reacted, setReacted] = useState<"accepted" | "rejected" | null>(null);
+  const [showReasons, setShowReasons] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const dismissTimerRef = useRef<number | null>(null);
@@ -67,6 +115,20 @@ export function SuggestionCard({ item, onDismiss }: SuggestionCardProps) {
     dismissTimerRef.current = window.setTimeout(beginLeave, RECEIPT_HOLD_MS);
   };
 
+  // P1-1: 带原因的拒绝——既记反馈，又把原因教回 negative_patterns
+  const handleRejectWithReason = (reason: RejectReason) => {
+    setShowReasons(false);
+    setReacted("rejected");
+    void submitSuggestionFeedback({
+      suggestionId: item.id,
+      suggestionType: item.type,
+      action: "rejected",
+      reason,
+    });
+    void teachFromReason(reason, item.type, spec.label, item.title);
+    dismissTimerRef.current = window.setTimeout(beginLeave, RECEIPT_HOLD_MS);
+  };
+
   const handleClose = () => {
     if (dismissTimerRef.current) window.clearTimeout(dismissTimerRef.current);
     beginLeave();
@@ -87,6 +149,11 @@ export function SuggestionCard({ item, onDismiss }: SuggestionCardProps) {
     >
       {reacted ? (
         <ReceiptInline accepted={reacted === "accepted"} label={spec.label} />
+      ) : showReasons ? (
+        <ReasonPicker
+          onPick={handleRejectWithReason}
+          onBack={() => setShowReasons(false)}
+        />
       ) : (
         <article
           className={clsx(
@@ -138,8 +205,8 @@ export function SuggestionCard({ item, onDismiss }: SuggestionCardProps) {
             </button>
             <button
               type="button"
-              onClick={() => handleReact("rejected")}
-              title="忽略"
+              onClick={() => setShowReasons(true)}
+              title="不想要（告诉 Ovo 哪里不对）"
               className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
             >
               <ThumbsDown size={12} />
@@ -155,6 +222,48 @@ export function SuggestionCard({ item, onDismiss }: SuggestionCardProps) {
           </div>
         </article>
       )}
+    </div>
+  );
+}
+
+// P1-1: 拒绝原因选择器——一行紧凑 chips，点一下即学习
+function ReasonPicker({
+  onPick,
+  onBack,
+}: {
+  onPick: (reason: RejectReason) => void;
+  onBack: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2.5">
+      <div className="mb-1.5 flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+          title="返回"
+        >
+          <ChevronLeft size={13} />
+        </button>
+        <span className="text-[11.5px] font-medium text-[var(--text-secondary)]">哪里不对？告诉 Ovo，它会学</span>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {REJECT_REASONS.map((r) => (
+          <button
+            key={r.key}
+            type="button"
+            onClick={() => onPick(r.key)}
+            className={clsx(
+              "rounded-full border px-2 py-0.5 text-[11px] transition-colors",
+              r.key === "never"
+                ? "border-[var(--danger)]/40 text-[var(--danger)] hover:bg-[var(--danger)]/10"
+                : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            )}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
