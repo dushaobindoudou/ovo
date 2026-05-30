@@ -38,7 +38,12 @@
     "lastThink": "last thought {{time}}",
     "activityWatching": "Watching",
     "activityStandby": "Standby",
-    "activityIdle": "Idle"
+    "activityIdle": "Idle",
+    "notObserving": "Not observing this app",
+    "blacklisted": "blocklisted",
+    "memOn": "saving to memory",
+    "memOff": "not recording",
+    "aiVia": "AI {{name}}"
   },
   "settingsPanel": {
     "title": "Settings",

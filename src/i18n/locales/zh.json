@@ -38,7 +38,12 @@
     "lastThink": "上次想了想 {{time}}",
     "activityWatching": "观察中",
     "activityStandby": "待机",
-    "activityIdle": "空闲"
+    "activityIdle": "空闲",
+    "notObserving": "此 App 不观察",
+    "blacklisted": "在黑名单",
+    "memOn": "记忆记录中",
+    "memOff": "暂不记录",
+    "aiVia": "AI {{name}}"
   },
   "settingsPanel": {
     "title": "设置",
