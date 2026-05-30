@@ -385,8 +385,8 @@ export function OutputsPanel({ ctx }: OutputsPanelProps) {
             <p className="py-6 text-center text-[12px] text-[var(--text-muted)]">加载中…</p>
           ) : past.length === 0 ? (
             <div className="rounded-md border border-dashed border-[var(--border)] p-4 text-center">
-              <p className="text-[12px] text-[var(--text-muted)]">Ovo 还没替你做过事</p>
-              <p className="mt-1 text-[10px] text-[var(--text-muted)]">用一会儿，它做过的每件事都会出现在这里</p>
+              <p className="text-[12px] text-[var(--text-muted)]">还没有可验收的产出</p>
+              <p className="mt-1 text-[10px] text-[var(--text-muted)]">这里只收交付物——草稿 / 提醒 / 待办 / 日历 / 复制等。Ovo 在观察、记笔记时这里是空的，等它替你动手做一件具体的事才会出现。</p>
             </div>
           ) : (
             <div className="space-y-4">

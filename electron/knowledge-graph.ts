@@ -22,7 +22,11 @@ const MEMORY_TITLE_MAX_CHARS = 200;
 // 产出物策展：这些 action 不是"用户能用的成品"——log_note 是内部归档，
 // open_url/search_web 是导航动作而非交付物。产出物页只展真正的交付物
 // （草稿/总结/提醒/待办/日历/复制内容），归档与导航留在「动作清单」里。
-const NON_DELIVERABLE_OUTPUT_TYPES = new Set(["log_note", "open_url", "search_web"]);
+// 产出/验收台只展"交付物"：排除归档(log_note)、导航(open_url/search_web)、催化catch-all(other)。
+// other 是兜底/沉默桶（"此刻无可执行的具体动作"），不是用户能验收的产出，必须排除否则灌爆待验收。
+const NON_DELIVERABLE_OUTPUT_TYPES = new Set(["log_note", "open_url", "search_web", "other"]);
+// 验收台要展示的状态：成功(已完成) + 失败/超时/待确认(需要你处理)。drafted 归草稿台，不在此。
+const SHOWN_OUTPUT_STATUSES = new Set(["success", "failed", "timeout", "pending"]);
 
 /** 同义词表：用于实体去重的人工映射，lowercase 键 → 规范化名称。 */
 const ENTITY_SYNONYMS: Record<string, string> = {
@@ -2583,7 +2587,8 @@ export class KnowledgeGraphEngine {
         WHERE node IN ('actions.execute','action.confirm.execute')
         ORDER BY start_time DESC
         LIMIT ?`
-    ).all(limit * 3) as Array<{
+      // 扫描窗口放大：交付物在大量 log_note/other 观察日志里很稀疏，窗口太小会被饿死。
+    ).all(Math.min(2000, limit * 16)) as Array<{
       id: string; pipeline_id: string | null; node: string;
       input: string; output: string; status: string; start_time: number;
     }>;
@@ -2609,7 +2614,7 @@ export class KnowledgeGraphEngine {
           // 从 results[0] 取实际结果（confirm 路径的格式）
           const firstResult = results[0] ?? {};
           const status = String(firstResult.status ?? r.status ?? "");
-          if (status !== "success") continue;
+          if (!SHOWN_OUTPUT_STATUSES.has(status)) continue;
           const ctype = String(firstResult.type ?? "other");
           if (NON_DELIVERABLE_OUTPUT_TYPES.has(ctype)) continue; // 策展：跳过归档/导航
           seen.add(actionId);
@@ -2631,7 +2636,7 @@ export class KnowledgeGraphEngine {
           const result = results.find((rr) => rr.actionId === actionId);
           if (!result) continue;
           const status = String(result.status ?? "");
-          if (status !== "success") continue;
+          if (!SHOWN_OUTPUT_STATUSES.has(status)) continue;
           const atype = String(a.type ?? "other");
           if (NON_DELIVERABLE_OUTPUT_TYPES.has(atype)) continue; // 策展：跳过归档/导航
           seen.add(actionId);
