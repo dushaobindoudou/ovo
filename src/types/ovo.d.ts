@@ -66,6 +66,8 @@ export type OvoInvokeChannel =
   | "kg:run-gc"
   | "scheduled-actions:list"
   | "scheduled-actions:cancel"
+  | "metrics:get"
+  | "metrics:record"
   | "prompt-eval:list"
   | "prompt-eval:set-status"
   | "prompt-eval:run-now"
@@ -554,6 +556,20 @@ export interface OvoAPI {
       lastResult?: string;
     }>>;
     cancelScheduledAction: (id: string) => Promise<{ ok: boolean }>;
+    getMetrics: () => Promise<{
+      ttfvMs: number | null;
+      activated: boolean;
+      launches: number;
+      suggestionsTotal: number;
+      suggestionsAccepted: number;
+      hitRate: number | null;
+      correctionCount: number;
+      trustActions: { pause: number; blacklist: number; deleteMemory: number; replay: number };
+      outputTotal: number;
+      outputCompleted: number;
+      outputCompletionRate: number | null;
+    }>;
+    recordMetric: (payload: { kind: string; meta?: Record<string, unknown> }) => Promise<{ ok: boolean }>;
     triggerSummarize: () => Promise<{ ok: boolean }>;
     analyzePersonality: () => Promise<any>;
     clear: () => Promise<any>;

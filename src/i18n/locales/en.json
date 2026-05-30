@@ -363,5 +363,19 @@
     "ruleMuteApp": "User asked: don't push \"{{label}}\" reminders in {{app}}",
     "ruleMuteAppGeneric": "User asked: fewer \"{{label}}\" reminders",
     "ruleIrrelevant": "User says \"{{label}}\" suggestions are often irrelevant — don't push without strong on-screen evidence"
+  },
+  "metricsCard": {
+    "title": "How Ovo's doing",
+    "hint": "Real numbers as it learns you (all local, never uploaded)",
+    "hitRate": "Suggestion hit rate",
+    "ttfv": "Time to first value",
+    "corrections": "Corrected {{n}}x",
+    "trust": "Trust actions {{n}}x",
+    "output": "Output completion",
+    "acceptedOf": "{{a}}/{{n}} accepted",
+    "notYet": "Not enough data yet - use Ovo for a bit",
+    "ttfvMin": "{{m}}m {{s}}s",
+    "ttfvSec": "{{s}}s",
+    "na": "—"
   }
 }

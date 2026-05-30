@@ -47,6 +47,8 @@ const ALLOWED_CHANNELS = new Set([
   "kg:run-gc",
   "scheduled-actions:list",
   "scheduled-actions:cancel",
+  "metrics:get",
+  "metrics:record",
   "prompt-eval:list",
   "prompt-eval:set-status",
   "prompt-eval:run-now",
@@ -215,6 +217,8 @@ contextBridge.exposeInMainWorld("ovoAPI", {
     getGraph: (limit) => ipcRenderer.invoke("kg:get-graph", limit),
     listScheduledActions: (limit) => ipcRenderer.invoke("scheduled-actions:list", limit),
     cancelScheduledAction: (id) => ipcRenderer.invoke("scheduled-actions:cancel", id),
+    getMetrics: () => ipcRenderer.invoke("metrics:get"),
+    recordMetric: (payload) => ipcRenderer.invoke("metrics:record", payload),
     triggerSummarize: () => ipcRenderer.invoke("kg:trigger-summarize"),
     analyzePersonality: () => ipcRenderer.invoke("kg:analyze-personality"),
     // SEC-16 二次握手：第一次调用拿 confirmToken，带 token 再调一次才真执行。

@@ -363,5 +363,19 @@
     "ruleMuteApp": "用户要求：不要在 {{app}} 里推送「{{label}}」类提醒",
     "ruleMuteAppGeneric": "用户要求：减少「{{label}}」类提醒",
     "ruleIrrelevant": "用户反馈「{{label}}」类建议常常不相关——没有强屏幕证据时不要推"
+  },
+  "metricsCard": {
+    "title": "Ovo 表现",
+    "hint": "越用越准的真实数据（全部本地统计，不上传）",
+    "hitRate": "建议命中率",
+    "ttfv": "首次见效",
+    "corrections": "你纠正过 {{n}} 次",
+    "trust": "信任动作 {{n}} 次",
+    "output": "产出完成率",
+    "acceptedOf": "已采纳 {{a}}/{{n}}",
+    "notYet": "还没足够数据，用一会儿就有了",
+    "ttfvMin": "{{m}} 分 {{s}} 秒",
+    "ttfvSec": "{{s}} 秒",
+    "na": "—"
   }
 }

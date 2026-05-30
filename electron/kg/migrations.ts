@@ -11,7 +11,7 @@
  */
 import type Database from "better-sqlite3";
 
-export const CURRENT_SCHEMA_VERSION = 5;  // v5: scheduled_actions；v4: evidence_inflation；v3: drafts；v2: memory_events actor
+export const CURRENT_SCHEMA_VERSION = 6;  // v6: metric_events；v5: scheduled_actions；v4: evidence_inflation；v3: drafts；v2: memory_events actor
 
 /** 单条 migration 失败的统一处理：良性错误 swallow，真错误告警 */
 function reportMigrationError(err: unknown, label: string) {
@@ -315,6 +315,19 @@ export function bootstrap(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_scheduled_due
       ON scheduled_actions(status, fire_at);
+  `);
+
+  // v6 迁移：metric_events 表 —— 北极星指标埋点。
+  //   记录 app_launch / first_value / trust_* 等离散事件；getMetricsSummary 结合
+  //   user_feedback + action history 算出 TTFV / 命中率 / 纠错数 / 信任动作 / 产出完成率。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS metric_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts INTEGER NOT NULL,
+      kind TEXT NOT NULL,
+      meta TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_metric_kind_ts ON metric_events(kind, ts);
   `);
 
   // T15 / C9 / A7: bootstrap 全部走完，写入当前 schema 版本号

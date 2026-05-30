@@ -723,6 +723,7 @@ app.whenReady().then(async () => {
 async function bootstrap() {
   sharedKG = new KnowledgeGraphEngine();
   logger = new Logger({ kg: sharedKG });
+  sharedKG.recordMetric("app_launch"); // 北极星 TTFV 起点
   errorLogger.init();
   preferencesStore.load();
   // P0.11: 把脱敏强度同步到 sensitive-filter 模块级状态

@@ -11,6 +11,8 @@ import { bootstrap as bootstrapSchema, getSchemaVersionInfo as schemaVersionInfo
 import * as draftsStore from "./kg/drafts-store.js";
 import type { DraftRow } from "./kg/drafts-store.js";
 import * as schedStore from "./kg/scheduled-actions-store.js";
+import * as metricsStore from "./kg/metrics-store.js";
+import type { MetricKind } from "./kg/metrics-store.js";
 
 // NEW-1 + DATA-7: memory_events.content 入库截断长度（足够保留上下文，避免无界增长）
 const MEMORY_CONTENT_MAX_CHARS = 8000;
@@ -2701,6 +2703,86 @@ export class KnowledgeGraphEngine {
   }
   purgeOldScheduledActions(olderThanMs?: number): { purged: number } {
     return schedStore.purgeOldScheduledActions(this.db, olderThanMs);
+  }
+
+  // ── 北极星指标埋点：实现在 kg/metrics-store.ts，这里薄委托 + 汇总 ──
+  recordMetric(kind: MetricKind, meta?: Record<string, unknown>): void {
+    safeExecute(() => metricsStore.recordMetric(this.db, kind, meta), "kg.metric.record", undefined, "warn");
+  }
+  purgeOldMetrics(olderThanMs?: number): { purged: number } {
+    return metricsStore.purgeOldMetrics(this.db, olderThanMs);
+  }
+
+  /**
+   * 汇总 6 个北极星指标：结合 metric_events + user_feedback + action history。
+   * 全本地、只读，给「Ovo 表现」看板和自评用。
+   */
+  getMetricsSummary(): {
+    ttfvMs: number | null;
+    activated: boolean;
+    launches: number;
+    suggestionsTotal: number;
+    suggestionsAccepted: number;
+    hitRate: number | null;
+    correctionCount: number;
+    trustActions: { pause: number; blacklist: number; deleteMemory: number; replay: number };
+    outputTotal: number;
+    outputCompleted: number;
+    outputCompletionRate: number | null;
+  } {
+    // TTFV：首次价值时间 - 首次启动时间
+    const firstLaunch = metricsStore.firstMetricTs(this.db, "app_launch");
+    const firstValue = metricsStore.firstMetricTs(this.db, "first_value");
+    const ttfvMs = firstLaunch != null && firstValue != null && firstValue >= firstLaunch
+      ? firstValue - firstLaunch
+      : null;
+
+    // 建议命中率：user_feedback 里 accepted / (accepted + rejected + ignored)
+    const fbRows = this.db
+      .prepare("SELECT action, COUNT(*) as cnt FROM user_feedback GROUP BY action")
+      .all() as Array<{ action: string; cnt: number }>;
+    const fb: Record<string, number> = {};
+    for (const r of fbRows) fb[r.action] = r.cnt;
+    const accepted = fb["accepted"] ?? 0;
+    const rejected = fb["rejected"] ?? 0;
+    const ignored = fb["ignored"] ?? 0;
+    const suggestionsTotal = accepted + rejected + ignored;
+    const hitRate = suggestionsTotal > 0 ? accepted / suggestionsTotal : null;
+
+    // 纠错数：rejected 反馈（近 30 天）+ 已教禁忌数
+    const since = Date.now() - 30 * 24 * 3600 * 1000;
+    const rejected30 = (this.db
+      .prepare("SELECT COUNT(*) as n FROM user_feedback WHERE action = 'rejected' AND timestamp >= ?")
+      .get(since) as { n: number } | undefined)?.n ?? 0;
+    const npCount = (this.db
+      .prepare("SELECT COUNT(*) as n FROM negative_patterns")
+      .get() as { n: number } | undefined)?.n ?? 0;
+    const correctionCount = rejected30 + npCount;
+
+    // 产出完成率：复用 getActionHistory 的 status（success / failed）
+    const history = this.getActionHistory(500);
+    const outputTotal = history.filter((h) => ["success", "failed", "timeout"].includes(h.status)).length;
+    const outputCompleted = history.filter((h) => h.status === "success").length;
+    const outputCompletionRate = outputTotal > 0 ? outputCompleted / outputTotal : null;
+
+    return {
+      ttfvMs,
+      activated: firstValue != null,
+      launches: metricsStore.countMetric(this.db, "app_launch"),
+      suggestionsTotal,
+      suggestionsAccepted: accepted,
+      hitRate,
+      correctionCount,
+      trustActions: {
+        pause: metricsStore.countMetric(this.db, "trust_pause"),
+        blacklist: metricsStore.countMetric(this.db, "trust_blacklist"),
+        deleteMemory: metricsStore.countMetric(this.db, "trust_delete_memory"),
+        replay: metricsStore.countMetric(this.db, "trust_replay")
+      },
+      outputTotal,
+      outputCompleted,
+      outputCompletionRate
+    };
   }
 
   /** Close the database connection - should be called on app quit */

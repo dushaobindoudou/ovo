@@ -16,6 +16,7 @@ import { Card } from "../shared/Card";
 import { GlowButton } from "../shared/GlowButton";
 import { SetupChecklist } from "./SetupChecklist";
 import { FirstWinGuide } from "./FirstWinGuide";
+import { MetricsCard } from "./MetricsCard";
 import { useInsights } from "../../hooks/useInsights";
 import { usePendingActions } from "../../hooks/usePendingActions";
 import { useWindowStore } from "../../stores/windowStore";
@@ -310,6 +311,9 @@ export function OverviewPanel({ ctx }: OverviewPanelProps) {
 
       {/* ────────── ovo 最近做了什么（self-evolving 可见化） ────────── */}
       {history.length > 0 && <ActivityStrip history={history} />}
+
+      {/* ────────── Ovo 表现（北极星指标看板） ────────── */}
+      <MetricsCard />
 
       {/* ────────── 等你处理（仅有内容时） ────────── */}
       {totalPending > 0 && (

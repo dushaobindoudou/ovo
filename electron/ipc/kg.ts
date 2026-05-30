@@ -57,6 +57,15 @@ export function registerKgHandlers(deps: IpcHandlerDeps) {
   ipcMain.handle("scheduled-actions:cancel", (_event, id: string) =>
     kg.cancelScheduledAction(String(id))
   );
+  // 北极星指标：看板读取 + 渲染端埋点（如打开技术回放 trust_replay）
+  ipcMain.handle("metrics:get", () => kg.getMetricsSummary());
+  ipcMain.handle("metrics:record", (_event, payload: { kind: string; meta?: Record<string, unknown> }) => {
+    const allowed = new Set(["trust_replay"]); // 渲染端只允许上报受限事件，防伪造
+    if (payload?.kind && allowed.has(payload.kind)) {
+      kg.recordMetric(payload.kind as Parameters<typeof kg.recordMetric>[0], payload.meta);
+    }
+    return { ok: true };
+  });
   ipcMain.handle("kg:get-graph", (_event, limit?: number) => kg.getGraphSnapshot(limit ?? 80));
   ipcMain.handle("kg:analyze-personality", () => personalityAnalyzer.analyze());
   // SEC-16: kg:clear 不可逆破坏性操作——加主进程二次握手。
@@ -88,6 +97,7 @@ export function registerKgHandlers(deps: IpcHandlerDeps) {
   });
   // SEC-16: zod 校验——entityId 字符集限定，防 SQL 注入辅助 / 路径遍历样的字符
   safeHandle("kg:delete-entity", KgDeleteEntitySchema, (entityId) => {
+    kg.recordMetric("trust_delete_memory");
     return kg.deleteEntity(entityId);
   });
   ipcMain.handle("kg:get-entity-detail", (_event, entityId: string) => {

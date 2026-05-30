@@ -76,6 +76,10 @@ export function registerPipelineHandlers(deps: IpcHandlerDeps) {
         "info"
       );
     }
+    // 北极星 TTFV：首次采纳一条建议 = 拿到第一份价值（recordMetric 内部对 first_value 去重）
+    if (payload.action === "accepted") {
+      safeExecute(() => kg.recordMetric("first_value", { suggestionType: payload.suggestionType }), "metric.first-value", undefined, "info");
+    }
     // R2: offer accept 时立刻给一条 receipt（capability 引擎未上线，先告诉用户已记下偏好）
     if (payload.action === "accepted" && payload.suggestionType?.startsWith("offer:")) {
       safeExecute(

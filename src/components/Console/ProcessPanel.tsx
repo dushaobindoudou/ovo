@@ -191,7 +191,11 @@ function ReplayView({
             <PipelineRowCompact
               key={p.id}
               pipeline={p}
-              onClick={() => setActiveId(p.id)}
+              onClick={() => {
+                setActiveId(p.id);
+                // 北极星信任动作：用户打开技术回放看因果链
+                try { window.ovoAPI?.kg?.recordMetric?.({ kind: "trust_replay" }); } catch { /* ignore */ }
+              }}
             />
           ))}
         </ul>

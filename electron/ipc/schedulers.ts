@@ -200,6 +200,8 @@ export function registerSchedulers(deps: SchedulerDeps): { startupGcTimer: NodeJ
         // 到期执行调度：清掉 30 天前的终态项（fired / cancelled / failed）
         const schedRet = kg.purgeOldScheduledActions();
         if (schedRet.purged > 0) logSystem("info", "kg.sched-gc", "过期调度动作清理", schedRet);
+        const metricRet = kg.purgeOldMetrics();
+        if (metricRet.purged > 0) logSystem("info", "kg.metric-gc", "过期指标事件清理", metricRet);
       } catch (e) {
         logSystem("error", "kg.gc", "KG GC 失败", {
           error: e instanceof Error ? e.message : String(e)

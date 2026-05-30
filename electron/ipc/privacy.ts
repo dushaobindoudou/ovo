@@ -115,6 +115,7 @@ export function registerPrivacyHandlers(deps: IpcHandlerDeps) {
   safeHandle("privacy:set-blacklist", PrivacySetBlacklistSchema, (apps) => {
     const cleaned = apps.map((a) => a.trim()).filter((a) => a.length > 0);
     preferencesStore.setBlacklistedApps(cleaned);
+    kg.recordMetric("trust_blacklist", { count: cleaned.length });
     return { ok: true };
   });
 
@@ -123,6 +124,7 @@ export function registerPrivacyHandlers(deps: IpcHandlerDeps) {
   safeHandle("privacy:pause", PrivacyPauseSchema, (minutes) => {
     const until = Date.now() + minutes * 60_000;
     preferencesStore.setPausedUntil(until);
+    kg.recordMetric("trust_pause", { minutes });
     return { ok: true, pausedUntil: until };
   });
   ipcMain.handle("privacy:resume", () => {
